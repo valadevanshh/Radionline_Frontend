@@ -1,0 +1,14 @@
+﻿node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+_shot_tmp/
+_ui_shots/
+.env
+.env.local
+.idea/
+.vscode/
+.DS_Store
+_dev_restart.log

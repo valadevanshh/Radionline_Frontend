@@ -1,0 +1,173 @@
+/* RadioNet design tokens + primitive overrides.
+   Imported from layout.tsx. Does not replace globals.css — primitives
+   beat the unlayered input{height:32px} rule via higher specificity. */
+
+:root {
+  /* Color — one semantic set (replaces navy/teal vs #009ef7 split) */
+  --rn-primary: #009ef7;
+  --rn-primary-hover: #0086d6;
+  --rn-primary-active: #0074ba;
+  --rn-primary-muted: #e8f6fe;
+  --rn-primary-foreground: #ffffff;
+
+  --rn-surface: #ffffff;
+  --rn-surface-muted: #f5f7fa;
+  --rn-bg: #f1f4f8;
+
+  --rn-border: #e2e6eb;
+  --rn-border-strong: #c5ccd4;
+
+  --rn-text: #1a2332;
+  --rn-text-secondary: #5a6573;
+  --rn-text-muted: #8b95a1;
+  --rn-text-inverse: #ffffff;
+
+  --rn-success: #0f6e56;
+  --rn-success-muted: #e8f4f0;
+  --rn-success-foreground: #ffffff;
+
+  --rn-warning: #b45309;
+  --rn-warning-muted: #fdf3e5;
+  --rn-warning-foreground: #ffffff;
+
+  --rn-danger: #b42318;
+  --rn-danger-muted: #feecec;
+  --rn-danger-foreground: #ffffff;
+
+  --rn-info: #1a4a8a;
+  --rn-info-muted: #edf3ff;
+  --rn-info-foreground: #ffffff;
+
+  /* Spacing scale: 4 / 8 / 12 / 16 / 24 / 32 */
+  --rn-space-1: 4px;
+  --rn-space-2: 8px;
+  --rn-space-3: 12px;
+  --rn-space-4: 16px;
+  --rn-space-5: 24px;
+  --rn-space-6: 32px;
+
+  /* Type scale: 12 / 13 / 14 / 16 / 20 — 12px is the hard minimum */
+  --rn-text-xs: 12px;
+  --rn-text-sm: 13px;
+  --rn-text-md: 14px;
+  --rn-text-base: 16px;
+  --rn-text-lg: 20px;
+
+  /* Radius: 6 controls / 10 cards / 14 modals */
+  --rn-radius-control: 6px;
+  --rn-radius-card: 10px;
+  --rn-radius-modal: 14px;
+
+  /* Layout */
+  --rn-page-header-height: 56px;
+  --rn-page-pad-mobile: 16px;
+  --rn-page-pad-desktop: 24px;
+  --rn-form-max-width: 720px;
+  --rn-row-height: 44px;
+
+  /* Elevation / overlay */
+  --rn-shadow-sm: 0 1px 2px rgba(26, 35, 50, 0.06);
+  --rn-shadow-md: 0 4px 16px rgba(26, 35, 50, 0.1);
+  --rn-shadow-lg: 0 12px 36px rgba(26, 35, 50, 0.16);
+  --rn-z-modal: 400;
+  --rn-z-toast: 500;
+}
+
+/* Tailwind v4 theme bridge — utilities like bg-rn-primary become available */
+@theme inline {
+  --color-rn-primary: var(--rn-primary);
+  --color-rn-primary-hover: var(--rn-primary-hover);
+  --color-rn-primary-muted: var(--rn-primary-muted);
+  --color-rn-surface: var(--rn-surface);
+  --color-rn-surface-muted: var(--rn-surface-muted);
+  --color-rn-bg: var(--rn-bg);
+  --color-rn-border: var(--rn-border);
+  --color-rn-text: var(--rn-text);
+  --color-rn-text-secondary: var(--rn-text-secondary);
+  --color-rn-text-muted: var(--rn-text-muted);
+  --color-rn-success: var(--rn-success);
+  --color-rn-success-muted: var(--rn-success-muted);
+  --color-rn-warning: var(--rn-warning);
+  --color-rn-warning-muted: var(--rn-warning-muted);
+  --color-rn-danger: var(--rn-danger);
+  --color-rn-danger-muted: var(--rn-danger-muted);
+  --color-rn-info: var(--rn-info);
+  --color-rn-info-muted: var(--rn-info-muted);
+}
+
+/* -------------------------------------------------------------------------
+   TextInput — higher specificity than globals `input[type="text"] { height:32px }`
+   (0,1,1). `input.rn-text-input[type="text"]` is (0,2,1) and always wins.
+   ------------------------------------------------------------------------- */
+input.rn-text-input[type="text"],
+input.rn-text-input[type="search"],
+input.rn-text-input[type="password"],
+input.rn-text-input[type="email"],
+input.rn-text-input[type="number"],
+input.rn-text-input[type="date"],
+input.rn-text-input[type="tel"],
+input.rn-text-input[type="url"] {
+  display: block;
+  width: 100%;
+  height: 36px;
+  min-height: 36px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--rn-border);
+  border-radius: var(--rn-radius-control);
+  background: var(--rn-surface);
+  color: var(--rn-text);
+  font-family: inherit;
+  font-size: var(--rn-text-sm);
+  font-weight: 500;
+  line-height: 20px;
+  outline: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input.rn-text-input.rn-text-input--left[type="text"],
+input.rn-text-input.rn-text-input--left[type="search"],
+input.rn-text-input.rn-text-input--left[type="password"],
+input.rn-text-input.rn-text-input--left[type="email"],
+input.rn-text-input.rn-text-input--left[type="number"],
+input.rn-text-input.rn-text-input--left[type="date"],
+input.rn-text-input.rn-text-input--left[type="tel"],
+input.rn-text-input.rn-text-input--left[type="url"] {
+  padding-left: 36px;
+}
+
+input.rn-text-input.rn-text-input--right[type="text"],
+input.rn-text-input.rn-text-input--right[type="search"],
+input.rn-text-input.rn-text-input--right[type="password"],
+input.rn-text-input.rn-text-input--right[type="email"],
+input.rn-text-input.rn-text-input--right[type="number"],
+input.rn-text-input.rn-text-input--right[type="date"],
+input.rn-text-input.rn-text-input--right[type="tel"],
+input.rn-text-input.rn-text-input--right[type="url"] {
+  padding-right: 36px;
+}
+
+input.rn-text-input[type="text"]:focus,
+input.rn-text-input[type="search"]:focus,
+input.rn-text-input[type="password"]:focus,
+input.rn-text-input[type="email"]:focus,
+input.rn-text-input[type="number"]:focus,
+input.rn-text-input[type="date"]:focus,
+input.rn-text-input[type="tel"]:focus,
+input.rn-text-input[type="url"]:focus {
+  border-color: var(--rn-primary);
+  background: var(--rn-surface);
+  box-shadow: 0 0 0 3px var(--rn-primary-muted);
+}
+
+input.rn-text-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--rn-surface-muted);
+}
+
+input.rn-text-input::placeholder {
+  color: var(--rn-text-muted);
+  font-weight: 400;
+}
