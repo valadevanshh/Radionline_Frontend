@@ -3,9 +3,9 @@
 import React, { useState } from 'react';
 import { X, Printer, CheckCircle, AlertTriangle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { XRayReport, RadiologyStore, formatDateDDMMYYYY } from '@/lib/radiology-store';
+import { XRayReport, RadiologyStore, RadiologyCenter, formatDateDDMMYYYY } from '@/lib/radiology-store';
 import { printReportElement, formatRegNo, type PrintReportPayload } from '@/lib/print-helper';
-import { publicReportLink, resolveMediaUrl } from '@/lib/api-client';
+import { ApiClient, publicReportLink, resolveMediaUrl } from '@/lib/api-client';
 import { usableSignatureUrl } from '@/components/DoctorSignatureForm';
 
 interface ReportPreviewModalProps {
@@ -23,10 +23,11 @@ export default function ReportPreviewModal({
   withHeader: initialWithHeader = true,
   selectedBodyPart: initialSelectedBodyPart,
 }: ReportPreviewModalProps) {
-  const [withHeader, setWithHeader] = useState(initialWithHeader);
   const [activeBodyPart, setActiveBodyPart] = useState<string>(
     initialSelectedBodyPart || report?.bodyParts?.[0] || 'GENERAL'
   );
+
+  const [centers, setCenters] = useState<RadiologyCenter[]>(() => RadiologyStore.getCenters());
 
   React.useEffect(() => {
     if (initialSelectedBodyPart) {
@@ -36,18 +37,44 @@ export default function ReportPreviewModal({
     }
   }, [initialSelectedBodyPart, report]);
 
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const loadCenters = async () => {
+      try {
+        const fetched = await ApiClient.getCenters();
+        if (Array.isArray(fetched) && fetched.length > 0) {
+          setCenters(fetched);
+          RadiologyStore.setCenters(fetched);
+        }
+      } catch (_) {
+        setCenters(RadiologyStore.getCenters());
+      }
+    };
+    loadCenters();
+  }, [isOpen]);
+
   if (!isOpen || !report) return null;
 
-  const centers = RadiologyStore.getCenters();
   const doctors = RadiologyStore.getDoctors();
 
-  const center = centers.find((c) => c.id === report.radiologyCenterId) || {
-    centerName: report.radiologyCenterName || 'RADIOLOGY CENTER',
-    email: 'info@diagnostic.com',
-    contactNumber: '+91 98980 00000',
-    address: 'Diagnostic Complex, City Center',
-    logoUrl: undefined,
-  };
+  const center =
+    centers.find(
+      (c) =>
+        c.id === report.radiologyCenterId ||
+        (c.centerName && report.radiologyCenterName && c.centerName.trim().toLowerCase() === report.radiologyCenterName.trim().toLowerCase())
+    ) || {
+      centerName: report.radiologyCenterName || 'RADIOLOGY CENTER',
+      email: '',
+      contactNumber: '',
+      address: '',
+      logoUrl: undefined,
+      headerTemplateUrl: undefined,
+      letterheadMode: undefined,
+    };
+
+  const centerHeaderUrl = resolveMediaUrl(center.headerTemplateUrl || '');
+  const centerLogoUrl = resolveMediaUrl(center.logoUrl || '');
+  const letterheadMode = initialWithHeader ? (center.letterheadMode || 'full-page') : 'preprinted';
 
   // Signed study: doctor details frozen at signing; otherwise the doctor's current profile
   const activeStudy =
@@ -80,8 +107,10 @@ export default function ReportPreviewModal({
       centerName: center.centerName || report.radiologyCenterName || 'RADIOLOGY CENTER',
       centerAddress: center.address || '',
       centerPhone: center.contactNumber || '',
-      centerLogoUrl: resolveMediaUrl(center.logoUrl || ''),
-      withHeader: withHeader,
+      centerLogoUrl: centerLogoUrl,
+      centerHeaderUrl: centerHeaderUrl,
+      withHeader: letterheadMode !== 'preprinted',
+      letterheadMode,
       patientName: report.fullName,
       patientId: report.patientNumber,
       ageSex: `${report.age} ${report.ageUnit === 'Months' ? 'M' : report.ageUnit === 'Days' ? 'D' : 'Y'} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,
@@ -124,18 +153,6 @@ export default function ReportPreviewModal({
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">
-              <button
-                type="button"
-                onClick={() => setWithHeader(!withHeader)}
-                className={`px-3 py-1 text-xs font-semibold border transition-all cursor-pointer ${
-                  withHeader
-                    ? 'bg-emerald-600 border-emerald-500 text-white'
-                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
-                }`}
-              >
-                {withHeader ? 'Header Included' : 'No Header'}
-              </button>
-
               <button
                 type="button"
                 onClick={handlePrint}
@@ -184,8 +201,61 @@ export default function ReportPreviewModal({
         {/* Medical Document Sheet */}
         <div
           className="p-3 sm:p-6 md:p-10 overflow-y-auto bg-white text-slate-900 space-y-4 sm:space-y-6 print-area font-serif text-xs sm:text-sm touch-pan-y overscroll-contain select-text"
-          style={{ WebkitOverflowScrolling: 'touch' }}
+          style={{
+            WebkitOverflowScrolling: 'touch',
+            ...(letterheadMode === 'full-page' && centerHeaderUrl
+              ? {
+                  backgroundImage: `url("${centerHeaderUrl}")`,
+                  backgroundSize: '100% 100%',
+                  backgroundRepeat: 'no-repeat',
+                  minHeight: '900px',
+                  paddingTop: '160px',
+                }
+              : letterheadMode === 'preprinted'
+              ? { paddingTop: '90px', paddingBottom: '60px' }
+              : {}),
+          }}
         >
+          {/* 0. CENTER LETTERHEAD HEADER (IF ENABLED) */}
+          {letterheadMode !== 'preprinted' && (
+            centerHeaderUrl ? (
+              letterheadMode !== 'full-page' && <div className={`letterhead-banner mb-4 overflow-hidden text-center ${letterheadMode === 'header' ? 'h-24' : 'h-12 mt-4'}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={centerHeaderUrl}
+                  alt="Center Letterhead"
+                  className={`w-full h-auto ${letterheadMode === 'footer' ? 'relative -translate-y-[92%]' : ''}`}
+                />
+              </div>
+            ) : (
+              <header className="letterhead border-b-2 border-slate-900 pb-2.5 mb-3.5 font-sans">
+                <div className="flex items-start gap-3">
+                  {centerLogoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img className="w-14 h-14 object-contain shrink-0" src={centerLogoUrl} alt="" />
+                  ) : (
+                    <div className="w-12 h-12 bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0 font-mono">
+                      PACS
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold text-base uppercase tracking-wide text-slate-900 leading-tight">
+                      {center.centerName || report.radiologyCenterName || 'RADIOLOGY CENTER'}
+                    </div>
+                    {(center.address || center.contactNumber) && (
+                      <div className="text-xs text-slate-700 mt-0.5">
+                        {[center.address, center.contactNumber ? `Tel: ${center.contactNumber}` : ''].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                    <div className="text-[10px] text-slate-500 mt-0.5 font-medium">
+                      ISO 9001:2015 Certified · NABL Accredited · 24×7 Teleradiology
+                    </div>
+                  </div>
+                </div>
+              </header>
+            )
+          )}
+
           {/* 1. TOP PATIENT HEADER BORDERED TABLE */}
           <table className="w-full border-collapse border border-slate-900 text-[10px] sm:text-xs font-sans">
             <tbody>

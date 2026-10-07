@@ -87,6 +87,7 @@ export interface RadiologyCenter {
   contactNumber: string;
   address?: string;
   headerTemplateUrl?: string;
+  letterheadMode?: 'header' | 'footer' | 'full-page' | 'preprinted';
   logoUrl?: string;
   createdAt: string;
 }
@@ -395,6 +396,12 @@ export const RadiologyStore = {
     this.init();
     const stored = localStorage.getItem(STORAGE_KEYS.CENTERS);
     return stored ? JSON.parse(stored) : INITIAL_CENTERS;
+  },
+
+  setCenters(centers: RadiologyCenter[]) {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(STORAGE_KEYS.CENTERS, JSON.stringify(centers));
+    window.dispatchEvent(new Event('radionline_centers_changed'));
   },
 
   saveCenter(center: Omit<RadiologyCenter, 'id' | 'createdAt'> & { id?: string }) {

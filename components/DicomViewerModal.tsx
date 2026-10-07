@@ -1603,12 +1603,22 @@ export default function DicomViewerModal({
     setTimeout(() => setStatusToast(null), 4000);
   };
 
-  const centerRecord = report?.radiologyCenterId
-    ? allCenters.find((c) => c.id === report.radiologyCenterId) || RadiologyStore.getCenters().find((c) => c.id === report.radiologyCenterId)
-    : null;
+  const centerRecord =
+    allCenters.find(
+      (c) =>
+        c.id === report?.radiologyCenterId ||
+        (c.centerName && report?.radiologyCenterName && c.centerName.trim().toLowerCase() === report.radiologyCenterName.trim().toLowerCase())
+    ) ||
+    RadiologyStore.getCenters().find(
+      (c) =>
+        c.id === report?.radiologyCenterId ||
+        (c.centerName && report?.radiologyCenterName && c.centerName.trim().toLowerCase() === report.radiologyCenterName.trim().toLowerCase())
+    ) ||
+    null;
   const centerPhone = (centerRecord?.contactNumber || '').trim();
   const centerAddress = (centerRecord?.address || '').trim();
   const centerLogoUrl = resolveMediaUrl((centerRecord?.logoUrl || '').trim());
+  const centerHeaderUrl = resolveMediaUrl((centerRecord?.headerTemplateUrl || '').trim());
   const studyModality = (report?.modality || '').trim();
   const studyPartsLabel = (report?.bodyParts || []).filter(Boolean).join(', ');
 
@@ -1680,6 +1690,8 @@ export default function DicomViewerModal({
       centerAddress,
       centerPhone,
       centerLogoUrl,
+      centerHeaderUrl,
+      letterheadMode: centerRecord?.letterheadMode || 'full-page',
       withHeader,
       patientName,
       patientId,
@@ -2733,24 +2745,30 @@ export default function DicomViewerModal({
 
                   <div ref={setPageContentEl}>
                     {withHeader && (
-                      <header className="letterhead">
-                        <div className="lh-row">
-                          {centerLogoUrl ? (
-                            <img className="logo" src={centerLogoUrl} alt="" />
-                          ) : (
-                            <div className="logo-fallback">PACS</div>
-                          )}
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div className="center-name">{radiologyCenterName}</div>
-                            {(centerAddress || centerPhone) && (
-                              <div className="center-meta">
-                                {[centerAddress, centerPhone ? `Tel: ${centerPhone}` : ''].filter(Boolean).join(' \u00b7 ')}
-                              </div>
+                      centerHeaderUrl ? (
+                        <header className="letterhead letterhead-banner" style={{ borderBottom: 'none', marginBottom: 14, textAlign: 'center' }}>
+                          <img src={centerHeaderUrl} alt="Letterhead Header" style={{ width: '100%', maxHeight: 140, objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+                        </header>
+                      ) : (
+                        <header className="letterhead">
+                          <div className="lh-row">
+                            {centerLogoUrl ? (
+                              <img className="logo" src={centerLogoUrl} alt="" />
+                            ) : (
+                              <div className="logo-fallback">PACS</div>
                             )}
-                            <div className="accredit">{'ISO 9001:2015 Certified \u00b7 NABL Accredited \u00b7 24\u00d77 Teleradiology'}</div>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div className="center-name">{radiologyCenterName}</div>
+                              {(centerAddress || centerPhone) && (
+                                <div className="center-meta">
+                                  {[centerAddress, centerPhone ? `Tel: ${centerPhone}` : ''].filter(Boolean).join(' \u00b7 ')}
+                                </div>
+                              )}
+                              <div className="accredit">{'ISO 9001:2015 Certified \u00b7 NABL Accredited \u00b7 24\u00d77 Teleradiology'}</div>
+                            </div>
                           </div>
-                        </div>
-                      </header>
+                        </header>
+                      )
                     )}
 
                     <table className="demo">

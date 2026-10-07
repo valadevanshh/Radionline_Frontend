@@ -177,6 +177,7 @@ function AllPatientReportsContent() {
         ApiClient.getDoctors(),
       ]);
       setReports(repData);
+      if (centerData.length > 0) RadiologyStore.setCenters(centerData);
       setCenters(centerData.length > 0 ? centerData : RadiologyStore.getCenters());
       setDoctors(docData.length > 0 ? docData : RadiologyStore.getDoctors());
     } catch {

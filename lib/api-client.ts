@@ -61,7 +61,14 @@ export async function fetchPublicReport(token: string): Promise<PublicReport> {
 }
 
 export interface PublicReport {
-  center: { name: string; address?: string | null; phone?: string | null; logoUrl?: string | null };
+  center: {
+    name: string;
+    address?: string | null;
+    phone?: string | null;
+    logoUrl?: string | null;
+    headerTemplateUrl?: string | null;
+    letterheadMode?: 'header' | 'footer' | 'full-page' | 'preprinted';
+  };
   patient: {
     name: string;
     patientId: string;

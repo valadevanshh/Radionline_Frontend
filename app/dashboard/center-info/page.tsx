@@ -22,6 +22,7 @@ export default function CenterInfoProfilePage() {
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [headerTemplateUrl, setHeaderTemplateUrl] = useState('');
+  const [letterheadMode, setLetterheadMode] = useState<'header' | 'footer' | 'full-page' | 'preprinted'>('full-page');
   const [saving, setSaving] = useState(false);
   // Centre logins linked to several centres pick which one to view
   const [myCenters, setMyCenters] = useState<RadiologyCenter[]>([]);
@@ -33,6 +34,7 @@ export default function CenterInfoProfilePage() {
     setEmail(c.email || '');
     setAddress(c.address || '');
     setHeaderTemplateUrl(c.headerTemplateUrl || '');
+    setLetterheadMode(c.letterheadMode || 'full-page');
   };
 
   const selectCenter = async (c: RadiologyCenter | null) => {
@@ -89,6 +91,7 @@ export default function CenterInfoProfilePage() {
         email: email.trim(),
         address: address.trim(),
         headerTemplateUrl: headerTemplateUrl.trim(),
+        letterheadMode,
       });
       const next = { ...center, ...saved };
       RadiologyStore.saveCenter(next);
@@ -253,6 +256,33 @@ export default function CenterInfoProfilePage() {
                   </div>
                 </div>
 
+                <fieldset className="space-y-2">
+                  <legend className="block text-xs font-bold text-slate-700">Letterhead placement on reports</legend>
+                  <div className="flex flex-wrap justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    {([
+                      ['header', 'Add Header'],
+                      ['footer', 'Add Footer'],
+                      ['full-page', 'Whole Page Scan'],
+                      ['preprinted', 'Preprinted Paper (No Image)'],
+                    ] as const).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        aria-pressed={letterheadMode === mode}
+                        onClick={() => setLetterheadMode(mode)}
+                        className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors cursor-pointer ${
+                          letterheadMode === mode
+                            ? 'border-[#009ef7] bg-[#009ef7] text-white'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-500 text-center">Preprinted paper reserves clear space at the top and bottom without adding the uploaded image.</p>
+                </fieldset>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     Custom Header Letterhead Banner
@@ -317,9 +347,9 @@ export default function CenterInfoProfilePage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-[#009ef7]" /> Header Letterhead Banner
+                  <FileText className="w-4 h-4 text-[#009ef7]" /> Report Letterhead
                 </h3>
-                <span className="text-[10px] font-mono text-slate-400">PDF & Printed Reports</span>
+                <span className="text-[10px] font-mono text-slate-400">{center.letterheadMode === 'header' ? 'Header' : center.letterheadMode === 'footer' ? 'Footer' : center.letterheadMode === 'preprinted' ? 'Preprinted paper' : 'Whole page'} · PDF & print</span>
               </div>
 
               {center.headerTemplateUrl ? (

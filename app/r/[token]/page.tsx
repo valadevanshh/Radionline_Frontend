@@ -78,6 +78,7 @@ export default function PublicReportPage() {
   const reportedAt = signedAt ? new Date(signedAt).toLocaleString() : '';
   const sigUrl = resolveMediaUrl(usableSignatureUrl(signer.signatureUrl));
   const logoUrl = resolveMediaUrl(center.logoUrl || '');
+  const headerUrl = resolveMediaUrl(center.headerTemplateUrl || '');
   const selfLink = typeof window !== 'undefined' ? window.location.href.split('#')[0] : '';
   const sheetW = A4_PAGE.widthMm * MM_PX;
   const gutter = vpW > 0 && vpW < 640 ? 10 : 24;
@@ -91,6 +92,8 @@ export default function PublicReportPage() {
       centerAddress: center.address || '',
       centerPhone: center.phone || '',
       centerLogoUrl: logoUrl,
+      centerHeaderUrl: headerUrl,
+      letterheadMode: center.letterheadMode || 'full-page',
       withHeader: true,
       patientName: patient.name,
       patientId: patient.patientId,
@@ -147,20 +150,26 @@ export default function PublicReportPage() {
               transformOrigin: 'top left',
             }}
           >
-            <header className="letterhead">
-              <div className="lh-row">
-                {logoUrl ? <img className="logo" src={logoUrl} alt="" /> : <div className="logo-fallback">PACS</div>}
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div className="center-name">{center.name}</div>
-                  {(center.address || center.phone) && (
-                    <div className="center-meta">
-                      {[center.address, center.phone ? `Tel: ${center.phone}` : ''].filter(Boolean).join(' \u00b7 ')}
-                    </div>
-                  )}
-                  <div className="accredit">{'ISO 9001:2015 Certified \u00b7 NABL Accredited \u00b7 24\u00d77 Teleradiology'}</div>
+            {headerUrl ? (
+              <header className="letterhead letterhead-banner" style={{ borderBottom: 'none', marginBottom: 14, textAlign: 'center' }}>
+                <img src={headerUrl} alt="Letterhead Header" style={{ width: '100%', maxHeight: 140, objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+              </header>
+            ) : (
+              <header className="letterhead">
+                <div className="lh-row">
+                  {logoUrl ? <img className="logo" src={logoUrl} alt="" /> : <div className="logo-fallback">PACS</div>}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="center-name">{center.name}</div>
+                    {(center.address || center.phone) && (
+                      <div className="center-meta">
+                        {[center.address, center.phone ? `Tel: ${center.phone}` : ''].filter(Boolean).join(' \u00b7 ')}
+                      </div>
+                    )}
+                    <div className="accredit">{'ISO 9001:2015 Certified \u00b7 NABL Accredited \u00b7 24\u00d77 Teleradiology'}</div>
+                  </div>
                 </div>
-              </div>
-            </header>
+              </header>
+            )}
 
             <table className="demo">
               <tbody>

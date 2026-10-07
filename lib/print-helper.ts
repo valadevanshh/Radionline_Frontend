@@ -14,7 +14,9 @@ export type PrintReportPayload = {
   centerAddress?: string;
   centerPhone?: string;
   centerLogoUrl?: string;
+  centerHeaderUrl?: string;
   withHeader?: boolean;
+  letterheadMode?: 'header' | 'footer' | 'full-page' | 'preprinted' | 'none';
   patientName: string;
   patientId: string;
   ageSex: string;
@@ -100,6 +102,9 @@ function nl2br(s: string): string {
 }
 
 export function buildReportPrintHtml(payload: PrintReportPayload, docTitle: string): string {
+  const letterheadMode = payload.letterheadMode || (payload.withHeader === false ? 'preprinted' : payload.centerHeaderUrl ? 'full-page' : 'header');
+  const hasFullLetterhead = Boolean(payload.centerHeaderUrl) && letterheadMode === 'full-page';
+
   const studiesHtml = (payload.studies || [])
     .map((st, i) => {
       const breakBefore = i > 0 ? 'page-break-before:auto;' : '';
@@ -119,8 +124,12 @@ export function buildReportPrintHtml(payload: PrintReportPayload, docTitle: stri
   const imagesHtml = '';
 
   const letterhead =
-    payload.withHeader === false
+    hasFullLetterhead || (payload.centerHeaderUrl && letterheadMode !== 'header')
       ? ''
+      : letterheadMode === 'none' || letterheadMode === 'preprinted'
+      ? ''
+      : payload.centerHeaderUrl
+      ? `<div class="letterhead-crop"><img src="${esc(payload.centerHeaderUrl)}" alt="Letterhead" /></div>`
       : `<header class="letterhead">
           <div class="lh-row">
             ${
@@ -144,7 +153,31 @@ export function buildReportPrintHtml(payload: PrintReportPayload, docTitle: stri
           </div>
         </header>`;
 
+  const bgHtml =
+    hasFullLetterhead
+      ? `<div class="sheet-letterhead-bg" style="position: absolute; top: 0; left: 0; width: 210mm; height: 297mm; z-index: 0; pointer-events: none;">
+          <img src="${esc(payload.centerHeaderUrl!)}" style="width: 210mm; height: 297mm; object-fit: fill; display: block;" alt="" />
+        </div>`
+      : '';
+  const footerHtml = payload.centerHeaderUrl && letterheadMode === 'footer'
+    ? `<div class="letterhead-footer"><img src="${esc(payload.centerHeaderUrl)}" alt="Letterhead footer" /></div>`
+    : '';
+
+  const pageMargin = hasFullLetterhead
+    ? `margin: 0;`
+    : letterheadMode === 'preprinted'
+    ? `margin: 38mm 14mm 30mm 14mm;`
+    : letterheadMode === 'footer'
+    ? `margin: 14mm 14mm 32mm 14mm;`
+    : `margin: 14mm 14mm 16mm 14mm;`;
+
+  const sheetPaddingStyle = hasFullLetterhead
+    ? `padding: 48mm 14mm 30mm 14mm; min-height: 297mm; box-sizing: border-box;`
+    : ``;
+
   const sheetStyle = [
+    sheetPaddingStyle,
+    hasFullLetterhead ? 'font-size: 10pt; line-height: 1.3' : '',
     payload.bodyFontPt ? `font-size: ${payload.bodyFontPt}pt` : '',
     payload.bodyFontFamily ? `font-family: ${payload.bodyFontFamily}` : '',
   ].filter(Boolean).join('; ');
@@ -161,9 +194,9 @@ export function buildReportPrintHtml(payload: PrintReportPayload, docTitle: stri
   <style>
     @page {
       size: A4 portrait;
-      margin: 14mm 14mm 16mm 14mm;
+      ${pageMargin}
       @bottom-center {
-        content: "Page " counter(page) " of " counter(pages);
+        content: ${hasFullLetterhead || letterheadMode === 'preprinted' ? 'none' : '"Page " counter(page) " of " counter(pages)'};
         font-size: 9pt;
         color: #444;
         font-family: system-ui, sans-serif;
@@ -176,16 +209,31 @@ export function buildReportPrintHtml(payload: PrintReportPayload, docTitle: stri
       font-family: Georgia, "Times New Roman", Times, serif;
       font-size: 11pt; line-height: 1.55;
     }
-    .sheet { width: 100%; max-width: 100%; overflow: visible; }
-    /* Studies flow across pages (no near-empty first page); the signature block stays whole */
+    .sheet { position: relative; width: 100%; max-width: 100%; overflow: visible; }
+    .sheet > :not(.sheet-letterhead-bg) { position: relative; z-index: 1; }
+    .sheet > .letterhead-footer { position: fixed; }
+    /* Studies flow across pages; the signature block stays whole */
     .sig-block { page-break-inside: avoid; break-inside: avoid; }
     .disclaimer { page-break-inside: avoid; }
     h2.study-title, h3.sec { page-break-after: avoid; }
+    .letterhead-crop { height: 42mm; overflow: hidden; margin: -14mm -14mm 8mm; position: relative; }
+    .letterhead-crop img { position: absolute; width: 210mm; height: 297mm; object-fit: fill; left: 0; top: 0; }
+    .letterhead-footer { position: fixed; bottom: 0; left: 0; width: 210mm; height: 27mm; overflow: hidden; }
+    .letterhead-footer img { position: absolute; width: 210mm; height: 297mm; object-fit: fill; left: 0; bottom: 0; }
+    .rn-sheet[style*="padding: 48mm"] h2.study-title { margin: 8px 0 5px; }
+    .rn-sheet[style*="padding: 48mm"] h3.sec { margin: 5px 0 2px; }
+    .rn-sheet[style*="padding: 48mm"] p.body { margin-bottom: 4px; }
+    .rn-sheet[style*="padding: 48mm"] .demo { margin-bottom: 8px; }
+    .rn-sheet[style*="padding: 48mm"] .demo td { padding: 4px 7px; }
+    .rn-sheet[style*="padding: 48mm"] .sig-block { margin-top: 10px; }
+    .rn-sheet[style*="padding: 48mm"] .disclaimer { margin-top: 8px; padding-top: 5px; }
     ${REPORT_SHEET_CSS}
   </style>
 </head>
 <body>
   <div class="sheet rn-sheet" style="${esc(sheetStyle)}">
+    ${bgHtml}
+    ${footerHtml}
     ${letterhead}
     <table class="demo">
       <tr>

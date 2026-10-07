@@ -5,7 +5,7 @@ import { X, Check, FileSignature, ShieldCheck, Stethoscope, Printer, BookmarkPlu
 import { XRayReport, Doctor, RadiologyStore, RadiologyCenter, formatDateDDMMYYYY } from '@/lib/radiology-store';
 import { printReportElement, type PrintReportPayload } from '@/lib/print-helper';
 import { MODALITY_OPTIONS } from '@/lib/radiology-templates';
-import { ApiClient, apiErrorMessage } from '@/lib/api-client';
+import { ApiClient, apiErrorMessage, resolveMediaUrl } from '@/lib/api-client';
 
 
 interface ReviewSignReportModalProps {
@@ -47,6 +47,12 @@ export default function ReviewSignReportModal({
       setFindings(defaultFinding);
       setImpression(defaultImpression);
       setAllCenters(RadiologyStore.getCenters());
+      ApiClient.getCenters().then((list) => {
+        if (Array.isArray(list) && list.length > 0) {
+          setAllCenters(list);
+          RadiologyStore.setCenters(list);
+        }
+      }).catch(() => {});
     }
   }, [report]);
 
@@ -246,8 +252,18 @@ export default function ReviewSignReportModal({
                 type="button"
                 onClick={() => {
                   if (!report) return;
+                  const centerRec = allCenters.find(
+                    (c) =>
+                      c.id === report.radiologyCenterId ||
+                      (c.centerName && report.radiologyCenterName && c.centerName.trim().toLowerCase() === report.radiologyCenterName.trim().toLowerCase())
+                  );
                   const payload: PrintReportPayload = {
-                    centerName: report.radiologyCenterName || 'RADIOLOGY CENTER',
+                    centerName: centerRec?.centerName || report.radiologyCenterName || 'RADIOLOGY CENTER',
+                    centerAddress: centerRec?.address || '',
+                    centerPhone: centerRec?.contactNumber || '',
+                    centerLogoUrl: resolveMediaUrl(centerRec?.logoUrl || ''),
+                    centerHeaderUrl: resolveMediaUrl(centerRec?.headerTemplateUrl || ''),
+                    letterheadMode: centerRec?.letterheadMode || 'full-page',
                     patientName: report.fullName,
                     patientId: report.patientNumber,
                     ageSex: `${report.age} ${report.ageUnit === 'Months' ? 'M' : report.ageUnit === 'Days' ? 'D' : 'Y'} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,
