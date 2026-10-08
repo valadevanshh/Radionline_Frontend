@@ -5,12 +5,17 @@ import { isWordMisspelled, getSpellingSuggestion } from '@/lib/radiology-autocom
 
 interface SpellCheckTextareaProps {
   value: string;
-  onChange: (value: string) => void;
+  /** `caret` is the caret position after the edit (when the edit came from typing) */
+  onChange: (value: string, caret?: number) => void;
   rows?: number;
   className?: string;
   placeholder?: string;
   disabled?: boolean;
   fontClass?: string;
+  /** Smallest height in px (default rows x 20) */
+  minHeightPx?: number;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  textareaRef?: (el: HTMLTextAreaElement | null) => void;
 }
 
 /**
@@ -26,6 +31,9 @@ export default function SpellCheckTextarea({
   placeholder = '',
   disabled = false,
   fontClass = 'font-serif text-sm leading-relaxed',
+  minHeightPx,
+  onKeyDown,
+  textareaRef: textareaRefProp,
 }: SpellCheckTextareaProps) {
   const backdropRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -35,10 +43,10 @@ export default function SpellCheckTextarea({
     const bd = backdropRef.current;
     if (!ta) return;
     ta.style.height = 'auto';
-    const next = Math.max(ta.scrollHeight, rows * 20);
+    const next = Math.max(ta.scrollHeight, minHeightPx ?? rows * 20);
     ta.style.height = `${next}px`;
     if (bd) bd.style.height = `${next}px`;
-  }, [rows]);
+  }, [rows, minHeightPx]);
 
   useEffect(() => {
     syncHeight();
@@ -105,11 +113,15 @@ export default function SpellCheckTextarea({
       </div>
 
       <textarea
-        ref={textareaRef}
+        ref={(el) => {
+          textareaRef.current = el;
+          textareaRefProp?.(el);
+        }}
         rows={rows}
         disabled={disabled}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(e.target.value, e.target.selectionStart ?? undefined)}
+        onKeyDown={onKeyDown}
         onClick={(e) => {
           if (!e.ctrlKey && !e.metaKey) return;
           const ta = textareaRef.current;

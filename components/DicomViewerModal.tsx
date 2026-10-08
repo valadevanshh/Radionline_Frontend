@@ -64,29 +64,21 @@ import {
 } from 'lucide-react';
 import { XRayReport, RadiologyStore, DocTemplate, RadiologyCenter, Doctor } from '@/lib/radiology-store';
 import { AUTOCOMPLETE_SUGGESTIONS } from '@/lib/radiology-autocomplete';
-import SpellCheckTextarea from '@/components/SpellCheckTextarea';
 import { STUDY_MODALITY_OPTIONS } from '@/components/NewXRayReportModal';
-import { printReportElement, type PrintReportPayload, REPORT_SHEET_CSS, A4_PAGE, formatRegNo } from '@/lib/print-helper';
+import { printReportElement, type PrintReportPayload, A4_PAGE } from '@/lib/print-helper';
 import { usableSignatureUrl } from '@/components/DoctorSignatureForm';
+import A4ReportEditor from '@/components/A4ReportEditor';
+import { stackedPagesHeightPx, useQrSvgMarkup } from '@/components/PaginatedReport';
 
 // On-screen A4 page geometry (CSS px at 96 dpi) and body font stacks shared with the PDF
 const MM_PX = 96 / 25.4;
-const SHEET_CONTENT_MM = A4_PAGE.heightMm - A4_PAGE.marginTopMm - A4_PAGE.marginBottomMm;
 const SHEET_FONT_STACKS: Record<string, string> = {
   'font-serif': 'Georgia, "Times New Roman", Times, serif',
   'font-sans': 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif',
   'font-mono': 'ui-monospace, Menlo, Consolas, monospace',
 };
 const SHEET_FONT_PT: Record<string, number> = { 'text-xs': 10, 'text-sm': 11, 'text-base': 12 };
-// Screen-only: editors on the page must use the page's own type (the global textarea/input
-// rules would otherwise shrink the text and misplace the caret against the visible text)
-const SHEET_EDITOR_CSS = `
-.rn-sheet textarea, .rn-sheet input[type="text"] { font: inherit; letter-spacing: inherit; padding: 0; min-height: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.rn-sheet textarea { display: block; vertical-align: top; }
-.rn-sheet .findings-editor, .rn-sheet .impression-editor { margin: 0 0 8px; }
-`;
 import { ApiClient, resolveMediaUrl, apiErrorMessage, publicReportLink, getAccessToken, WS_BASE_URL, type ImageAnnotation } from '@/lib/api-client';
-import { QRCodeSVG } from 'qrcode.react';
 
 interface DicomViewerModalProps {
   isOpen: boolean;
@@ -825,41 +817,27 @@ export default function DicomViewerModal({
   // Width of the report pane (right side) in % of the workspace; the image viewer gets the rest.
   const [reportWidthPercent, setReportWidthPercent] = useState<number>(45);
 
-  // A4 page: measure the scroll viewport, the page and its content so the page can be
-  // scaled to fit (or shown at 100%) and page-break guides drawn where the PDF breaks.
+  // A4 pages: measure the scroll viewport so the pages can be scaled to fit (or shown at 100%).
+  // The pages themselves (letterhead, QR, "n of N pages", doctor block on the last page) are laid
+  // out by A4ReportEditor with the same paginator as the PDF.
   const [pageZoom, setPageZoom] = useState<'fit' | 'actual'>('fit');
   const [pageViewportW, setPageViewportW] = useState(0);
-  const [pageContentH, setPageContentH] = useState(0);
-  const [pageSheetH, setPageSheetH] = useState(0);
-  const [pageSigBox, setPageSigBox] = useState<{ top: number; h: number }>({ top: 0, h: 0 });
-  const pageEls = useRef<{ vp: HTMLDivElement | null; sheet: HTMLDivElement | null; content: HTMLDivElement | null }>({ vp: null, sheet: null, content: null });
+  const [sheetPageCount, setSheetPageCount] = useState(1);
+  const pageVpEl = useRef<HTMLDivElement | null>(null);
   const pageRO = useRef<ResizeObserver | null>(null);
-  const measurePage = useCallback(() => {
-    const { vp, sheet, content } = pageEls.current;
-    if (vp) setPageViewportW(vp.clientWidth);
-    if (sheet) setPageSheetH(sheet.offsetHeight);
-    if (content) {
-      setPageContentH(content.offsetHeight);
-      const sig = content.querySelector<HTMLElement>('.sig-block');
-      if (sig) {
-        const top = sig.offsetTop - content.offsetTop;
-        setPageSigBox((prev) => (prev.top === top && prev.h === sig.offsetHeight ? prev : { top, h: sig.offsetHeight }));
-      }
+  const setPageViewportEl = useCallback((el: HTMLDivElement | null) => {
+    if (!pageRO.current && typeof ResizeObserver !== 'undefined') {
+      pageRO.current = new ResizeObserver(() => {
+        if (pageVpEl.current) setPageViewportW(pageVpEl.current.clientWidth);
+      });
+    }
+    if (pageVpEl.current && pageRO.current) pageRO.current.unobserve(pageVpEl.current);
+    pageVpEl.current = el;
+    if (el) {
+      pageRO.current?.observe(el);
+      setPageViewportW(el.clientWidth);
     }
   }, []);
-  const attachPageEl = useCallback((key: 'vp' | 'sheet' | 'content', el: HTMLDivElement | null) => {
-    if (!pageRO.current && typeof ResizeObserver !== 'undefined') {
-      pageRO.current = new ResizeObserver(() => measurePage());
-    }
-    const prev = pageEls.current[key];
-    if (prev && pageRO.current) pageRO.current.unobserve(prev);
-    pageEls.current[key] = el;
-    if (el && pageRO.current) pageRO.current.observe(el);
-    measurePage();
-  }, [measurePage]);
-  const setPageViewportEl = useCallback((el: HTMLDivElement | null) => attachPageEl('vp', el), [attachPageEl]);
-  const setPageSheetEl = useCallback((el: HTMLDivElement | null) => attachPageEl('sheet', el), [attachPageEl]);
-  const setPageContentEl = useCallback((el: HTMLDivElement | null) => attachPageEl('content', el), [attachPageEl]);
   useEffect(() => () => { pageRO.current?.disconnect(); pageRO.current = null; }, []);
   const [isDraggingSplitter, setIsDraggingSplitter] = useState<boolean>(false);
   const workspaceContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1587,6 +1565,8 @@ export default function DicomViewerModal({
       ? activeStudyInfo.publicToken
       : '';
   const qrLink = activePublicToken ? publicReportLink(activeStudyInfo) : '';
+  // QR SVG markup for the A4 pages and the PDF (the same code on every page)
+  const [qrHarvestEl, sheetQrSvg] = useQrSvgMarkup(qrLink);
   // A signed study is dated by when it was signed (as on the public view)
   const sheetReportedAt = frozenSigner?.signedAt ? new Date(frozenSigner.signedAt).toLocaleString() : reportDate;
   const isSuperAdmin = RadiologyStore.getSession()?.role === 'SUPER_ADMIN';
@@ -1636,52 +1616,29 @@ export default function DicomViewerModal({
     [studyModality || 'Radiograph', part].filter(Boolean).join(' \u2014 ');
   const sheetFontPt = SHEET_FONT_PT[reportFontSize] || 11;
   const sheetFontStack = SHEET_FONT_STACKS[reportFontFamily] || SHEET_FONT_STACKS['font-serif'];
-  const findingsStyle: React.CSSProperties = {
-    fontWeight: isBoldActive ? 700 : undefined,
-    fontStyle: isItalicActive ? 'italic' : undefined,
-    textDecoration: isUnderlineActive ? 'underline' : undefined,
-    textAlign: reportTextAlign === 'text-center' ? 'center' : undefined,
-  };
   const findingsCss = [
     isBoldActive ? 'font-weight: 700' : '',
     isItalicActive ? 'font-style: italic' : '',
     isUnderlineActive ? 'text-decoration: underline' : '',
     reportTextAlign === 'text-center' ? 'text-align: center' : '',
   ].filter(Boolean).join('; ');
-  // Geometry: one printed page holds SHEET_CONTENT_MM of content between the margins
-  // (text flows across pages; the signature block is kept whole, as in the PDF)
+  // Geometry: A4 pages stacked on screen (the page count comes from the paginator)
   const sheetWidthPx = A4_PAGE.widthMm * MM_PX;
-  const sheetBreaks: number[] = (() => {
-    const cap = SHEET_CONTENT_MM * MM_PX;
-    const out: number[] = [];
-    let pos = 0;
-    while (pos + cap < pageContentH - 1 && out.length < 50) {
-      let next = pos + cap;
-      const { top, h } = pageSigBox;
-      if (h > 0 && h <= cap && top > pos && top < next && top + h > next) next = top;
-      out.push(next);
-      pos = next;
-    }
-    return out;
-  })();
-  const sheetPageCount = sheetBreaks.length + 1;
-  const sheetMinHeightPx =
-    (A4_PAGE.marginTopMm + A4_PAGE.marginBottomMm) * MM_PX + (sheetBreaks.length ? sheetBreaks[sheetBreaks.length - 1] : 0) + SHEET_CONTENT_MM * MM_PX;
-  const sheetHeightPx = Math.max(pageSheetH, A4_PAGE.heightMm * MM_PX);
+  const sheetHeightPx = stackedPagesHeightPx(sheetPageCount);
   const sheetGutterPx = pageViewportW > 0 && pageViewportW < 640 ? 10 : 24;
   const sheetScale = pageZoom === 'fit' && pageViewportW > 0
     ? Math.min(1, Math.max(0.2, (pageViewportW - 2 * sheetGutterPx) / sheetWidthPx))
     : 1;
 
-  const buildPrintPayload = (): PrintReportPayload => {
-    // Same title / technique / text as the on-screen A4 page
+  const buildPrintPayload = (forScreen = false): PrintReportPayload => {
+    // Same title / technique / text as the on-screen A4 pages
     const currentPart = sheetActivePart;
     const studies = [
       {
         title: sheetTitleFor(currentPart),
         technique: sheetTechniqueFor(currentPart),
-        findings: (findingText || '').trim(),
-        impression: (impressionText || '').trim(),
+        findings: forScreen ? findingText || '' : (findingText || '').trim(),
+        impression: forScreen ? impressionText || '' : (impressionText || '').trim(),
       },
     ];
     const ageSex = ageSexLabel;
@@ -1711,7 +1668,8 @@ export default function DicomViewerModal({
       bodyFontPt: sheetFontPt,
       bodyFontFamily: sheetFontStack,
       findingsCss,
-      qrSvg: qrLink ? document.querySelector('[data-testid="sheet-qr"] svg')?.outerHTML || '' : '',
+      qrSvg: qrLink ? sheetQrSvg : '',
+      qrLink: qrLink || undefined,
     };
   };
 
@@ -2697,168 +2655,22 @@ export default function DicomViewerModal({
               style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y', padding: sheetGutterPx }}
               data-testid="report-page-viewport"
             >
-              <style>{REPORT_SHEET_CSS + SHEET_EDITOR_CSS}</style>
+              {qrHarvestEl}
               <div
                 style={{ width: sheetWidthPx * sheetScale, height: sheetHeightPx * sheetScale, margin: '0 auto', position: 'relative' }}
                 data-testid="report-page-frame"
               >
-                <div
-                  ref={setPageSheetEl}
-                  className="rn-sheet print-area shadow-2xl select-text"
-                  data-print-ready="1"
-                  data-testid="report-print-area"
-                  data-scale={sheetScale.toFixed(3)}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: `${A4_PAGE.widthMm}mm`,
-                    minHeight: sheetMinHeightPx,
-                    padding: `${A4_PAGE.marginTopMm}mm ${A4_PAGE.marginSideMm}mm ${A4_PAGE.marginBottomMm}mm`,
-                    transform: sheetScale === 1 ? undefined : `scale(${sheetScale})`,
-                    transformOrigin: 'top left',
-                    fontSize: `${sheetFontPt}pt`,
-                    fontFamily: sheetFontStack,
-                  }}
-                >
-                  {/* Page-break guides: where each printed page's content area ends (screen only) */}
-                  {sheetBreaks.map((breakAt, i) => (
-                    <div
-                      key={`pb-${i}`}
-                      aria-hidden="true"
-                      className="print:hidden no-print"
-                      data-testid="page-break-marker"
-                      style={{
-                        position: 'absolute',
-                        left: 0,
-                        right: 0,
-                        top: A4_PAGE.marginTopMm * MM_PX + breakAt,
-                        borderTop: '1px dashed #94a3b8',
-                        pointerEvents: 'none',
-                      }}
-                    >
-                      <span style={{ position: 'absolute', right: 6, top: 2, fontFamily: 'system-ui, sans-serif', fontSize: 9, color: '#64748b', background: '#fff', padding: '0 4px' }}>
-                        Page {i + 2}
-                      </span>
-                    </div>
-                  ))}
-
-                  <div ref={setPageContentEl}>
-                    {withHeader && (
-                      centerHeaderUrl ? (
-                        <header className="letterhead letterhead-banner" style={{ borderBottom: 'none', marginBottom: 14, textAlign: 'center' }}>
-                          <img src={centerHeaderUrl} alt="Letterhead Header" style={{ width: '100%', maxHeight: 140, objectFit: 'contain', display: 'block', margin: '0 auto' }} />
-                        </header>
-                      ) : (
-                        <header className="letterhead">
-                          <div className="lh-row">
-                            {centerLogoUrl ? (
-                              <img className="logo" src={centerLogoUrl} alt="" />
-                            ) : (
-                              <div className="logo-fallback">PACS</div>
-                            )}
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div className="center-name">{radiologyCenterName}</div>
-                              {(centerAddress || centerPhone) && (
-                                <div className="center-meta">
-                                  {[centerAddress, centerPhone ? `Tel: ${centerPhone}` : ''].filter(Boolean).join(' \u00b7 ')}
-                                </div>
-                              )}
-                              <div className="accredit">{'ISO 9001:2015 Certified \u00b7 NABL Accredited \u00b7 24\u00d77 Teleradiology'}</div>
-                            </div>
-                          </div>
-                        </header>
-                      )
-                    )}
-
-                    <table className="demo">
-                      <tbody>
-                        <tr>
-                          <td><span className="lbl">Patient Name</span><span className="val">{patientName}</span></td>
-                          <td><span className="lbl">Patient ID</span><span className="val">{patientId}</span></td>
-                        </tr>
-                        <tr>
-                          <td><span className="lbl">Age / Sex</span><span className="val">{ageSexLabel}</span></td>
-                          <td><span className="lbl">Date of Study</span><span className="val">{studyDate}</span></td>
-                        </tr>
-                        <tr>
-                          <td><span className="lbl">Referring Doctor</span><span className="val">{referringDoctorName || '\u2014'}</span></td>
-                          <td><span className="lbl">Modality</span><span className="val">{studyModality || '\u2014'}</span></td>
-                        </tr>
-                        <tr>
-                          <td colSpan={2}><span className="lbl">Study / Body Part</span><span className="val">{sheetActivePart}</span></td>
-                        </tr>
-                      </tbody>
-                    </table>
-
-                    <section className="clinical">
-                      <h3 className="sec">Clinical History</h3>
-                      <p className="body">{report?.clinicalNotes?.trim() || 'Not provided.'}</p>
-                    </section>
-
-                    {/* Active study only: the PDF is produced per study */}
-                    <section className="study">
-                      {(report?.bodyParts?.length || 0) <= 1 ? (
-                        <h2 className="study-title">
-                          <input
-                            type="text"
-                            value={reportTitle}
-                            onChange={(e) => setReportTitle(e.target.value)}
-                            aria-label="Report title"
-                            style={{ display: 'block', width: '100%', height: '1.4em', lineHeight: 1.4, textAlign: 'center', textTransform: 'uppercase', textDecoration: 'underline', outline: 'none', color: '#000' }}
-                          />
-                        </h2>
-                      ) : (
-                        <h2 className="study-title">{sheetTitleFor(sheetActivePart)}</h2>
-                      )}
-                      <h3 className="sec">Technique</h3>
-                      <p className="body">{sheetTechniqueFor(sheetActivePart)}</p>
-                      <h3 className="sec">Findings</h3>
-                      <div style={findingsStyle} className="findings-editor" data-testid="findings-editor">
-                        <SpellCheckTextarea
-                          rows={2}
-                          value={findingText}
-                          onChange={(val) => setFindingText(val)}
-                          fontClass=""
-                        />
-                      </div>
-                      <h3 className="sec">Impression</h3>
-                      <div className="impression-editor" data-testid="impression-editor" style={{ fontWeight: 700 }}>
-                        <SpellCheckTextarea
-                          rows={1}
-                          value={impressionText}
-                          onChange={(val) => setImpressionText(val)}
-                          fontClass=""
-                        />
-                      </div>
-                    </section>
-
-                    <footer className="sig-block" data-testid="sheet-signature">
-                      <div className="sig-row">
-                        {qrLink ? (
-                          <a className="sig-qr" data-testid="sheet-qr" href={qrLink} target="_blank" rel="noreferrer" title="Public read-only view of this report" style={{ textDecoration: 'none' }}>
-                            <QRCodeSVG value={qrLink} size={87} level="M" />
-                            <div className="sig-qr-cap">Scan to view this report</div>
-                          </a>
-                        ) : null}
-                        <div className="sig-inner">
-                          {doctorSignatureUrl ? <img className="sig-img" src={doctorSignatureUrl} alt="Signature" /> : null}
-                          <div className="sig-name">{doctorName || 'Reporting Radiologist'}</div>
-                          {doctorDegree ? <div className="sig-meta">{doctorDegree}</div> : null}
-                          {doctorRegNo ? <div className="sig-meta">{formatRegNo(doctorRegNo)}</div> : null}
-                          <div className="sig-meta">Reported: {sheetReportedAt}</div>
-                        </div>
-                      </div>
-                      <div className="disclaimer">
-                        This report is based on the images provided and should be correlated clinically. It is not a substitute for clinical judgment.
-                      </div>
-                      <div className="foot">
-                        <span>{radiologyCenterName}</span>
-                        <span>End of report</span>
-                      </div>
-                    </footer>
-                  </div>
-                </div>
+                <A4ReportEditor
+                  payload={buildPrintPayload(true)}
+                  findings={findingText}
+                  impression={impressionText}
+                  onFindingsChange={setFindingText}
+                  onImpressionChange={setImpressionText}
+                  title={(report?.bodyParts?.length || 0) <= 1 ? reportTitle : undefined}
+                  onTitleChange={(report?.bodyParts?.length || 0) <= 1 ? setReportTitle : undefined}
+                  scale={sheetScale}
+                  onPageCount={setSheetPageCount}
+                />
               </div>
             </div>
 
