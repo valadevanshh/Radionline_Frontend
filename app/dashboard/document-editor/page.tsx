@@ -14,11 +14,12 @@ import {
 } from 'lucide-react';
 import { RadiologyStore, XRayReport, DocTemplate, RadiologyCenter } from '@/lib/radiology-store';
 import { ApiClient, apiErrorMessage, isPendingApproval } from '@/lib/api-client';
-import { canWriteTemplates, centerIdsWith, showCenterColumn, useSession } from '@/lib/access';
+import { canWriteTemplates, showCenterColumn, useSession } from '@/lib/access';
 import { toast } from '@/components/ui/Toast';
-import { formatAsUUID } from '@/lib/uuid';
+import { formatPatientDisplayId } from '@/lib/uuid';
 
 import { PageShell, PageHeader, StatusBadge } from '@/components/ui';
+import ReportTemplateModal from '@/components/ReportTemplateModal';
 
 export default function DocumentEditorStudioPage() {
   const [reports, setReports] = useState<XRayReport[]>([]);
@@ -28,21 +29,16 @@ export default function DocumentEditorStudioPage() {
   const [allCenters, setAllCenters] = useState<RadiologyCenter[]>([]);
 
   const [createTemplateOpen, setCreateTemplateOpen] = useState(false);
-  const [tmplTitle, setTmplTitle] = useState('');
-  const [tmplCenterId, setTmplCenterId] = useState('ALL');
-  const [tmplModality, setTmplModality] = useState('X-Ray');
-  const [tmplBodyPart, setTmplBodyPart] = useState('');
-  const [tmplFindings, setTmplFindings] = useState('');
-  const [tmplImpression, setTmplImpression] = useState('');
-  const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<DocTemplate | null>(null);
   const router = useRouter();
   const session = useSession();
-  const isCenterLogin = session?.role === 'CENTER';
-  // Centre logins save templates only for their own centres with Templates = edit (never global)
-  const templateCenters = isCenterLogin
-    ? allCenters.filter((c) => centerIdsWith(session, 'templates', 'write').includes(c.id))
-    : allCenters;
-  const canSaveTemplate = canWriteTemplates(session) && (!isCenterLogin || templateCenters.length > 0);
+  const canSaveTemplate = canWriteTemplates(session);
+
+  useEffect(() => {
+    if (session && session.role !== 'DOCTOR') {
+      router.replace('/dashboard');
+    }
+  }, [session, router]);
 
   const openWorkspace = (report: XRayReport | null) => {
     if (!report) return;
@@ -85,77 +81,15 @@ export default function DocumentEditorStudioPage() {
   }, []);
 
   const handleOpenCreateTemplate = () => {
-    setTmplTitle(selectedReport ? `${selectedReport.bodyParts.join(', ')} — Master Template` : '');
-    const wanted = selectedReport?.radiologyCenterId || 'ALL';
-    setTmplCenterId(
-      isCenterLogin
-        ? (templateCenters.some((c) => c.id === wanted) ? wanted : templateCenters[0]?.id || '')
-        : wanted
-    );
-    setTmplModality('X-Ray');
-    setTmplBodyPart('');
-    setTmplFindings(
-      selectedReport?.findings ||
-        'LUNG FIELDS: Both lung fields are clear without focal consolidation, nodule, or mass.\nCARDIOVASCULAR: Cardiac size and silhouette are within normal limits.'
-    );
-    setTmplImpression(
-      selectedReport?.impression ||
-        '1. Normal Radiographic Examination.\n2. No active parenchymal or pleural pathology detected.'
-    );
+    if (!canSaveTemplate) return;
+    setEditingTemplate(null);
     setCreateTemplateOpen(true);
   };
 
-  const handleSaveNewTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tmplTitle.trim()) return;
-
-    let centerName = 'All Centers';
-    if (tmplCenterId !== 'ALL') {
-      const matched = allCenters.find((c) => c.id === tmplCenterId);
-      if (matched) centerName = matched.centerName;
-    }
-
-    const contentHtml = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
-        <h2 style="color: #009ef7; border-bottom: 2px solid #009ef7; padding-bottom: 4px; text-transform: uppercase;">
-          RADIOLOGY REPORT — ${tmplModality}
-        </h2>
-        <h3 style="color: #0f172a; margin-bottom: 8px;">RADIOLOGICAL FINDINGS:</h3>
-        <p>${tmplFindings.replace(/\n/g, '<br/>')}</p>
-        <br/>
-        <h3 style="color: #0f172a; margin-bottom: 8px;">IMPRESSION & CONCLUSION:</h3>
-        <div style="background-color: #f1f5f9; padding: 10px; border-left: 4px solid #009ef7;">
-          <p>${tmplImpression.replace(/\n/g, '<br/>')}</p>
-        </div>
-      </div>
-    `;
-
-    const tmplObj = {
-      title: tmplTitle.trim(),
-      centerId: tmplCenterId,
-      centerName,
-      modality: tmplModality,
-      bodyPart: tmplBodyPart.trim() || tmplModality,
-      findings: tmplFindings,
-      impression: tmplImpression,
-      content: contentHtml,
-    };
-
-    try {
-      const saved = await ApiClient.saveTemplate(tmplObj);
-      if (isPendingApproval(saved)) {
-        toast.info(saved.message || 'Sent to the Super Admin for approval.');
-      } else {
-        RadiologyStore.saveTemplate(saved);
-        setSaveSuccessNotice(true);
-        setTimeout(() => setSaveSuccessNotice(false), 3500);
-      }
-    } catch (err) {
-      toast.error(apiErrorMessage(err, 'Could not save the template'));
-      return;
-    }
-    loadData();
-    setCreateTemplateOpen(false);
+  const handleOpenEditTemplate = (tmpl: DocTemplate) => {
+    if (!canSaveTemplate) return;
+    setEditingTemplate(tmpl);
+    setCreateTemplateOpen(true);
   };
 
   const filteredReports = reports.filter(
@@ -164,6 +98,10 @@ export default function DocumentEditorStudioPage() {
       r.patientNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       r.bodyParts.some((bp) => bp.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  if (session && session.role !== 'DOCTOR') {
+    return null;
+  }
 
   return (
     <PageShell className="p-0">
@@ -218,7 +156,7 @@ export default function DocumentEditorStudioPage() {
               <Search className="rn-icon-vcenter w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search patient, UUID..."
+                placeholder="Search patient..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="rn-input-iconpad w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#009ef7]"
@@ -238,7 +176,11 @@ export default function DocumentEditorStudioPage() {
                 }`}
               >
                 <div className="flex justify-between items-center text-[10px] font-mono">
-                  <span className="font-bold text-[#009ef7]">{formatAsUUID(r.patientNumber || r.id)}</span>
+                  {formatPatientDisplayId(r.patientNumber) ? (
+                    <span className="font-bold text-[#009ef7]">{r.patientNumber}</span>
+                  ) : (
+                    <span className="font-semibold text-slate-500">{r.modality || 'Study'}</span>
+                  )}
                   <span className="text-slate-400">{r.studyDate}</span>
                 </div>
                 <div className="font-bold text-xs text-slate-900 mt-0.5">{r.fullName}</div>
@@ -250,7 +192,7 @@ export default function DocumentEditorStudioPage() {
 
         {/* Right Side: Active Workspace & Templates */}
         <div className="flex-1 flex flex-col overflow-y-auto p-4 space-y-4 bg-slate-50/50">
-          {saveSuccessNotice && (
+          {/* Success banner */ false && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 flex items-center gap-2">
               <Check className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>New template created successfully! It is now available in your template library.</span>
@@ -261,9 +203,11 @@ export default function DocumentEditorStudioPage() {
             <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-xs">
               <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-slate-900 text-white font-mono text-[10px] font-bold">
-                    {selectedReport.patientNumber}
-                  </span>
+                  {formatPatientDisplayId(selectedReport.patientNumber) && (
+                    <span className="px-2 py-0.5 rounded bg-slate-900 text-white font-mono text-[10px] font-bold">
+                      {selectedReport.patientNumber}
+                    </span>
+                  )}
                   <span className="font-bold text-sm text-slate-900">{selectedReport.fullName}</span>
                 </div>
                 <StatusBadge status={selectedReport.status} />
@@ -332,8 +276,20 @@ export default function DocumentEditorStudioPage() {
                     <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>{tmpl.centerName}</span>
                   </div>
                   <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>{tmpl.title}</div>
-                  <div style={{ fontSize: 10, color: 'var(--teal)', fontWeight: 600, marginTop: 4 }}>
-                    Use Template →
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                    <span style={{ fontSize: 10, color: '#009ef7', fontWeight: 600 }}>Use Template →</span>
+                    {canSaveTemplate && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditTemplate(tmpl);
+                        }}
+                        className="text-[10px] font-bold text-slate-500 hover:text-purple-600 px-1.5 py-0.5 rounded hover:bg-purple-50 transition-colors"
+                      >
+                        Edit in Report View ✎
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -342,102 +298,25 @@ export default function DocumentEditorStudioPage() {
         </div>
       </div>
 
-      {/* Save Template Modal */}
-      {createTemplateOpen && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <span className="section-title">Save Master Template</span>
-              <button type="button" onClick={() => setCreateTemplateOpen(false)} className="btn btn-ghost btn-sm">
-                <X size={14} />
-              </button>
-            </div>
-            <form onSubmit={handleSaveNewTemplate} className="modal-body">
-              <div className="form-row">
-                <label className="form-label">Template Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={tmplTitle}
-                  onChange={(e) => setTmplTitle(e.target.value)}
-                  className="form-control"
-                />
-              </div>
-
-              <div className="form-row">
-                <label className="form-label">Target Center *</label>
-                <select
-                  value={tmplCenterId}
-                  onChange={(e) => setTmplCenterId(e.target.value)}
-                  className="form-control"
-                >
-                  {!isCenterLogin && <option value="ALL">All Centers (Global Template)</option>}
-                  {templateCenters.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.centerName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-row">
-                <label className="form-label">Modality *</label>
-                <select
-                  value={tmplModality}
-                  onChange={(e) => setTmplModality(e.target.value)}
-                  className="form-control"
-                >
-                  {STUDY_MODALITY_OPTIONS.map((mod) => (
-                    <option key={mod} value={mod}>
-                      {mod}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-row">
-              <div className="form-row">
-                <label className="form-label">Body Part <span className="text-rose-500">*</span></label>
-                <input
-                  required
-                  type="text"
-                  value={tmplBodyPart}
-                  onChange={(e) => setTmplBodyPart(e.target.value)}
-                  className="form-control"
-                  placeholder="Must match case body part exactly (e.g. CHEST PA/AP)"
-                />
-              </div>
-
-                <label className="form-label">Findings Content</label>
-                <textarea
-                  rows={4}
-                  value={tmplFindings}
-                  onChange={(e) => setTmplFindings(e.target.value)}
-                  className="form-control"
-                />
-              </div>
-
-              <div className="form-row">
-                <label className="form-label">Impression & Conclusion</label>
-                <textarea
-                  rows={3}
-                  value={tmplImpression}
-                  onChange={(e) => setTmplImpression(e.target.value)}
-                  className="form-control"
-                />
-              </div>
-
-              <div className="modal-footer" style={{ padding: '10px 0 0 0' }}>
-                <button type="button" onClick={() => setCreateTemplateOpen(false)} className="btn btn-secondary btn-sm">
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-teal btn-sm">
-                  Save Template
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* Doctor Report Format Template Modal */}
+      {canSaveTemplate && (
+        <ReportTemplateModal
+          isOpen={createTemplateOpen}
+          onClose={() => {
+            setCreateTemplateOpen(false);
+            setEditingTemplate(null);
+          }}
+          initialTemplate={editingTemplate}
+          prefill={selectedReport ? {
+            title: `${selectedReport.bodyParts?.join(', ') || 'Study'} — Master Template`,
+            centerId: selectedReport.radiologyCenterId || 'ALL',
+            modality: selectedReport.modality || 'X-Ray',
+            bodyPart: selectedReport.bodyParts?.[0] || 'CHEST PA/AP',
+            findings: selectedReport.findings,
+            impression: selectedReport.impression,
+          } : undefined}
+          onSaved={() => loadData()}
+        />
       )}
     </PageShell>
   );

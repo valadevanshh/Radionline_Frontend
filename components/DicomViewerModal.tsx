@@ -63,10 +63,12 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { XRayReport, RadiologyStore, DocTemplate, RadiologyCenter, Doctor } from '@/lib/radiology-store';
+import { formatPatientDisplayId } from '@/lib/uuid';
 import { AUTOCOMPLETE_SUGGESTIONS } from '@/lib/radiology-autocomplete';
 import { STUDY_MODALITY_OPTIONS } from '@/components/NewXRayReportModal';
 import { printReportElement, type PrintReportPayload, A4_PAGE } from '@/lib/print-helper';
 import { usableSignatureUrl } from '@/components/DoctorSignatureForm';
+import ReportTemplateModal from '@/components/ReportTemplateModal';
 import A4ReportEditor from '@/components/A4ReportEditor';
 import { stackedPagesHeightPx, useQrSvgMarkup } from '@/components/PaginatedReport';
 
@@ -79,6 +81,7 @@ const SHEET_FONT_STACKS: Record<string, string> = {
 };
 const SHEET_FONT_PT: Record<string, number> = { 'text-xs': 10, 'text-sm': 11, 'text-base': 12 };
 import { ApiClient, resolveMediaUrl, apiErrorMessage, publicReportLink, getAccessToken, WS_BASE_URL, type ImageAnnotation } from '@/lib/api-client';
+import { canWriteTemplates } from '@/lib/access';
 
 interface DicomViewerModalProps {
   isOpen: boolean;
@@ -481,6 +484,7 @@ export default function DicomViewerModal({
     : storedTemplates.filter(templateMatchesCase);
 
   const handleOpenSaveTemplate = () => {
+    if (!canWriteTemplates(RadiologyStore.getSession())) return;
     setSaveTmplTitle(reportTitle || (report?.bodyParts?.join(', ') ? `${report.bodyParts.join(', ')} — Custom Template` : 'New Custom Radiology Template'));
     {
       const sess = RadiologyStore.getSession();
@@ -498,7 +502,7 @@ export default function DicomViewerModal({
 
   const handleConfirmSaveTemplate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!saveTmplTitle.trim()) return;
+    if (!canWriteTemplates(RadiologyStore.getSession()) || !saveTmplTitle.trim()) return;
 
     let centerName = 'All Centers';
     if (saveTmplCenterId !== 'ALL') {
@@ -699,7 +703,7 @@ export default function DicomViewerModal({
       if (images.length > 0) {
         return images.map((imgUrl, idx) => ({
           id: `report-img-${idx}`,
-          title: `${report.bodyParts?.[idx] || report.bodyParts?.[0] || 'Radiograph'} (${report.patientNumber})`,
+          title: `${report.bodyParts?.[idx] || report.bodyParts?.[0] || 'Radiograph'}${formatPatientDisplayId(report.patientNumber) ? ` (${report.patientNumber})` : ''}`,
           modality: 'DX (Digital Radiography)',
           bodyPart: report.bodyParts?.[idx] || report.bodyParts?.[0] || 'X-RAY',
           studyDate: report.studyDate || new Date().toISOString().split('T')[0],
@@ -718,7 +722,7 @@ export default function DicomViewerModal({
 
       return SAMPLE_DICOM_SERIES.map((s, idx) => ({
         ...s,
-        title: `${report.bodyParts?.[idx] || report.bodyParts?.[0] || s.bodyPart} (${report.patientNumber})`,
+        title: `${report.bodyParts?.[idx] || report.bodyParts?.[0] || s.bodyPart}${formatPatientDisplayId(report.patientNumber) ? ` (${report.patientNumber})` : ''}`,
         institution: report.radiologyCenterName || s.institution,
         studyDate: report.studyDate || s.studyDate,
         seriesDescription: `${report.fullName} - ${report.bodyParts?.[idx] || s.seriesDescription}`,
@@ -754,6 +758,7 @@ export default function DicomViewerModal({
   const svgRefs = useRef<(SVGSVGElement | null)[]>([]);
   const viewerSession = RadiologyStore.getSession();
   const canDrawArrows = viewerSession?.role === 'DOCTOR' || viewerSession?.role === 'SUPER_ADMIN';
+  const canCreateTemplate = canWriteTemplates(viewerSession);
   const myUserId = viewerSession?.userId;
   const canRemoveMark = (m: ImageAnnotation) =>
     viewerSession?.role === 'SUPER_ADMIN' || (myUserId != null && m.authorUserId === myUserId);
@@ -1512,7 +1517,7 @@ export default function DicomViewerModal({
   const patientName = report?.fullName || 'No Patient Selected';
   const patientAge = report?.age ? `${report.age} Yrs` : '—';
   const patientGender = report?.gender || '—';
-  const patientId = report?.patientNumber || '—';
+  const patientId = formatPatientDisplayId(report?.patientNumber) || '—';
   const studyDate = report?.studyDate || '—';
   const reportDate = report?.createdAt
     ? new Date(report.createdAt).toLocaleString()
@@ -1876,6 +1881,7 @@ export default function DicomViewerModal({
                 </button>
               )}
 
+              {canCreateTemplate && (
               <button
                 type="button"
                 onClick={() => { handleOpenSaveTemplate(); setMoreMenuOpen(false); }}
@@ -1884,6 +1890,7 @@ export default function DicomViewerModal({
                 <BookmarkPlus className="w-4 h-4" />
                 Save New Template
               </button>
+              )}
               <button
                 type="button"
                 onClick={() => { setIsReportingOpen(!isReportingOpen); setMoreMenuOpen(false); }}
@@ -2465,6 +2472,7 @@ export default function DicomViewerModal({
                   <span>All</span>
                 </label>
 
+                {canCreateTemplate && (
                 <button
                   type="button"
                   onClick={handleOpenSaveTemplate}
@@ -2481,6 +2489,7 @@ export default function DicomViewerModal({
                   {saveTemplateSuccess ? <CheckCircle2 className="w-4 h-4" /> : <BookmarkPlus className="w-4 h-4" />}
                   <span className="hidden xl:inline whitespace-nowrap">{saveTemplateSuccess ? 'Saved!' : 'Save Template'}</span>
                 </button>
+                )}
               </div>
 
               <div className={`h-4 w-px mx-0.5 ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-300'}`} />
@@ -2743,138 +2752,25 @@ export default function DicomViewerModal({
 
       </div>
 
-      {/* Save as Template Modal (DICOM Viewer Workstation) */}
-      {saveTemplateModalOpen && (
-        <div className="fixed inset-0 z-70 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4">
-          <div className="bg-slate-900 border border-slate-700 text-slate-100 w-full max-w-xl shadow-2xl rounded-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150 font-sans">
-            
-            {/* Modal Header */}
-            <div className="bg-slate-950 text-white px-5 py-4 flex items-center justify-between border-b border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <div className="p-1.5 bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded-md">
-                  <BookmarkPlus className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-white tracking-wide uppercase font-mono">
-                    Save PACS Workstation Template
-                  </h3>
-                  <p className="text-[11px] text-slate-400 font-mono">
-                    Convert active DICOM report findings & impression into a master template
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setSaveTemplateModalOpen(false)}
-                className="text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Form with 3 Required Options */}
-            <form onSubmit={handleConfirmSaveTemplate} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
-              
-              {/* Option 1: Template Name */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider font-mono">
-                  1. Template Name <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={saveTmplTitle}
-                  onChange={(e) => setSaveTmplTitle(e.target.value)}
-                  placeholder="Enter template name..."
-                  className="w-full bg-slate-950 border border-slate-700 text-slate-100 text-xs px-3 py-2 focus:border-purple-500 focus:outline-none transition-colors font-sans rounded"
-                />
-              </div>
-
-              {/* Option 2: Center Selection (including All Centers) */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider font-mono">
-                  2. Which center template is this? <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={saveTmplCenterId}
-                  onChange={(e) => setSaveTmplCenterId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 text-slate-100 text-xs px-3 py-2 focus:border-purple-500 focus:outline-none transition-colors font-mono rounded"
-                >
-                  {RadiologyStore.getSession()?.role !== 'CENTER' && <option value="ALL">🌐 All Centers (Global Template)</option>}
-                  {allCenters
-                    .filter((c) => {
-                      const sess = RadiologyStore.getSession();
-                      if (sess?.role !== 'CENTER') return true;
-                      return (sess.centers || []).some((x) => x.centerId === c.id && x.permissions?.templates === 'write');
-                    })
-                    .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      🏥 {c.centerName}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-400 font-mono">
-                  Select &quot;All Centers&quot; to share across all diagnostic labs or assign to a specific center.
-                </p>
-              </div>
-
-              {/* Option 3: Modality */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider font-mono">
-                  3. Modality <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={saveTmplModality}
-                  onChange={(e) => setSaveTmplModality(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 text-slate-100 text-xs px-3 py-2 focus:border-purple-500 focus:outline-none transition-colors font-mono rounded"
-                >
-                  {STUDY_MODALITY_OPTIONS.map((mod) => (
-                    <option key={mod} value={mod}>
-                      {mod}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Active Findings Preview */}
-              <div className="space-y-1 bg-slate-950/60 p-3 border border-slate-800 rounded">
-                <span className="text-[10px] uppercase text-slate-400 font-mono font-bold block">Findings Content Preview:</span>
-                <p className="text-xs font-mono text-slate-300 line-clamp-3 leading-relaxed">
-                  {findingText || 'No findings entered yet.'}
-                </p>
-              </div>
-
-              {/* Active Impression Preview */}
-              <div className="space-y-1 bg-slate-950/60 p-3 border border-slate-800 rounded">
-                <span className="text-[10px] uppercase text-slate-400 font-mono font-bold block">Impression Content Preview:</span>
-                <p className="text-xs font-mono text-slate-300 line-clamp-2 leading-relaxed">
-                  {impressionText || 'No impression entered yet.'}
-                </p>
-              </div>
-
-              {/* Footer Actions */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setSaveTemplateModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors cursor-pointer rounded"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex items-center gap-1.5 px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all cursor-pointer shadow-md rounded"
-                >
-                  <BookmarkPlus className="w-4 h-4" /> Save New Template
-                </button>
-              </div>
-
-            </form>
-          </div>
-        </div>
+      {/* Save as Template Modal in Report Format (DICOM Viewer Workstation) */}
+      {canCreateTemplate && (
+        <ReportTemplateModal
+          isOpen={saveTemplateModalOpen}
+          onClose={() => setSaveTemplateModalOpen(false)}
+          prefill={{
+            title: `${sheetTitleFor(sheetActivePart)} Template`,
+            centerId: report?.radiologyCenterId || 'ALL',
+            modality: studyModality || 'X-Ray',
+            bodyPart: sheetActivePart,
+            findings: findingText,
+            impression: impressionText,
+          }}
+          onSaved={() => {
+            setSaveTemplateSuccess(true);
+            setTimeout(() => setSaveTemplateSuccess(false), 3000);
+          }}
+        />
       )}
-
 
       {statusToast && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[80] bg-slate-900 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-xl print:hidden no-print">

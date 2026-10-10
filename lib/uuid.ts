@@ -14,6 +14,25 @@ export function generateUUID(): string {
 }
 
 /**
+ * Checks whether a given string matches the standard 36-character v4 UUID pattern.
+ */
+export function isUUID(input?: string | null): boolean {
+  if (!input) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.trim());
+}
+
+/**
+ * Returns a clean, human-readable display string for patient number/ID.
+ * If the value is missing, empty, or a raw UUID, returns null so raw UUIDs are not rendered in the UI.
+ */
+export function formatPatientDisplayId(patientNumber?: string | null): string | null {
+  if (!patientNumber) return null;
+  const trimmed = patientNumber.trim();
+  if (!trimmed || isUUID(trimmed)) return null;
+  return trimmed;
+}
+
+/**
  * Ensures an ID or patient number is formatted as a valid 36-character v4 UUID string.
  * If the input is already a valid UUID, returns it as-is.
  * If the input is a legacy format (e.g. PAT-1677, doc-1, center-1, rep-1789410856579),

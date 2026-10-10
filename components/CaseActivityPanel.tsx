@@ -5,6 +5,7 @@ import { Flag, MessageSquare, RefreshCw, Send, X, AlertTriangle } from 'lucide-r
 import { ApiClient, ReportComment, getAccessToken, WS_BASE_URL } from '@/lib/api-client';
 import { Doctor, RadiologyStore, UserAccount, XRayReport } from '@/lib/radiology-store';
 import { hasCenterLevel } from '@/lib/access';
+import { formatPatientDisplayId } from '@/lib/uuid';
 
 interface CaseActivityPanelProps {
   report: XRayReport;
@@ -218,7 +219,7 @@ export default function CaseActivityPanel({
           <div className="min-w-0">
             <div className="text-xs font-extrabold text-slate-900 truncate">Case Activity</div>
             <div className="text-[10px] font-mono text-slate-500 truncate">
-              {report.fullName} · {report.patientNumber}
+              {report.fullName}{formatPatientDisplayId(report.patientNumber) ? ` · ${report.patientNumber}` : ''}
             </div>
           </div>
         </div>

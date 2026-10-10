@@ -5,6 +5,7 @@ import { ApiClient, PendingApproval, getAccessToken, WS_BASE_URL } from '@/lib/a
 import { RadiologyStore, UserAccount } from '@/lib/radiology-store';
 import ApprovalDiff from '@/components/ApprovalDiff';
 import { toast } from '@/components/ui/Toast';
+import { formatPatientDisplayId } from '@/lib/uuid';
 
 const ENTITY_WORD: Record<string, string> = {
   case: 'patient record',
@@ -27,7 +28,8 @@ function actionTitle(actionType: string, entityType: string): string {
 function subjectName(a: PendingApproval): string {
   const src = { ...(a.before || {}), ...(a.payload || {}) } as Record<string, unknown>;
   const name = src.fullName || src.centerName || src.title || src.name || src.email || a.entityId;
-  const num = src.patientNumber ? ` (${src.patientNumber})` : '';
+  const ptNum = formatPatientDisplayId(src.patientNumber as string);
+  const num = ptNum ? ` (${ptNum})` : '';
   return name ? `${String(name)}${num}` : '';
 }
 

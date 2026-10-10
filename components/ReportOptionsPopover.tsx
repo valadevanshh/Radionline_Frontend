@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { FileText, ChevronDown, Printer, Eye } from 'lucide-react';
 import { XRayReport } from '@/lib/radiology-store';
+import { formatPatientDisplayId } from '@/lib/uuid';
 
 interface ReportOptionsPopoverProps {
   report: XRayReport;
@@ -82,7 +83,7 @@ export default function ReportOptionsPopover({ report, onSelectOption }: ReportO
         >
           <div className="px-3 py-2 border-b border-slate-100 bg-slate-50 rounded-t-xl">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Report Options</p>
-            <p className="text-xs font-semibold text-slate-900 truncate">{report.fullName} ({report.patientNumber})</p>
+            <p className="text-xs font-semibold text-slate-900 truncate">{report.fullName}{formatPatientDisplayId(report.patientNumber) ? ` (${report.patientNumber})` : ''}</p>
           </div>
 
           <div className="py-1 max-h-64 overflow-y-auto">

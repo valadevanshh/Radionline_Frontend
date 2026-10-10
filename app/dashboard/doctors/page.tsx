@@ -19,7 +19,7 @@ import { toast } from '@/components/ui/Toast';
 import { useConfirm, Modal } from '@/components/ui';
 import { RowCard, RowCardList, RT_CONTAINER, RT_TABLE_ONLY, RT_TABLET_HIDE } from '@/components/ui/ResponsiveTable';
 import DoctorSignatureForm from '@/components/DoctorSignatureForm';
-import { formatAsUUID } from '@/lib/uuid';
+
 
 import { useResizableColumns } from '@/lib/use-resizable-columns';
 
@@ -183,12 +183,9 @@ export default function DoctorsPage() {
                       key={doc.id}
                       title={doc.fullName}
                       subtitle={
-                        <>
-                          <span className="font-mono text-[#009ef7] font-bold">{formatAsUUID(doc.id)}</span>
-                          <span className="block">
-                            {doc.degree || 'M.D. (Radiodiagnosis)'} &middot; {doc.registrationNumber ? `Reg. No. ${doc.registrationNumber}` : 'Reg. no. not set'}
-                          </span>
-                        </>
+                        <span>
+                          {doc.degree || 'M.D. (Radiodiagnosis)'} &middot; {doc.registrationNumber ? `Reg. No. ${doc.registrationNumber}` : 'Reg. no. not set'}
+                        </span>
                       }
                       aside={
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded font-mono">
@@ -264,7 +261,6 @@ export default function DoctorsPage() {
                               </div>
                               <div>
                                 <div className="font-bold text-slate-900">{doc.fullName}</div>
-                                <div className="font-mono text-[10px] text-slate-500 font-bold">{formatAsUUID(doc.id)}</div>
                                 <div className="text-[11px] text-slate-500 font-medium">
                                   {doc.degree || 'M.D. (Radiodiagnosis)'} &middot; {doc.registrationNumber ? `Reg. No. ${doc.registrationNumber}` : 'Reg. no. not set'}
                                 </div>

@@ -6,6 +6,9 @@ import { XRayReport, Doctor, RadiologyStore, RadiologyCenter, formatDateDDMMYYYY
 import { printReportElement, type PrintReportPayload } from '@/lib/print-helper';
 import { MODALITY_OPTIONS } from '@/lib/radiology-templates';
 import { ApiClient, apiErrorMessage, resolveMediaUrl } from '@/lib/api-client';
+import { canWriteTemplates, useSession } from '@/lib/access';
+import { formatPatientDisplayId } from '@/lib/uuid';
+import ReportTemplateModal from '@/components/ReportTemplateModal';
 
 
 interface ReviewSignReportModalProps {
@@ -35,6 +38,8 @@ export default function ReviewSignReportModal({
   const [saveTmplModality, setSaveTmplModality] = useState('X-Ray Chest');
   const [saveTemplateSuccess, setSaveTemplateSuccess] = useState(false);
   const [allCenters, setAllCenters] = useState<RadiologyCenter[]>([]);
+  const session = useSession();
+  const canCreateTemplate = canWriteTemplates(session);
 
   useEffect(() => {
     if (report) {
@@ -61,6 +66,7 @@ export default function ReviewSignReportModal({
   const doctorName = currentDoctor ? currentDoctor.fullName : report.assignedDoctorName || '';
 
   const handleOpenSaveTemplate = () => {
+    if (!canCreateTemplate) return;
     setSaveTmplTitle(report.bodyParts?.length ? `${report.bodyParts.join(', ')} — Master Template` : 'New Custom Radiology Template');
     setSaveTmplCenterId(report.radiologyCenterId || 'ALL');
     setSaveTmplModality('X-Ray Chest');
@@ -69,7 +75,7 @@ export default function ReviewSignReportModal({
 
   const handleConfirmSaveTemplate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!saveTmplTitle.trim()) return;
+    if (!canCreateTemplate || !saveTmplTitle.trim()) return;
 
     let centerName = 'All Centers';
     if (saveTmplCenterId !== 'ALL') {
@@ -160,7 +166,7 @@ export default function ReviewSignReportModal({
                 )}
               </div>
               <p className="text-[10px] text-slate-300 font-mono">
-                Case ID: {report.patientNumber} ({report.fullName})
+                {report.fullName}{formatPatientDisplayId(report.patientNumber) ? ` · ${report.patientNumber}` : ''}
               </p>
             </div>
           </div>
@@ -233,6 +239,7 @@ export default function ReviewSignReportModal({
 
           {/* Footer Actions */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-200">
+            {canCreateTemplate && (
             <button
               type="button"
               onClick={handleOpenSaveTemplate}
@@ -246,6 +253,7 @@ export default function ReviewSignReportModal({
               {saveTemplateSuccess ? <CheckCircle2 className="w-3.5 h-3.5" /> : <BookmarkPlus className="w-3.5 h-3.5" />}
               <span>{saveTemplateSuccess ? 'Saved to Templates!' : '+ Save New Template'}</span>
             </button>
+          )}
 
             <div className="flex items-center gap-2">
               <button
@@ -265,7 +273,7 @@ export default function ReviewSignReportModal({
                     centerHeaderUrl: resolveMediaUrl(centerRec?.headerTemplateUrl || ''),
                     letterheadMode: centerRec?.letterheadMode || 'full-page',
                     patientName: report.fullName,
-                    patientId: report.patientNumber,
+                    patientId: formatPatientDisplayId(report.patientNumber) || '—',
                     ageSex: `${report.age} ${report.ageUnit === 'Months' ? 'M' : report.ageUnit === 'Days' ? 'D' : 'Y'} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,
                     studyDate: formatDateDDMMYYYY(report.studyDate),
                     referringDoctor: report.referringPhysicianName || '',
@@ -310,130 +318,24 @@ export default function ReviewSignReportModal({
         </form>
       </div>
 
-      {/* Save as Template Modal */}
-      {saveTemplateModalOpen && (
-        <div className="fixed inset-0 z-[410] flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4">
-          <div className="bg-white border border-slate-200 text-slate-900 w-full max-w-xl shadow-2xl rounded-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150 font-sans">
-            
-            {/* Modal Header */}
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-1.5 bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded-md">
-                  <BookmarkPlus className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-white tracking-wide uppercase font-mono">
-                    Save Written Report as Template
-                  </h3>
-                  <p className="text-[11px] text-slate-400 font-mono">
-                    Save your custom written findings & impression as a master reusable template
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setSaveTemplateModalOpen(false)}
-                className="text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Form with 3 Required Options */}
-            <form onSubmit={handleConfirmSaveTemplate} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
-              
-              {/* Option 1: Template Name */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
-                  1. Template Name <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={saveTmplTitle}
-                  onChange={(e) => setSaveTmplTitle(e.target.value)}
-                  placeholder="Enter template name..."
-                  className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs px-3 py-2 focus:border-purple-500 focus:bg-white focus:outline-none transition-colors font-sans rounded"
-                />
-              </div>
-
-              {/* Option 2: Center Selection (including All Centers) */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
-                  2. Which center template is this? <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={saveTmplCenterId}
-                  onChange={(e) => setSaveTmplCenterId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs px-3 py-2 focus:border-purple-500 focus:bg-white focus:outline-none transition-colors font-mono rounded"
-                >
-                  <option value="ALL">🌐 All Centers (Global Template)</option>
-                  {allCenters.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      🏥 {c.centerName}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-500 font-mono">
-                  Select &quot;All Centers&quot; or choose a specific radiology center.
-                </p>
-              </div>
-
-              {/* Option 3: Modality */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
-                  3. Modality <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={saveTmplModality}
-                  onChange={(e) => setSaveTmplModality(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs px-3 py-2 focus:border-purple-500 focus:bg-white focus:outline-none transition-colors font-mono rounded"
-                >
-                  {MODALITY_OPTIONS.map((mod) => (
-                    <option key={mod} value={mod}>
-                      {mod}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Written Findings Content Preview */}
-              <div className="space-y-1 bg-slate-50 p-3 border border-slate-200 rounded">
-                <span className="text-[10px] uppercase text-slate-500 font-mono font-bold block">Written Findings Preview:</span>
-                <p className="text-xs font-mono text-slate-700 leading-relaxed font-semibold">
-                  {findings}
-                </p>
-              </div>
-
-              {/* Written Impression Content Preview */}
-              <div className="space-y-1 bg-slate-50 p-3 border border-slate-200 rounded">
-                <span className="text-[10px] uppercase text-slate-500 font-mono font-bold block">Written Impression Preview:</span>
-                <p className="text-xs font-mono text-slate-800 leading-relaxed font-bold">
-                  {impression}
-                </p>
-              </div>
-
-              {/* Footer Actions */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setSaveTemplateModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer rounded"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex items-center gap-1.5 px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all cursor-pointer shadow-md rounded"
-                >
-                  <BookmarkPlus className="w-4 h-4" /> Save New Template
-                </button>
-              </div>
-
-            </form>
-          </div>
-        </div>
+      {/* Save as Template in Report Format */}
+      {canCreateTemplate && (
+        <ReportTemplateModal
+          isOpen={saveTemplateModalOpen}
+          onClose={() => setSaveTemplateModalOpen(false)}
+          prefill={{
+            title: `${report?.bodyParts?.join(', ') || 'Study'} Template`,
+            centerId: report?.radiologyCenterId || 'ALL',
+            modality: report?.bodyParts?.[0] || 'X-Ray',
+            bodyPart: report?.bodyParts?.[0] || 'CHEST PA/AP',
+            findings: findings,
+            impression: impression,
+          }}
+          onSaved={() => {
+            setSaveTemplateSuccess(true);
+            setTimeout(() => setSaveTemplateSuccess(false), 3000);
+          }}
+        />
       )}
     </div>
   );

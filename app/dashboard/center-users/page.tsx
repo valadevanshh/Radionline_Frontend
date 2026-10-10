@@ -22,7 +22,7 @@ const PAGE_LABELS: Record<CenterPage, string> = {
   templates: 'Templates',
   center_info: 'Center Info',
 };
-const PAGE_ORDER: CenterPage[] = ['reports', 'invoices', 'templates', 'center_info'];
+const PAGE_ORDER: CenterPage[] = ['reports', 'invoices', 'center_info'];
 const LEVEL_LABELS: Record<PageLevel, string> = { none: 'No access', read: 'View only', write: 'View & edit' };
 const DEFAULT_PERMS: Record<CenterPage, PageLevel> = { reports: 'write', invoices: 'read', templates: 'read', center_info: 'read' };
 

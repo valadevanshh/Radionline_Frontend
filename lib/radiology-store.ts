@@ -1,7 +1,7 @@
 'use client';
 
 import { RADIOLOGY_TEMPLATES } from './radiology-templates';
-import { generateUUID, formatAsUUID } from './uuid';
+import { generateUUID } from './uuid';
 
 export type UserRole = 'SUPER_ADMIN' | 'DOCTOR' | 'MANAGER' | 'CENTER';
 
@@ -303,7 +303,7 @@ export const RadiologyStore = {
       const created: XRayReport = {
         ...report,
         id: generateUUID(),
-        patientNumber: formatAsUUID(report.patientNumber),
+        patientNumber: report.patientNumber?.trim() || '',
         createdAt: new Date().toISOString(),
       } as XRayReport;
       reports.unshift(created);

@@ -15,7 +15,7 @@ import { RadiologyStore, XRayReport } from '@/lib/radiology-store';
 import { showCenterColumn, useSession } from '@/lib/access';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatDate } from '@/lib/format-date';
-import { formatAsUUID } from '@/lib/uuid';
+import { formatPatientDisplayId } from '@/lib/uuid';
 import { RowCard, RowCardList, RT_CONTAINER, RT_TABLE_ONLY } from '@/components/ui/ResponsiveTable';
 
 type StatusFilter = '' | 'CLAIMED' | 'Completed';
@@ -210,7 +210,7 @@ export default function MyWorkPage() {
                       ) : null}
                     </span>
                   }
-                  subtitle={<span className="font-mono">{formatAsUUID(row.patientNumber || row.id)}</span>}
+                  subtitle={formatPatientDisplayId(row.patientNumber) ? <span className="font-mono">{row.patientNumber}</span> : undefined}
                   aside={
                     <StatusBadge
                       status={row.status}
@@ -255,7 +255,9 @@ export default function MyWorkPage() {
                     <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-3 py-2.5">
                         <div className={`font-bold ${row.isUrgent ? "text-red-500" : "text-slate-900"}`}>{row.fullName}{row.isPartial || ((row.signedStudyCount||0)>0 && (row.signedStudyCount||0)<(row.studyCount||row.bodyParts?.length||0)) ? <span className="ml-2 text-[10px] font-semibold text-amber-600">{row.signedStudyCount || 0} of {row.studyCount || row.bodyParts?.length || 0} reported</span> : null}</div>
-                        <div className="font-mono text-[10px] text-slate-500">{formatAsUUID(row.patientNumber || row.id)}</div>
+                        {formatPatientDisplayId(row.patientNumber) && (
+                          <div className="font-mono text-[10px] text-slate-500">{row.patientNumber}</div>
+                        )}
                       </td>
                       {showCenter && <td className="px-3 py-2.5 text-slate-700 font-medium">{row.radiologyCenterName}</td>}
                       <td className="px-3 py-2.5 font-mono text-slate-600">

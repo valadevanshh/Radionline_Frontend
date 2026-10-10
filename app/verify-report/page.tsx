@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { ApiClient } from '@/lib/api-client';
 import { RadiologyStore, XRayReport, formatDateDDMMYYYY } from '@/lib/radiology-store';
+import { formatPatientDisplayId } from '@/lib/uuid';
 
 function VerifyReportContent() {
   const searchParams = useSearchParams();
@@ -65,7 +66,7 @@ function VerifyReportContent() {
           <p className="font-mono text-sm font-bold text-slate-300">
             Verifying Teleradiology Report Authenticity...
           </p>
-          <span className="text-xs text-slate-500 font-mono">UUID: {reportId || 'Searching...'}</span>
+          <span className="text-xs text-slate-500 font-mono">Authenticating digital signature...</span>
         </div>
       </div>
     );
@@ -132,8 +133,10 @@ function VerifyReportContent() {
           </div>
 
           <div className="text-center sm:text-right shrink-0 bg-slate-900/80 px-3.5 py-2 rounded-xl border border-emerald-500/30">
-            <span className="text-[9px] font-bold text-slate-400 uppercase font-mono block">System UUID</span>
-            <span className="text-xs font-mono font-bold text-emerald-400 break-all">{report.id}</span>
+            <span className="text-[9px] font-bold text-emerald-400 uppercase font-mono block">Verification Status</span>
+            <span className="text-xs font-mono font-bold text-white flex items-center justify-center sm:justify-end gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 inline" /> Verified
+            </span>
           </div>
         </div>
 
@@ -160,7 +163,9 @@ function VerifyReportContent() {
             </div>
             <div className="text-right text-xs font-mono text-slate-600">
               <div>Study Date: <strong className="text-slate-900">{formatDateDDMMYYYY(report.studyDate)}</strong></div>
-              <div>Report ID: <strong className="text-slate-900">{report.patientNumber}</strong></div>
+              {formatPatientDisplayId(report.patientNumber) && (
+                <div>Report ID: <strong className="text-slate-900">{report.patientNumber}</strong></div>
+              )}
             </div>
           </div>
 
@@ -172,7 +177,7 @@ function VerifyReportContent() {
             </div>
             <div>
               <span className="text-[10px] uppercase font-bold text-slate-500 block font-mono">Reg No / ID</span>
-              <strong className="font-mono text-slate-900">{report.patientNumber}</strong>
+              <strong className="font-mono text-slate-900">{formatPatientDisplayId(report.patientNumber) || '—'}</strong>
             </div>
             <div>
               <span className="text-[10px] uppercase font-bold text-slate-500 block font-mono">Age / Gender</span>
@@ -232,9 +237,6 @@ function VerifyReportContent() {
               <p className="font-black text-sm uppercase tracking-wide">{doctorName}</p>
               <p className="font-bold text-xs text-slate-800">{doctorDegree}</p>
               <p className="font-semibold text-xs text-slate-600">{doctorRegNo}</p>
-              <p className="font-mono text-[10px] text-slate-500 pt-1">
-                Report UUID: <strong className="text-slate-900">{report.id}</strong>
-              </p>
             </div>
 
             <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3 font-sans text-xs text-emerald-900 space-y-1 text-left">

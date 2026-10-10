@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Building2, Mail, Phone, MapPin, Check, Shield, FileText, Edit3 } from 'lucide-react';
-import { ApiClient, apiErrorMessage } from '@/lib/api-client';
+import { ApiClient, apiErrorMessage, resolveMediaUrl } from '@/lib/api-client';
 import { centerIdsWith, hasCenterLevel } from '@/lib/access';
 import { RadiologyStore, RadiologyCenter } from '@/lib/radiology-store';
 import { PageShell, PageHeader, StatusBadge } from '@/components/ui';
@@ -356,7 +356,7 @@ export default function CenterInfoProfilePage() {
                 <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50 p-2">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={center.headerTemplateUrl}
+                    src={resolveMediaUrl(center.headerTemplateUrl)}
                     alt="Center Letterhead Banner"
                     className="w-full h-auto max-h-36 object-contain rounded-lg"
                   />

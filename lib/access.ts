@@ -80,11 +80,10 @@ export function canDeleteRecords(session: UserAccount | null | undefined): boole
   return session?.role === 'SUPER_ADMIN' || session?.role === 'MANAGER';
 }
 
-/** Templates: create / edit (centre logins need Templates = write). */
+/** Templates: create / edit — strictly limited to doctors only. */
 export function canWriteTemplates(session: UserAccount | null | undefined): boolean {
   if (!session) return false;
-  if (session.role === 'CENTER') return hasCenterLevel(session, 'templates', 'write');
-  return true;
+  return session.role === 'DOCTOR';
 }
 
 /** Refresh the stored session from /auth/me (centre links / permissions may have changed). */

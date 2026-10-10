@@ -13,11 +13,15 @@ const TOKEN_KEY = 'radionline_token_v1';
 export function resolveMediaUrl(ref?: string | null): string {
   if (!ref) return '';
   const raw = ref.trim();
-  if (raw.startsWith('data:') || raw.startsWith('http://') || raw.startsWith('https://')) {
+  if (raw.startsWith('data:')) {
     return raw;
   }
-  if (raw.startsWith('/api/files/')) {
-    return `${API_ORIGIN}${raw}`;
+  const apiFilesIdx = raw.indexOf('/api/files/');
+  if (apiFilesIdx !== -1) {
+    return `${API_ORIGIN}${raw.slice(apiFilesIdx)}`;
+  }
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    return raw;
   }
   if (/^\d{4}\/\d{2}\/\d{2}\//.test(raw)) {
     return `${API_ORIGIN}/api/files/${raw}`;
@@ -25,7 +29,6 @@ export function resolveMediaUrl(ref?: string | null): string {
   return raw;
 }
 
-/** First-study / each-additional-study amounts in whole rupees. */
 export interface RateCard {
   center: { firstStudy: number; additionalStudy: number };
   doctor: { firstStudy: number; additionalStudy: number };

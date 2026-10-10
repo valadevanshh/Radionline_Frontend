@@ -29,14 +29,15 @@ import {
   formatDateDDMMYYYY,
 } from '@/lib/radiology-store';
 import { ApiClient, getAccessToken, WS_BASE_URL, apiErrorMessage, isPendingApproval } from '@/lib/api-client';
-import { canDeleteRecords, canEditCase, canUploadCase, canWriteTemplates, centerIdsWith, showCenterColumn } from '@/lib/access';
+import { canDeleteRecords, canEditCase, canUploadCase, canWriteTemplates, showCenterColumn } from '@/lib/access';
 import CaseActivityPanel from '@/components/CaseActivityPanel';
 import { RowChatButton, RowEditButton } from '@/components/CaseRowButtons';
 import { toast } from '@/components/ui/Toast';
 import { RowCard, RowCardList, RT_ACTIONS, RT_CONTAINER, RT_TABLE_ONLY, RT_TABLET_HIDE, RT_TABLET_ONLY } from '@/components/ui/ResponsiveTable';
 import ReportOptionsPopover from '@/components/ReportOptionsPopover';
-import { formatAsUUID } from '@/lib/uuid';
+import { formatPatientDisplayId } from '@/lib/uuid';
 import ReportPreviewModal from '@/components/ReportPreviewModal';
+import ReportTemplateModal from '@/components/ReportTemplateModal';
 import NewXRayReportModal, { NewCasePayload } from '@/components/NewXRayReportModal';
 import ReviewSignReportModal from '@/components/ReviewSignReportModal';
 import { STUDY_MODALITY_OPTIONS } from '@/components/NewXRayReportModal';
@@ -93,80 +94,10 @@ function AllPatientReportsContent() {
   };
 
   const [createTemplateOpen, setCreateTemplateOpen] = useState(false);
-  const [tmplTitle, setTmplTitle] = useState('');
-  const [tmplCenterId, setTmplCenterId] = useState('ALL');
-  const [tmplModality, setTmplModality] = useState('X-Ray');
-  const [tmplBodyPart, setTmplBodyPart] = useState('');
-  const [tmplFindings, setTmplFindings] = useState('');
-  const [tmplImpression, setTmplImpression] = useState('');
-  const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
-
-  // Centre logins save templates only for their own centres (Templates = write), never global ones
-  const templateCenterOptions = useMemo(() => {
-    if (session?.role !== 'CENTER') return centers;
-    const ids = centerIdsWith(session, 'templates', 'write');
-    return centers.filter((c) => ids.includes(c.id));
-  }, [centers, session]);
 
   const handleOpenCreateTemplate = () => {
-    setTmplTitle('New Master Radiology Template');
-    setTmplCenterId(session?.role === 'CENTER' ? templateCenterOptions[0]?.id || '' : 'ALL');
-    setTmplModality('X-Ray');
-    setTmplBodyPart('CHEST PA/AP');
-    setTmplFindings('LUNG FIELDS: Both lung fields are clear without focal consolidation, nodule, or mass.\nCARDIOVASCULAR: Cardiac size and silhouette are within normal limits.');
-    setTmplImpression('1. Normal Radiographic Examination.\n2. No active parenchymal or pleural pathology detected.');
+    if (!canWriteTemplates(session)) return;
     setCreateTemplateOpen(true);
-  };
-
-  const handleSaveNewTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tmplTitle.trim()) return;
-
-    let centerName = 'All Centers';
-    if (tmplCenterId !== 'ALL') {
-      const matched = centers.find((c) => c.id === tmplCenterId);
-      if (matched) centerName = matched.centerName;
-    }
-
-    const contentHtml = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
-        <h2 style="color: #009ef7; border-bottom: 2px solid #009ef7; padding-bottom: 4px; text-transform: uppercase;">
-          RADIOLOGY REPORT — ${tmplModality}
-        </h2>
-        <h3 style="color: #0f172a; margin-bottom: 8px;">RADIOLOGICAL FINDINGS:</h3>
-        <p>${tmplFindings.replace(/\n/g, '<br/>')}</p>
-        <br/>
-        <h3 style="color: #0f172a; margin-bottom: 8px;">IMPRESSION & CONCLUSION:</h3>
-        <div style="background-color: #f1f5f9; padding: 10px; border-left: 4px solid #009ef7;">
-          <p>${tmplImpression.replace(/\n/g, '<br/>')}</p>
-        </div>
-      </div>
-    `;
-
-    const tmplObj = {
-      title: tmplTitle.trim(),
-      centerId: tmplCenterId,
-      centerName,
-      modality: tmplModality,
-      bodyPart: tmplBodyPart.trim() || tmplModality,
-      findings: tmplFindings,
-      impression: tmplImpression,
-      content: contentHtml,
-    };
-    try {
-      const saved = await ApiClient.saveTemplate(tmplObj);
-      if (isPendingApproval(saved)) {
-        toast.info(saved.message || 'Sent to the Super Admin for approval.');
-      } else {
-        RadiologyStore.saveTemplate(saved);
-        toast.success('Template saved.');
-      }
-    } catch (err) {
-      toast.error(apiErrorMessage(err, 'Could not save the template'));
-      return;
-    }
-
-    setCreateTemplateOpen(false);
   };
 
   const loadStoreData = async () => {
@@ -358,6 +289,7 @@ function AllPatientReportsContent() {
   };
 
   const showCenter = showCenterColumn(session);
+  const isDoctor = session?.role === 'DOCTOR';
 
 
 
@@ -384,7 +316,7 @@ function AllPatientReportsContent() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {canWriteTemplates(session) && (session?.role !== 'CENTER' || templateCenterOptions.length > 0) && (
+          {canWriteTemplates(session) && (
             <button
               type="button"
               onClick={handleOpenCreateTemplate}
@@ -541,7 +473,7 @@ function AllPatientReportsContent() {
                   {report.isPartial ? <span className="text-[10px] text-amber-600 font-semibold">{report.signedStudyCount}/{report.studyCount || report.bodyParts?.length} reported</span> : null}
                 </span>
               }
-              subtitle={<span className="font-mono font-bold">{formatAsUUID(report.patientNumber || report.id)}</span>}
+              subtitle={formatPatientDisplayId(report.patientNumber) ? <span className="font-mono font-bold">{report.patientNumber}</span> : undefined}
               aside={
                 <StatusBadge
                   status={report.status}
@@ -583,14 +515,16 @@ function AllPatientReportsContent() {
                     report={report}
                     onSelectOption={handleSelectReportOption}
                   />
-                  <button
-                    type="button"
-                    onClick={() => openWorkspace(report)}
-                    className="btn-pacs"
-                  >
-                    <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
-                    <span>PACS</span>
-                  </button>
+                  {isDoctor && (
+                    <button
+                      type="button"
+                      onClick={() => openWorkspace(report)}
+                      className="btn-pacs"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
+                      <span>PACS</span>
+                    </button>
+                  )}
                   <RowChatButton onClick={() => setChatTarget(report)} />
                   {canEditCase(session, report) && <RowEditButton onClick={() => setEditTarget(report)} />}
                   {session?.role === 'DOCTOR' && report.claimStatus !== 'CLAIMED' && (
@@ -689,7 +623,7 @@ function AllPatientReportsContent() {
                         {report.radiologyCenterName}
                       </td>
                     )}
-                    <td title={`${report.fullName} (${report.patientNumber})`} className="p-3">
+                    <td title={formatPatientDisplayId(report.patientNumber) ? `${report.fullName} (${report.patientNumber})` : report.fullName} className="p-3">
                       <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap">
                         <span className={report.isUrgent ? "text-red-500 font-bold" : undefined}>{report.fullName}</span>{report.isPartial ? <span className="ml-2 text-[10px] text-amber-600 font-semibold">{report.signedStudyCount}/{report.studyCount || report.bodyParts?.length} reported</span> : null}
                         {report.isUrgent && (
@@ -703,7 +637,9 @@ function AllPatientReportsContent() {
                           </span>
                         )}
                       </div>
-                      <div className="font-mono text-[10px] text-slate-500 font-bold">{formatAsUUID(report.patientNumber || report.id)}</div>
+                      {formatPatientDisplayId(report.patientNumber) && (
+                        <div className="font-mono text-[10px] text-slate-500 font-bold">{report.patientNumber}</div>
+                      )}
                       <div className={`${RT_TABLET_ONLY} mt-0.5 text-[11px] text-slate-600`}>
                         {showCenter ? <>{report.radiologyCenterName} {'\u00b7'} </> : null}{report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'}/{report.age}y {'\u00b7'} <span className="font-mono whitespace-nowrap">{formatDateDDMMYYYY(report.studyDate)}</span>
                       </div>
@@ -744,15 +680,17 @@ function AllPatientReportsContent() {
                           onSelectOption={handleSelectReportOption}
                         />
 
-                        <button
-                          type="button"
-                          onClick={() => openWorkspace(report)}
-                          className="btn-pacs"
-                          title="PACS DICOM Workstation"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
-                          <span>PACS</span>
-                        </button>
+                        {isDoctor && (
+                          <button
+                            type="button"
+                            onClick={() => openWorkspace(report)}
+                            className="btn-pacs"
+                            title="PACS DICOM Workstation"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
+                            <span>PACS</span>
+                          </button>
+                        )}
 
                         <RowChatButton compact onClick={() => setChatTarget(report)} />
                         {canEditCase(session, report) && <RowEditButton compact onClick={() => setEditTarget(report)} />}
@@ -838,115 +776,13 @@ function AllPatientReportsContent() {
         />
       )}
 {/* Save Template Modal */}
-      {createTemplateOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-[400] flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white border border-slate-200 rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
-              <span className="font-mono font-bold text-xs uppercase tracking-wider text-slate-900">
-                Save Master Template
-              </span>
-              <button
-                type="button"
-                onClick={() => setCreateTemplateOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200/50"
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveNewTemplate} className="p-4 flex flex-col gap-3.5 overflow-y-auto flex-1 text-xs">
-              <div className="flex flex-col gap-1">
-                <label className="font-bold text-slate-700 font-mono text-[11px]">Template Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={tmplTitle}
-                  onChange={(e) => setTmplTitle(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:bg-white focus:border-[#009ef7] focus:outline-none"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="font-bold text-slate-700 font-mono text-[11px]">Target Center *</label>
-                <select
-                  value={tmplCenterId}
-                  onChange={(e) => setTmplCenterId(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:bg-white focus:border-[#009ef7] focus:outline-none"
-                >
-                  {session?.role !== 'CENTER' && <option value="ALL">All Centers (Global Template)</option>}
-                  {templateCenterOptions.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.centerName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="font-bold text-slate-700 font-mono text-[11px]">Modality *</label>
-                <select
-                  value={tmplModality}
-                  onChange={(e) => setTmplModality(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:bg-white focus:border-[#009ef7] focus:outline-none"
-                >
-                  {STUDY_MODALITY_OPTIONS.map((mod) => (
-                    <option key={mod} value={mod}>
-                      {mod}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-600 uppercase">Body Part <span className="text-rose-500">*</span></label>
-                <input
-                  required
-                  type="text"
-                  value={tmplBodyPart}
-                  onChange={(e) => setTmplBodyPart(e.target.value)}
-                  className="w-full border border-slate-300 rounded px-3 py-2 text-xs"
-                  placeholder="Must match case body part exactly (e.g. CHEST PA/AP)"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="font-bold text-slate-700 font-mono text-[11px]">Findings Content</label>
-                <textarea
-                  rows={3}
-                  value={tmplFindings}
-                  onChange={(e) => setTmplFindings(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:bg-white focus:border-[#009ef7] focus:outline-none min-h-[75px]"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="font-bold text-slate-700 font-mono text-[11px]">Impression & Conclusion</label>
-                <textarea
-                  rows={2}
-                  value={tmplImpression}
-                  onChange={(e) => setTmplImpression(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:bg-white focus:border-[#009ef7] focus:outline-none min-h-[60px]"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setCreateTemplateOpen(false)}
-                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition-colors text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-[#009ef7] hover:bg-[#008be0] text-white font-bold rounded-lg transition-colors text-xs"
-                >
-                  Save Template
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* Doctor Report Format Template Modal */}
+      {canWriteTemplates(session) && (
+        <ReportTemplateModal
+          isOpen={createTemplateOpen}
+          onClose={() => setCreateTemplateOpen(false)}
+          onSaved={() => loadStoreData()}
+        />
       )}
 
       {/* Delete Confirmation Modal */}

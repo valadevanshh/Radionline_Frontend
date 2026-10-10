@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { X, Printer, CheckCircle, AlertTriangle } from 'lucide-react';
 import { XRayReport, RadiologyStore, RadiologyCenter, formatDateDDMMYYYY } from '@/lib/radiology-store';
+import { formatPatientDisplayId } from '@/lib/uuid';
 import { printReportElement, type PrintReportPayload } from '@/lib/print-helper';
 import PaginatedReport from '@/components/PaginatedReport';
 import { ApiClient, publicReportLink, resolveMediaUrl } from '@/lib/api-client';
@@ -112,7 +113,7 @@ export default function ReportPreviewModal({
     withHeader: letterheadMode !== 'preprinted',
     letterheadMode,
     patientName: report.fullName,
-    patientId: report.patientNumber,
+    patientId: formatPatientDisplayId(report.patientNumber) || '—',
     ageSex: `${report.age} ${report.ageUnit === 'Months' ? 'M' : report.ageUnit === 'Days' ? 'D' : 'Y'} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,
     studyDate: formatDateDDMMYYYY(report.studyDate),
     referringDoctor: report.referringPhysicianName || '',
@@ -153,7 +154,7 @@ export default function ReportPreviewModal({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <h3 className="text-xs font-bold text-slate-100 break-words min-w-0">
-                Report Preview — {report.patientNumber}
+                Report Preview — {formatPatientDisplayId(report.patientNumber) ? `${report.patientNumber} (${report.fullName})` : report.fullName}
               </h3>
             </div>
 

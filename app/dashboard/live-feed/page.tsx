@@ -23,7 +23,7 @@ import { ApiClient, getAccessToken, WS_BASE_URL, apiErrorMessage } from '@/lib/a
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { PriorityBadge } from '@/components/ui/PriorityBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { formatAsUUID } from '@/lib/uuid';
+import { formatPatientDisplayId } from '@/lib/uuid';
 
 // A new live task banner shows for exactly 3 seconds; the list re-checks every 10s while the socket is down
 const NEW_TASK_TOAST_MS = 3000;
@@ -202,7 +202,7 @@ export default function LiveDashboardPage() {
       console.warn('Decline error:', err);
       loadReports();
     }
-    showToast(`Declined study ${report.patientNumber}`, 4000);
+    showToast(`Declined study for ${report.fullName}${formatPatientDisplayId(report.patientNumber) ? ` (${report.patientNumber})` : ''}`, 4000);
   };
 
   const incomingPendingReports = reports
@@ -290,9 +290,15 @@ export default function LiveDashboardPage() {
                     {/* Header */}
                     <div className="flex items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
                       <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                        <span className="text-[11px] sm:text-xs font-extrabold font-mono text-[#009ef7] px-2 py-0.5 bg-[#009ef7]/10 rounded border border-[#009ef7]/20 break-all">
-                          {formatAsUUID(r.patientNumber || r.id)}
-                        </span>
+                        {formatPatientDisplayId(r.patientNumber) ? (
+                          <span className="text-[11px] sm:text-xs font-extrabold font-mono text-[#009ef7] px-2 py-0.5 bg-[#009ef7]/10 rounded border border-[#009ef7]/20">
+                            {r.patientNumber}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] sm:text-xs font-bold text-slate-700 px-2 py-0.5 bg-slate-100 rounded border border-slate-200">
+                            {r.modality || 'Study'}
+                          </span>
+                        )}
                         {r.isUrgent && (
                           <span className="px-2 py-0.5 bg-rose-600 text-white font-mono font-bold text-[10px] rounded uppercase animate-pulse flex items-center gap-1">
                             <AlertTriangle className="w-3 h-3" /> STAT URGENT
@@ -401,7 +407,11 @@ export default function LiveDashboardPage() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-mono font-bold text-[#009ef7]">{r.patientNumber}</span>
+                      {formatPatientDisplayId(r.patientNumber) ? (
+                        <span className="text-xs font-mono font-bold text-[#009ef7]">{r.patientNumber}</span>
+                      ) : (
+                        <span className="text-xs font-semibold text-slate-500">{r.modality || 'Study'}</span>
+                      )}
                       {r.isUrgent && (
                         <span className="px-1.5 py-0.5 bg-rose-600 text-white font-mono font-bold text-[9px] rounded uppercase animate-pulse flex items-center gap-1">
                           <AlertTriangle className="w-2.5 h-2.5" /> URGENT
@@ -444,7 +454,7 @@ export default function LiveDashboardPage() {
       <ConfirmDialog
         open={!!declineTarget}
         title="Decline Case"
-        message={declineTarget ? `Are you sure you want to decline case ${declineTarget.patientNumber} (${declineTarget.fullName})?` : ''}
+        message={declineTarget ? `Are you sure you want to decline the study for ${declineTarget.fullName}${formatPatientDisplayId(declineTarget.patientNumber) ? ` (${declineTarget.patientNumber})` : ''}?` : ''}
         confirmLabel="Decline"
         cancelLabel="Cancel"
         variant="danger"

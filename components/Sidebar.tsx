@@ -31,6 +31,7 @@ import { RadiologyStore, UserAccount, XRayReport } from '@/lib/radiology-store';
 import { hasCenterLevel } from '@/lib/access';
 import { ApiClient, getAccessToken, WS_BASE_URL, apiErrorMessage, UserNotification } from '@/lib/api-client';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { formatPatientDisplayId } from '@/lib/uuid';
 
 // Number of nav items shown directly in the mobile bottom bar. The rest go in the "More" sheet.
 const MOBILE_TAB_COUNT = 4;
@@ -106,7 +107,6 @@ export default function Sidebar({
         return [
           { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
           { href: '/dashboard/all-reports', label: 'All Reports', icon: FileText },
-          { href: '/dashboard/document-editor', label: 'Templates', icon: BookmarkPlus },
           { href: '/dashboard/doctors', label: 'Doctors', icon: Users },
           { href: '/dashboard/radiology', label: 'Centers', icon: Building },
           { href: '/dashboard/approvals', label: 'My Submissions', icon: Shield },
@@ -130,7 +130,6 @@ export default function Sidebar({
           items.push({ href: '/dashboard/all-reports', label: 'All Reports', icon: FileText });
         }
         if (hasCenterLevel(session, 'invoices', 'read')) items.push({ href: '/dashboard/center-invoices', label: 'Invoices', icon: Receipt });
-        if (hasCenterLevel(session, 'templates', 'read')) items.push({ href: '/dashboard/document-editor', label: 'Templates', icon: BookmarkPlus });
         if (hasCenterLevel(session, 'center_info', 'read')) items.push({ href: '/dashboard/center-info', label: 'Center Info', icon: Building });
         if (session?.canManageCenterUsers) items.push({ href: '/dashboard/center-users', label: 'Users', icon: UserCog });
         return items;
@@ -142,7 +141,6 @@ export default function Sidebar({
           { href: '/dashboard/approvals', label: 'Pending Approvals', icon: Shield },
           { href: '/dashboard/all-reports', label: 'All Reports', icon: FileText },
           { href: '/dashboard/invoices', label: 'Invoices', icon: Receipt },
-          { href: '/dashboard/document-editor', label: 'Templates', icon: BookmarkPlus },
           { href: '/dashboard/doctors', label: 'Doctors', icon: Users },
           { href: '/dashboard/radiology', label: 'Centers', icon: Building },
           { href: '/dashboard/center-users', label: 'Center Users', icon: UserCog },
@@ -237,6 +235,55 @@ export default function Sidebar({
   };
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notifContainerRef = useRef<HTMLDivElement>(null);
+
+  // Close notifications popover (and collapse sidebar if open) when clicking anywhere outside
+  useEffect(() => {
+    if (!notificationsOpen) return;
+
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (notifContainerRef.current && !notifContainerRef.current.contains(target)) {
+        setNotificationsOpen(false);
+        if (!collapsed) {
+          onToggleCollapse();
+        }
+        if (mobileOpen) {
+          onCloseMobile?.();
+        }
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setNotificationsOpen(false);
+        if (!collapsed) {
+          onToggleCollapse();
+        }
+        if (mobileOpen) {
+          onCloseMobile?.();
+        }
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
+        const target = event.target as HTMLElement | null;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+          return;
+        }
+        event.preventDefault();
+        onToggleCollapse();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [notificationsOpen, collapsed, onToggleCollapse, mobileOpen, onCloseMobile]);
   const [liveReports, setLiveReports] = useState<XRayReport[]>([]);
   const [rejectedIds, setRejectedIds] = useState<string[]>([]);
   const [toastNotice, setToastNotice] = useState<string | null>(null);
@@ -595,7 +642,7 @@ export default function Sidebar({
                 {session?.role === 'CENTER' ? `Report Signed: ${rep.fullName}` : rep.radiologyCenterName}
               </div>
               <div className={mobile ? 'text-[12px] text-slate-500 font-medium mt-0.5' : 'text-[11px] text-slate-500 font-medium'}>
-                {rep.fullName} ({rep.patientNumber})
+                {rep.fullName}{formatPatientDisplayId(rep.patientNumber) ? ` (${rep.patientNumber})` : ''}
               </div>
             </div>
             <span className={mobile ? 'font-mono text-[10px] text-slate-400 font-bold shrink-0' : 'font-mono text-[9px] text-slate-400 font-bold'}>
@@ -647,35 +694,70 @@ export default function Sidebar({
         userSelect: 'none',
       }}
     >
-      {/* Brand Header & Toggle */}
+      {/* Unique Floating Border-Edge Toggle Button */}
+      <button
+        type="button"
+        onClick={onToggleCollapse}
+        className="hidden md:flex absolute -right-3 top-[10px] z-40 w-6 h-6 rounded-full bg-white border border-slate-200 shadow-[0_2px_6px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_12px_rgba(0,158,247,0.3)] hover:border-[#009ef7] hover:bg-[#009ef7] text-slate-400 hover:text-white items-center justify-center transition-all duration-200 cursor-pointer active:scale-90 group focus:outline-none"
+        title={collapsed ? 'Expand Sidebar (Ctrl+B)' : 'Collapse Sidebar (Ctrl+B)'}
+        aria-label={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+      >
+        <ChevronLeft
+          size={12}
+          strokeWidth={2.5}
+          className={`transition-transform duration-300 ease-out ${
+            collapsed ? 'rotate-180 group-hover:text-white' : 'rotate-0 group-hover:text-white'
+          }`}
+        />
+      </button>
+
+      {/* Brand Header */}
       <div
-        className="border-b border-slate-200 flex items-center justify-between"
+        className="border-b border-slate-200 flex items-center shrink-0 transition-all duration-200 overflow-hidden"
         style={{
           height: 44,
-          padding: collapsed ? '0 12px' : '0 12px',
-          flexShrink: 0,
+          padding: collapsed ? '0' : '0 12px',
+          justifyContent: collapsed ? 'center' : 'space-between',
         }}
       >
-        <img
-          src="/logo.png"
-          alt="Radionlineofficial"
-          style={{
-            height: collapsed ? 28 : 34,
-            width: collapsed ? 28 : 34,
-            objectFit: 'contain',
-            borderRadius: '50%',
-          }}
-        />
-
-        {/* Top Collapse Toggle Icon */}
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
-          title={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+        <div
+          onClick={collapsed ? onToggleCollapse : undefined}
+          className={`flex items-center gap-2.5 min-w-0 ${
+            collapsed ? 'w-full h-full justify-center cursor-pointer hover:bg-slate-50 transition-colors' : ''
+          }`}
+          title={collapsed ? 'Click to expand sidebar (Ctrl+B)' : undefined}
         >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
+          <img
+            src="/logo.png"
+            alt="Radionline"
+            className="rounded-full object-contain shrink-0 transition-transform duration-200"
+            style={{
+              height: 28,
+              width: 28,
+            }}
+          />
+          {!collapsed && (
+            <div className="flex flex-col min-w-0 leading-tight">
+              <span className="font-extrabold text-[12px] tracking-tight text-slate-900 truncate">
+                RADIONLINE
+              </span>
+              <span className="text-[9px] font-bold text-[#009ef7] tracking-wider font-mono uppercase">
+                TELERADIOLOGY
+              </span>
+            </div>
+          )}
+        </div>
+
+        {!collapsed && mobileOpen && (
+          <button
+            type="button"
+            onClick={onCloseMobile}
+            className="md:hidden p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
+            title="Close Drawer"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       {/* Navigation list */}
@@ -749,7 +831,7 @@ export default function Sidebar({
         )}
 
         {/* 1. Notifications Button & Popover */}
-        <div className="relative">
+        <div ref={notifContainerRef} className="relative">
           <button
             type="button"
             onClick={() => {

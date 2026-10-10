@@ -28,10 +28,13 @@ import { RowChatButton, RowEditButton } from '@/components/CaseRowButtons';
 import { toast } from '@/components/ui/Toast';
 import DataTape, { Metric } from '@/components/DataTape';
 import NewXRayReportModal, { NewCasePayload } from '@/components/NewXRayReportModal';
+import { formatPatientDisplayId } from '@/lib/uuid';
 import { useResizableColumns } from '@/lib/use-resizable-columns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { PriorityBadge } from '@/components/ui/PriorityBadge';
 import { RowCard, RowCardList, RT_ACTIONS, RT_CONTAINER, RT_TABLET_HIDE, RT_TABLET_ONLY } from '@/components/ui/ResponsiveTable';
+import ReportOptionsPopover from '@/components/ReportOptionsPopover';
+import ReportPreviewModal from '@/components/ReportPreviewModal';
 
 export default function DashboardOverviewPage() {
   const [reports, setReports] = useState<XRayReport[]>([]);
@@ -42,6 +45,10 @@ export default function DashboardOverviewPage() {
   const [revenueError, setRevenueError] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<XRayReport | null>(null);
   const [chatTarget, setChatTarget] = useState<XRayReport | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<XRayReport | null>(null);
+  const [previewWithHeader, setPreviewWithHeader] = useState(true);
+  const [previewBodyPart, setPreviewBodyPart] = useState<string | undefined>(undefined);
   const router = useRouter();
 
   const openWorkspace = (report: XRayReport) => {
@@ -149,6 +156,14 @@ export default function DashboardOverviewPage() {
 
   const showCenter = showCenterColumn(session);
   const canUpload = canUploadCase(session);
+  const isDoctor = session?.role === 'DOCTOR';
+
+  const handleSelectReportOption = (report: XRayReport, withHeader: boolean, bodyPart?: string) => {
+    setSelectedReport(report);
+    setPreviewWithHeader(withHeader);
+    setPreviewBodyPart(bodyPart);
+    setIsPreviewOpen(true);
+  };
 
   const pendingReports = reports
     .filter((r) => r.status === 'Pending')
@@ -291,26 +306,34 @@ export default function DashboardOverviewPage() {
               STAT URGENT ({pendingReports.length})
             </span>
             <span className="font-bold text-rose-900 truncate">
-              {pendingReports[0].fullName} ({pendingReports[0].patientNumber}){showCenter ? ` — ${pendingReports[0].radiologyCenterName}` : ''}
+              {pendingReports[0].fullName}{formatPatientDisplayId(pendingReports[0].patientNumber) ? ` (${pendingReports[0].patientNumber})` : ''}{showCenter ? ` — ${pendingReports[0].radiologyCenterName}` : ''}
             </span>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => openWorkspace(pendingReports[0])}
-              className="btn-pacs"
-            >
-              <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
-              <span>PACS</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => openWorkspace(pendingReports[0])}
-              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded"
-            >
-              Report
-            </button>
+            <ReportOptionsPopover
+              report={pendingReports[0]}
+              onSelectOption={handleSelectReportOption}
+            />
+            {isDoctor && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => openWorkspace(pendingReports[0])}
+                  className="btn-pacs"
+                >
+                  <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
+                  <span>PACS</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openWorkspace(pendingReports[0])}
+                  className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded"
+                >
+                  Report
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -326,7 +349,7 @@ export default function DashboardOverviewPage() {
                 key={r.id}
                 tone={r.isUrgent ? 'urgent' : 'default'}
                 title={<span className={r.isUrgent ? 'text-red-600' : undefined}>{r.fullName}</span>}
-                subtitle={<span className="font-mono">{r.patientNumber} {'\u2022'} {r.gender}/{r.age}y</span>}
+                subtitle={<span className="font-mono">{formatPatientDisplayId(r.patientNumber) ? `${r.patientNumber} \u2022 ` : ''}{r.gender}/{r.age}y</span>}
                 aside={
                   <StatusBadge
                     status={r.status}
@@ -357,18 +380,26 @@ export default function DashboardOverviewPage() {
                 ]}
                 actions={
                   <>
-                    <button type="button" onClick={() => openWorkspace(r)} className="btn-pacs">
-                      <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
-                      <span>PACS</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openWorkspace(r)}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg transition-colors inline-flex items-center gap-1"
-                    >
-                      <FileEdit className="w-3.5 h-3.5" />
-                      <span>Report</span>
-                    </button>
+                    <ReportOptionsPopover
+                      report={r}
+                      onSelectOption={handleSelectReportOption}
+                    />
+                    {isDoctor && (
+                      <>
+                        <button type="button" onClick={() => openWorkspace(r)} className="btn-pacs">
+                          <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
+                          <span>PACS</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openWorkspace(r)}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg transition-colors inline-flex items-center gap-1"
+                        >
+                          <FileEdit className="w-3.5 h-3.5" />
+                          <span>Report</span>
+                        </button>
+                      </>
+                    )}
                     <RowChatButton onClick={() => setChatTarget(r)} />
                     {canEditCase(session, r) && <RowEditButton onClick={() => setEditTarget(r)} />}
                   </>
@@ -410,7 +441,7 @@ export default function DashboardOverviewPage() {
             <tbody className="divide-y divide-slate-100">
               {sortedReports.map((r) => (
                 <tr key={r.id} className={`hover:bg-slate-50/80 transition-colors ${r.isUrgent ? 'bg-rose-50/20' : ''}`}>
-                  <td title={`${r.fullName} (${r.patientNumber})`} className="p-3">
+                  <td title={formatPatientDisplayId(r.patientNumber) ? `${r.fullName} (${r.patientNumber})` : r.fullName} className="p-3">
                     <div className="font-bold text-slate-900 flex items-center gap-1.5">
                       <span>{r.fullName}</span>
                       {r.isUrgent && (
@@ -420,7 +451,7 @@ export default function DashboardOverviewPage() {
                       )}
                     </div>
                     <div className="font-mono text-[10px] text-slate-500">
-                      {r.patientNumber} • {r.gender}/{r.age}y
+                      {formatPatientDisplayId(r.patientNumber) ? `${r.patientNumber} • ` : ''}{r.gender}/{r.age}y
                     </div>
                     {showCenter && <div className={`${RT_TABLET_ONLY} mt-0.5 text-[11px] text-slate-600`}>{r.radiologyCenterName}</div>}
                   </td>
@@ -449,22 +480,30 @@ export default function DashboardOverviewPage() {
                   </td>
                   <td className="p-3 text-right">
                     <div className={`inline-flex items-center gap-1.5 ${RT_ACTIONS}`}>
-                      <button
-                        type="button"
-                        onClick={() => openWorkspace(r)}
-                        className="btn-pacs"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
-                        <span>PACS</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openWorkspace(r)}
-                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] rounded transition-colors inline-flex items-center gap-1"
-                      >
-                        <FileEdit className="w-3 h-3" />
-                        <span>Report</span>
-                      </button>
+                      <ReportOptionsPopover
+                        report={r}
+                        onSelectOption={handleSelectReportOption}
+                      />
+                      {isDoctor && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openWorkspace(r)}
+                            className="btn-pacs"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
+                            <span>PACS</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openWorkspace(r)}
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] rounded transition-colors inline-flex items-center gap-1"
+                          >
+                            <FileEdit className="w-3 h-3" />
+                            <span>Report</span>
+                          </button>
+                        </>
+                      )}
                       <RowChatButton compact onClick={() => setChatTarget(r)} />
                       {canEditCase(session, r) && <RowEditButton compact onClick={() => setEditTarget(r)} />}
                     </div>
@@ -525,6 +564,16 @@ export default function DashboardOverviewPage() {
 
       {chatTarget && (
         <CaseActivityPanel withBackdrop report={chatTarget} open={!!chatTarget} onClose={() => setChatTarget(null)} onClaimUpdated={() => loadDashboardData()} />
+      )}
+
+      {selectedReport && (
+        <ReportPreviewModal
+          isOpen={isPreviewOpen}
+          onClose={() => setIsPreviewOpen(false)}
+          report={selectedReport}
+          withHeader={previewWithHeader}
+          selectedBodyPart={previewBodyPart}
+        />
       )}
     </div>
   );

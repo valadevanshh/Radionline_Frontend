@@ -18,7 +18,7 @@ import {
 import { RadiologyStore, XRayReport, Doctor, RadiologyCenter } from '@/lib/radiology-store';
 import { ApiClient, apiErrorMessage, isPendingApproval, resolveMediaUrl } from '@/lib/api-client';
 import { centerIdsWith } from '@/lib/access';
-import { generateUUID } from '@/lib/uuid';
+import { generateUUID, isUUID } from '@/lib/uuid';
 
 /** Payload handed to the page on create (same contract as before, plus the case id the files were stored under). */
 export type NewCasePayload = Omit<XRayReport, 'createdAt'>;
@@ -261,7 +261,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
       setMoreOpen(true);
     } else {
       setCaseId(generateUUID());
-      setPatientNumber(generateUUID());
+      setPatientNumber('');
       setFullName('');
       setAge('');
       setAgeUnit('Years');
@@ -1009,7 +1009,9 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                       </div>
                     </div>
                   )}
-                  <p className="text-[11px] text-slate-400 font-mono break-all">Patient ID: {patientNumber}</p>
+                  {patientNumber && !isUUID(patientNumber) && (
+                    <p className="text-[11px] text-slate-400 font-mono break-all">Patient ID: {patientNumber}</p>
+                  )}
                 </div>
               )}
             </section>
