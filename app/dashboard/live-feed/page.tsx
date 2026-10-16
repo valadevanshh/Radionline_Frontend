@@ -113,7 +113,14 @@ export default function LiveDashboardPage() {
             // A case accepted by any doctor leaves the incoming queue at once (refetch below confirms)
             if (payload.type === 'REPORT_CLAIMED') {
               const claimedId: string | undefined = payload.reportId || payload.report?.id;
+              const claimedBy = payload.claimedByDoctorId;
               if (claimedId) {
+                if (claimedBy && claimedBy !== docId && claimedBy !== session?.email) {
+                  // Accepted by another doctor: immediately disappear from this doctor's view
+                  setReports((prev) => prev.filter((r) => r.id !== claimedId));
+                  if (toastReportIdRef.current === claimedId) hideToast();
+                  return;
+                }
                 setReports((prev) =>
                   prev.map((r) =>
                     r.id === claimedId
@@ -206,7 +213,12 @@ export default function LiveDashboardPage() {
   };
 
   const incomingPendingReports = reports
-    .filter((r) => r.status !== 'Completed' && r.claimStatus !== 'CLAIMED' && (!r.claimedByDoctorId || r.claimedByDoctorId === 'UNCLAIMED'))
+    .filter((r) => {
+      if (r.status === 'Completed' || r.status === 'In Review' || r.claimStatus === 'CLAIMED') return false;
+      if (r.claimedByDoctorId && r.claimedByDoctorId !== 'UNCLAIMED') return false;
+      if (r.studies && r.studies.some((s) => s.claimedBy && s.claimedBy !== 'UNCLAIMED')) return false;
+      return true;
+    })
     .sort((a, b) => { const au=a.isUrgent?0:1, bu=b.isUrgent?0:1; if(au!==bu) return au-bu; const ap=(a.isPartial||((a.signedStudyCount||0)>0&&(a.signedStudyCount||0)<(a.studyCount||a.bodyParts?.length||0)))?0:1; const bp=(b.isPartial||((b.signedStudyCount||0)>0&&(b.signedStudyCount||0)<(b.studyCount||b.bodyParts?.length||0)))?0:1; if(ap!==bp) return ap-bp; return 0; });
 
   const claimedMyReports = reports
@@ -276,102 +288,107 @@ export default function LiveDashboardPage() {
           </div>
 
           {incomingPendingReports.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {incomingPendingReports.map((r) => (
-                <div
-                  key={r.id}
-                  className={`rounded-xl p-4 shadow-xs hover:shadow-md flex flex-col justify-between space-y-3 transition-all border ${
-                    r.isUrgent
-                      ? 'bg-rose-50/40 border-2 border-rose-500 hover:border-rose-600 shadow-rose-100'
-                      : 'bg-white border-slate-200 hover:border-[#009ef7]'
-                  }`}
-                >
-                  <div className="space-y-2.5">
-                    {/* Header */}
-                    <div className="flex items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                        {formatPatientDisplayId(r.patientNumber) ? (
-                          <span className="text-[11px] sm:text-xs font-extrabold font-mono text-[#009ef7] px-2 py-0.5 bg-[#009ef7]/10 rounded border border-[#009ef7]/20">
-                            {r.patientNumber}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] sm:text-xs font-bold text-slate-700 px-2 py-0.5 bg-slate-100 rounded border border-slate-200">
-                            {r.modality || 'Study'}
-                          </span>
-                        )}
-                        {r.isUrgent && (
-                          <span className="px-2 py-0.5 bg-rose-600 text-white font-mono font-bold text-[10px] rounded uppercase animate-pulse flex items-center gap-1">
-                            <AlertTriangle className="w-3 h-3" /> STAT URGENT
-                          </span>
-                        )}
+            <>
+              {/* Mobile: compact stacked rows (below md) */}
+              <div className="md:hidden bg-white border border-slate-200 rounded-xl shadow-xs divide-y divide-slate-100 overflow-hidden">
+                {incomingPendingReports.map((r) => (
+                  <div key={r.id} className={`p-3 space-y-2 ${r.isUrgent ? 'bg-rose-50/60 border-l-4 border-rose-500' : ''}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-sm font-bold truncate ${r.isUrgent ? 'text-red-500' : 'text-slate-900'}`}>{r.fullName}</span>
+                          {r.isUrgent && (
+                            <span className="px-1.5 py-0.5 bg-rose-600 text-white font-mono font-bold text-[9px] rounded uppercase animate-pulse flex items-center gap-1">
+                              <AlertTriangle className="w-2.5 h-2.5" /> STAT
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {formatPatientDisplayId(r.patientNumber) ? <span className="font-mono font-bold text-[#009ef7] mr-1">{r.patientNumber}</span> : null}
+                          {r.modality || 'Study'} · {r.gender?.charAt(0)} · {r.age} yrs
+                        </div>
                       </div>
-                      <span className="text-[11px] font-mono text-slate-500 shrink-0 pt-0.5 sm:pt-0">
-                        {r.studyDate}
-                      </span>
+                      <span className="text-[10px] font-mono text-slate-500 shrink-0">{r.studyDate}</span>
                     </div>
-
-                    {/* Patient Demographics */}
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">
-                        <span className={r.isUrgent ? "text-red-500 font-bold" : undefined}>{r.fullName}</span>
-                      </h3>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Gender: <strong className="text-slate-800">{r.gender.charAt(0)}</strong> • Age: <strong className="text-slate-800">{r.age} yrs</strong>
-                      </p>
+                    <div className="text-[11px] text-slate-600 flex items-center gap-1 min-w-0">
+                      <Building className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span className="truncate">{r.radiologyCenterName}</span>
                     </div>
-
-                    {/* Diagnostic Lab */}
-                    <div className="text-xs text-slate-700 flex items-center gap-1.5 bg-slate-50 p-2 rounded border border-slate-200">
-                      <Building className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                      <span className="font-semibold truncate">{r.radiologyCenterName}</span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="px-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-800 text-[11px] font-bold rounded">{r.bodyParts.join(', ')}</span>
+                      {r.clinicalNotes && <span className="text-[11px] text-amber-800 italic truncate max-w-full">Hx: {r.clinicalNotes}</span>}
                     </div>
-
-                    {/* Body Parts */}
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
-                        Body Part / Study:
-                      </span>
-                      <span className="px-2 py-0.5 bg-blue-50 border border-blue-200 text-blue-800 text-xs font-bold rounded inline-block">
-                        {r.bodyParts.join(', ')}
-                      </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => handleAcceptReport(r)} className="py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] uppercase rounded-md flex items-center justify-center gap-1 cursor-pointer">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Accept
+                      </button>
+                      <button type="button" onClick={() => handleDeclineReport(r)} className="py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-slate-300 font-bold text-[11px] uppercase rounded-md flex items-center justify-center gap-1 cursor-pointer">
+                        <XCircle className="w-3.5 h-3.5 text-rose-600" /> Decline
+                      </button>
                     </div>
-
-                    {/* Clinical History */}
-                    {r.clinicalNotes && (
-                      <div className="bg-amber-50 border border-amber-200 p-2.5 rounded-lg space-y-0.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1">
-                          <Activity className="w-3 h-3 text-amber-600" /> History:
-                        </span>
-                        <p className="text-xs text-amber-900 font-sans italic leading-snug">
-                          "{r.clinicalNotes}"
-                        </p>
-                      </div>
-                    )}
                   </div>
+                ))}
+              </div>
 
-                  {/* Accept vs Decline Action Buttons */}
-                  <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleAcceptReport(r)}
-                      className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Accept</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleDeclineReport(r)}
-                      className="py-2 px-3 bg-white hover:bg-rose-50 text-rose-700 border border-slate-300 hover:border-rose-300 font-bold text-xs uppercase tracking-wider rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <XCircle className="w-4 h-4 text-rose-600" />
-                      <span>Decline</span>
-                    </button>
-                  </div>
+              {/* Tablet / laptop / desktop: table (md and up) */}
+              <div className="hidden md:block bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-2.5 font-bold">Patient</th>
+                        <th className="px-3 py-2.5 font-bold">Modality</th>
+                        <th className="px-3 py-2.5 font-bold">Body Part / Study</th>
+                        <th className="px-3 py-2.5 font-bold hidden lg:table-cell">Center</th>
+                        <th className="px-3 py-2.5 font-bold hidden xl:table-cell">History</th>
+                        <th className="px-3 py-2.5 font-bold whitespace-nowrap">Date</th>
+                        <th className="px-3 py-2.5 font-bold text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {incomingPendingReports.map((r) => (
+                        <tr key={r.id} className={`transition-colors ${r.isUrgent ? 'bg-rose-50/60 hover:bg-rose-50' : 'hover:bg-slate-50'}`}>
+                          <td className={`px-3 py-2.5 ${r.isUrgent ? 'border-l-4 border-rose-500' : ''}`}>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`font-bold ${r.isUrgent ? 'text-red-500' : 'text-slate-900'}`}>{r.fullName}</span>
+                              {r.isUrgent && (
+                                <span className="px-1.5 py-0.5 bg-rose-600 text-white font-mono font-bold text-[9px] rounded uppercase animate-pulse flex items-center gap-1">
+                                  <AlertTriangle className="w-2.5 h-2.5" /> STAT
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-0.5 whitespace-nowrap">
+                              {formatPatientDisplayId(r.patientNumber) ? <span className="font-mono font-bold text-[#009ef7] mr-1">{r.patientNumber}</span> : null}
+                              {r.gender?.charAt(0)} · {r.age} yrs
+                            </div>
+                            <div className="text-[11px] text-slate-500 lg:hidden truncate max-w-[180px]">{r.radiologyCenterName}</div>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded font-bold text-slate-700 whitespace-nowrap">{r.modality || 'Study'}</span>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span className="px-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-800 font-bold rounded inline-block">{r.bodyParts.join(', ')}</span>
+                          </td>
+                          <td className="px-3 py-2.5 hidden lg:table-cell text-slate-700 font-semibold max-w-[200px] truncate" title={r.radiologyCenterName}>{r.radiologyCenterName}</td>
+                          <td className="px-3 py-2.5 hidden xl:table-cell text-amber-800 italic max-w-[220px] truncate" title={r.clinicalNotes || ''}>{r.clinicalNotes || '—'}</td>
+                          <td className="px-3 py-2.5 font-mono text-slate-500 whitespace-nowrap">{r.studyDate}</td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button type="button" onClick={() => handleAcceptReport(r)} title="Accept" className="py-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] uppercase rounded-md flex items-center gap-1 cursor-pointer">
+                                <CheckCircle2 className="w-3.5 h-3.5" /><span className="hidden lg:inline">Accept</span>
+                              </button>
+                              <button type="button" onClick={() => handleDeclineReport(r)} title="Decline" className="py-1.5 px-2.5 bg-white hover:bg-rose-50 text-rose-700 border border-slate-300 hover:border-rose-300 font-bold text-[11px] uppercase rounded-md flex items-center gap-1 cursor-pointer">
+                                <XCircle className="w-3.5 h-3.5 text-rose-600" /><span className="hidden lg:inline">Decline</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
-            </div>
+              </div>
+            </>
           ) : (
             <div className="bg-white border border-slate-200 rounded-xl p-8 text-center flex flex-col items-center justify-center shadow-xs">
               <Radio className="w-8 h-8 text-emerald-600 mb-2 animate-pulse" />

@@ -525,6 +525,7 @@ export default function DicomViewerModal({
       </div>
     `;
 
+    const sess = RadiologyStore.getSession();
     const tmplPayload = {
       title: saveTmplTitle.trim(),
       centerId: saveTmplCenterId,
@@ -534,6 +535,8 @@ export default function DicomViewerModal({
       findings: findingText,
       impression: impressionText,
       content: contentHtml,
+      doctorId: sess?.doctorId || String(sess?.userId || ''),
+      doctorName: sess?.name,
     };
     ApiClient.saveTemplate(tmplPayload)
       .then((saved) => {

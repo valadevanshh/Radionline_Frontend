@@ -67,12 +67,12 @@ export default function ReportOptionsPopover({ report, onSelectOption }: ReportO
         ref={buttonRef}
         type="button"
         onClick={toggleOpen}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#009ef7] bg-[#009ef7]/10 hover:bg-[#009ef7]/20 border border-[#009ef7]/30 transition-all cursor-pointer rounded-lg shrink-0"
+        className="inline-flex items-center justify-center gap-1 p-2 text-xs font-semibold text-[#009ef7] bg-[#009ef7]/10 hover:bg-[#009ef7] hover:text-white border border-[#009ef7]/30 transition-all cursor-pointer rounded-lg shrink-0 shadow-2xs"
         title="View X-Ray Report Options"
+        aria-label="Actions"
       >
-        <Eye className="w-3.5 h-3.5" />
-        <span>Actions</span>
-        <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <FileText className="w-4 h-4" />
+        <ChevronDown className={`w-2.5 h-2.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && mounted && createPortal(

@@ -226,6 +226,8 @@ export default function ReportTemplateModal({
       findings: findings.trim(),
       impression: impression.trim(),
       content: contentHtml,
+      doctorId: session?.doctorId || String(session?.userId || ''),
+      doctorName: session?.name,
     };
 
     setIsSaving(true);

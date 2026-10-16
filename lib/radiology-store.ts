@@ -192,6 +192,8 @@ export interface DocTemplate {
   findings?: string;
   impression?: string;
   content?: string;
+  doctorId?: string;
+  doctorName?: string;
   createdAt: string;
 }
 
@@ -288,12 +290,67 @@ export const RadiologyStore = {
     if (typeof window === 'undefined') return INITIAL_REPORTS;
     this.init();
     const stored = localStorage.getItem(STORAGE_KEYS.REPORTS);
-    return stored ? JSON.parse(stored) : INITIAL_REPORTS;
+    const list: XRayReport[] = stored ? JSON.parse(stored) : INITIAL_REPORTS;
+    const session = this.getSession();
+    if (!session) return list;
+
+    if (session.role === 'DOCTOR') {
+      const docId = session.doctorId || session.email;
+      return list.filter((r) => {
+        const isClaimedByOther = Boolean(
+          (r.claimedByDoctorId && r.claimedByDoctorId !== docId && r.claimedByDoctorId !== session.email && r.claimedByDoctorId !== 'UNCLAIMED') ||
+          (r.assignedDoctorId && r.assignedDoctorId !== docId && r.assignedDoctorId !== session.email && r.assignedDoctorId !== 'ALL' && (r.status === 'In Review' || r.status === 'Completed' || r.claimStatus === 'CLAIMED')) ||
+          (r.studies && r.studies.some((s) => s.claimedBy && s.claimedBy !== docId && s.claimedBy !== session.email && s.claimedBy !== 'UNCLAIMED'))
+        );
+        return !isClaimedByOther;
+      });
+    }
+
+    if (session.role === 'CENTER') {
+      const centerIds = new Set(
+        session.centers?.map((c) => c.centerId) || (session.centerId ? [session.centerId] : [])
+      );
+      if (centerIds.size > 0) {
+        return list.filter((r) => centerIds.has(r.radiologyCenterId));
+      }
+    }
+
+    return list;
   },
 
   saveReport(report: Omit<XRayReport, 'id' | 'createdAt'> & { id?: string }) {
     if (typeof window === 'undefined') return;
-    const reports = this.getReports();
+    const session = this.getSession();
+    if (session) {
+      if (session.role === 'CENTER') {
+        const centerIds = new Set(
+          session.centers?.map((c) => c.centerId) || (session.centerId ? [session.centerId] : [])
+        );
+        if (centerIds.size > 0 && report.radiologyCenterId && !centerIds.has(report.radiologyCenterId)) {
+          return;
+        }
+      } else if (session.role === 'DOCTOR') {
+        const docId = session.doctorId || session.email;
+        const isClaimedByOther = Boolean(
+          (report.claimedByDoctorId && report.claimedByDoctorId !== docId && report.claimedByDoctorId !== session.email && report.claimedByDoctorId !== 'UNCLAIMED') ||
+          (report.assignedDoctorId && report.assignedDoctorId !== docId && report.assignedDoctorId !== session.email && report.assignedDoctorId !== 'ALL' && (report.status === 'In Review' || report.status === 'Completed' || report.claimStatus === 'CLAIMED')) ||
+          (report.studies && report.studies.some((s) => s.claimedBy && s.claimedBy !== docId && s.claimedBy !== session.email && s.claimedBy !== 'UNCLAIMED'))
+        );
+        if (isClaimedByOther) {
+          if (report.id) {
+            const rawStored = localStorage.getItem(STORAGE_KEYS.REPORTS);
+            if (rawStored) {
+              const all = (JSON.parse(rawStored) as XRayReport[]).filter((r) => r.id !== report.id);
+              localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(all));
+            }
+          }
+          window.dispatchEvent(new Event('radionline_reports_changed'));
+          return;
+        }
+      }
+    }
+    const rawStored = localStorage.getItem(STORAGE_KEYS.REPORTS);
+    const reports: XRayReport[] = rawStored ? JSON.parse(rawStored) : INITIAL_REPORTS;
     if (report.id) {
       const idx = reports.findIndex((r) => r.id === report.id);
       if (idx !== -1) {
@@ -462,48 +519,100 @@ export const RadiologyStore = {
     // Auto-merge system templates so all standard templates are always available
     const existingIds = new Set(parsed.map((t) => t.id));
     const missingSystem = INITIAL_TEMPLATES.filter((t) => !existingIds.has(t.id));
+    let combined = parsed;
     if (missingSystem.length > 0) {
-      const combined = [...parsed, ...missingSystem];
+      combined = [...parsed, ...missingSystem];
       localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(combined));
-      return combined;
     }
-    return parsed.length > 0 ? parsed : INITIAL_TEMPLATES;
+    if (combined.length === 0) combined = INITIAL_TEMPLATES;
+
+    const session = this.getSession();
+    if (!session) return combined;
+
+    if (session.role === 'DOCTOR') {
+      const docId = String(session.doctorId || session.userId || '').trim();
+      const docName = (session.name || '').trim().toLowerCase();
+      return combined.filter((t) => {
+        // System standard templates (sys- prefix or no doctor ownership)
+        if (t.id.startsWith('sys-') || (!t.doctorId && !t.doctorName)) {
+          return true;
+        }
+        // If template was created by a doctor, it is strictly visible ONLY to that creator doctor!
+        if (t.doctorId && docId && (t.doctorId === docId || (session.doctorId && t.doctorId === session.doctorId))) {
+          return true;
+        }
+        if (t.doctorName && docName && t.doctorName.trim().toLowerCase() === docName) {
+          return true;
+        }
+        // Created by Doctor A -> invisible to Doctor B!
+        return false;
+      });
+    }
+
+    if (session.role === 'CENTER') {
+      const allowedCenters = new Set(
+        session.centers?.map((c) => c.centerId) || (session.centerId ? [session.centerId] : [])
+      );
+      return combined.filter((t) => {
+        // Centers should never see private doctor-created templates
+        if (t.doctorId || (t.doctorName && !t.id.startsWith('sys-'))) {
+          return false;
+        }
+        return (t.centerId || 'ALL') === 'ALL' || allowedCenters.has(t.centerId);
+      });
+    }
+
+    return combined;
   },
 
   saveTemplate(template: Omit<DocTemplate, 'id' | 'createdAt'> & { id?: string }): DocTemplate {
     if (typeof window === 'undefined') return template as DocTemplate;
-    const templates = this.getTemplates();
+    const session = this.getSession();
+    const docId = session?.role === 'DOCTOR' ? String(session.doctorId || session.userId || '') : undefined;
+    const docName = session?.role === 'DOCTOR' ? session.name : undefined;
+
+    const toSave: any = {
+      ...template,
+      doctorId: template.doctorId || docId,
+      doctorName: template.doctorName || docName,
+    };
+
+    const stored = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
+    const rawTemplates: DocTemplate[] = stored ? JSON.parse(stored) : [...INITIAL_TEMPLATES];
+
     let saved: DocTemplate;
-    if (template.id) {
-      const idx = templates.findIndex((t) => t.id === template.id);
+    if (toSave.id) {
+      const idx = rawTemplates.findIndex((t) => t.id === toSave.id);
       if (idx !== -1) {
-        templates[idx] = { ...templates[idx], ...template } as DocTemplate;
-        saved = templates[idx];
+        rawTemplates[idx] = { ...rawTemplates[idx], ...toSave } as DocTemplate;
+        saved = rawTemplates[idx];
       } else {
         saved = {
-          ...template,
+          ...toSave,
           id: generateUUID(),
           createdAt: new Date().toISOString(),
         } as DocTemplate;
-        templates.unshift(saved);
+        rawTemplates.unshift(saved);
       }
     } else {
       saved = {
-        ...template,
+        ...toSave,
         id: generateUUID(),
         createdAt: new Date().toISOString(),
       } as DocTemplate;
-      templates.unshift(saved);
+      rawTemplates.unshift(saved);
     }
-    localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(templates));
+    localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(rawTemplates));
     window.dispatchEvent(new Event('radionline_templates_changed'));
     return saved;
   },
 
   deleteTemplate(id: string) {
     if (typeof window === 'undefined') return;
-    const templates = this.getTemplates().filter((t) => t.id !== id);
-    localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(templates));
+    const stored = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
+    const rawTemplates: DocTemplate[] = stored ? JSON.parse(stored) : [];
+    const remaining = rawTemplates.filter((t) => t.id !== id);
+    localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(remaining));
     window.dispatchEvent(new Event('radionline_templates_changed'));
   },
 };

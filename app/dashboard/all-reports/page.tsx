@@ -143,6 +143,22 @@ function AllPatientReportsContent() {
             return;
           }
           if (data.type === 'NEW_REPORT' || data.type === 'REPORT_CLAIMED' || data.type === 'REPORT_REJECTED') {
+            if (data.type === 'REPORT_CLAIMED') {
+              const claimedId = data.reportId || data.report?.id;
+              const claimedBy = data.claimedByDoctorId;
+              const currentDocId = session?.doctorId || session?.email;
+              if (session?.role === 'DOCTOR' && claimedBy && claimedBy !== currentDocId && claimedBy !== session?.email) {
+                setReports((prev) => prev.filter((r) => r.id !== claimedId));
+                return;
+              }
+              if (session?.role === 'CENTER') {
+                const centerIds = new Set(session.centers?.map((c) => c.centerId) || (session.centerId ? [session.centerId] : []));
+                if (data.report && centerIds.size > 0 && !centerIds.has(data.report.radiologyCenterId)) {
+                  setReports((prev) => prev.filter((r) => r.id !== claimedId));
+                  return;
+                }
+              }
+            }
             if (data.report) {
               RadiologyStore.saveReport(data.report);
             }
@@ -189,10 +205,34 @@ function AllPatientReportsContent() {
       }
       if (filterDoctorId !== 'ALL' && r.assignedDoctorId !== filterDoctorId && r.referringPhysicianId !== filterDoctorId) return false;
       
-      // Real-time disappearance: If logged in as Doctor, hide cases claimed by other doctors
-      if (session?.role === 'DOCTOR' && session?.doctorId) {
-        if (r.claimStatus === 'CLAIMED' && r.claimedByDoctorId && r.claimedByDoctorId !== session.doctorId) {
+      // 1. Center isolation: If logged in as CENTER, other centers\' uploads must not be visible
+      if (session?.role === 'CENTER') {
+        const centerIds = new Set(
+          session.centers?.map((c) => c.centerId) || (session.centerId ? [session.centerId] : [])
+        );
+        if (centerIds.size > 0 && !centerIds.has(r.radiologyCenterId)) {
           return false;
+        }
+      }
+
+      // 2. Doctor isolation: If any doctor accepts the upload, other doctors must not see that data
+      if (session?.role === 'DOCTOR') {
+        const docId = session.doctorId || session.email || '';
+        const isClaimed = Boolean(
+          (r.claimStatus === 'CLAIMED') ||
+          (r.claimedByDoctorId && r.claimedByDoctorId !== 'UNCLAIMED') ||
+          (r.status === 'In Review' || r.status === 'Completed') ||
+          (r.studies && r.studies.some((s) => s.claimedBy && s.claimedBy !== 'UNCLAIMED'))
+        );
+        if (isClaimed) {
+          const isMine = Boolean(
+            (r.claimedByDoctorId && (r.claimedByDoctorId === docId || r.claimedByDoctorId === session.email)) ||
+            (r.assignedDoctorId && (r.assignedDoctorId === docId || r.assignedDoctorId === session.email)) ||
+            (r.studies && r.studies.some((s) => s.claimedBy === docId || s.claimedBy === session.email))
+          );
+          if (!isMine) {
+            return false;
+          }
         }
       }
 
@@ -519,32 +559,15 @@ function AllPatientReportsContent() {
                     <button
                       type="button"
                       onClick={() => openWorkspace(report)}
-                      className="btn-pacs"
+                      className="inline-flex items-center justify-center p-2 rounded-lg border border-[#009ef7]/40 bg-white text-[#009ef7] hover:bg-[#009ef7] hover:text-white transition-all shrink-0 cursor-pointer shadow-2xs"
+                      title="Open PACS DICOM Viewer"
+                      aria-label="PACS Viewer"
                     >
-                      <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
-                      <span>PACS</span>
+                      <Eye className="w-4 h-4" />
                     </button>
                   )}
                   <RowChatButton onClick={() => setChatTarget(report)} />
                   {canEditCase(session, report) && <RowEditButton onClick={() => setEditTarget(report)} />}
-                  {session?.role === 'DOCTOR' && report.claimStatus !== 'CLAIMED' && (
-                    <button
-                      type="button"
-                      onClick={() => handleClaimReport(report)}
-                      className="px-3 py-1.5 bg-[#009ef7] hover:bg-[#008be0] text-white text-xs font-bold rounded-lg"
-                    >
-                      Accept Case
-                    </button>
-                  )}
-                  {session?.role === 'DOCTOR' && report.status === 'Pending' && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenReviewSign(report)}
-                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg"
-                    >
-                      Sign
-                    </button>
-                  )}
                   {canDeleteRecords(session) && (
                     <button
                       type="button"
@@ -601,7 +624,7 @@ function AllPatientReportsContent() {
                   <span>Study Date</span>
                   <div className="col-resizer" onMouseDown={(e) => startResizing('studyDate', e.clientX, widths.studyDate)} />
                 </th>
-                <th title="Actions" style={{ width: widths.actions, minWidth: 300, textAlign: 'right', position: 'sticky', right: 0 }} className="bg-slate-50 shadow-2xs z-10">
+                <th title="Actions" style={{ width: widths.actions, minWidth: 200, textAlign: 'right', position: 'sticky', right: 0 }} className="bg-slate-50 shadow-2xs z-10">
                   <span>Actions</span>
                   <div className="col-resizer" onMouseDown={(e) => startResizing('actions', e.clientX, widths.actions)} />
                 </th>
@@ -673,7 +696,7 @@ function AllPatientReportsContent() {
                     <td title={formatDateDDMMYYYY(report.studyDate)} className={`p-3 font-mono text-slate-500 text-[11px] ${RT_TABLET_HIDE}`}>
                       {formatDateDDMMYYYY(report.studyDate)}
                     </td>
-                    <td style={{ width: widths.actions, minWidth: 300 }} className="p-3 text-right sticky right-0 bg-white shadow-2xs z-10">
+                    <td style={{ width: widths.actions, minWidth: 200 }} className="p-3 text-right sticky right-0 bg-white shadow-2xs z-10">
                       <div className={`flex flex-wrap items-center gap-1.5 justify-end ${RT_ACTIONS}`}>
                         <ReportOptionsPopover
                           report={report}
@@ -684,36 +707,16 @@ function AllPatientReportsContent() {
                           <button
                             type="button"
                             onClick={() => openWorkspace(report)}
-                            className="btn-pacs"
-                            title="PACS DICOM Workstation"
+                            className="inline-flex items-center justify-center p-2 rounded-lg border border-[#009ef7]/40 bg-white text-[#009ef7] hover:bg-[#009ef7] hover:text-white transition-all shrink-0 cursor-pointer shadow-2xs"
+                            title="Open PACS DICOM Viewer"
+                            aria-label="PACS Viewer"
                           >
-                            <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
-                            <span>PACS</span>
+                            <Eye className="w-4 h-4" />
                           </button>
                         )}
 
                         <RowChatButton compact onClick={() => setChatTarget(report)} />
                         {canEditCase(session, report) && <RowEditButton compact onClick={() => setEditTarget(report)} />}
-
-                        {session?.role === 'DOCTOR' && report.claimStatus !== 'CLAIMED' && (
-                          <button
-                            type="button"
-                            onClick={() => handleClaimReport(report)}
-                            className="px-2 py-1 bg-[#009ef7] hover:bg-[#008be0] text-white text-[11px] font-bold rounded"
-                          >
-                            Accept Case
-                          </button>
-                        )}
-
-                        {session?.role === 'DOCTOR' && report.status === 'Pending' && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenReviewSign(report)}
-                            className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded"
-                          >
-                            Sign
-                          </button>
-                        )}
 
                         {canDeleteRecords(session) && (
                           <button

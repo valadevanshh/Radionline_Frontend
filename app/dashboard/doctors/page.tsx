@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Users,
   Search,
@@ -12,29 +13,52 @@ import {
   UserPlus,
   PenLine,
 } from 'lucide-react';
-import { RadiologyStore, Doctor } from '@/lib/radiology-store';
+import { RadiologyStore, Doctor, UserAccount } from '@/lib/radiology-store';
 import AddDoctorModal from '@/components/AddDoctorModal';
 import { ApiClient, apiErrorMessage, isPendingApproval } from '@/lib/api-client';
 import { toast } from '@/components/ui/Toast';
 import { useConfirm, Modal } from '@/components/ui';
 import { RowCard, RowCardList, RT_CONTAINER, RT_TABLE_ONLY, RT_TABLET_HIDE } from '@/components/ui/ResponsiveTable';
 import DoctorSignatureForm from '@/components/DoctorSignatureForm';
-
-
 import { useResizableColumns } from '@/lib/use-resizable-columns';
 
 export default function DoctorsPage() {
+  const router = useRouter();
   const confirm = useConfirm();
+  const [session, setSession] = useState<UserAccount | null>(null);
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   // Super Admin: edit a doctor's report signature details (degree / reg no / signature)
   const [editDoctor, setEditDoctor] = useState<Doctor | null>(null);
-  const canEditSignature = RadiologyStore.getSession()?.role === 'SUPER_ADMIN';
+
+  useEffect(() => {
+    const checkAuth = () => {
+      const currentSession = RadiologyStore.getSession();
+      setSession(currentSession);
+      const role = currentSession?.role;
+      const isAllowedRole = role === 'SUPER_ADMIN' || role === 'MANAGER' || role === 'CENTER';
+      // Doctor is not allowed to see this page. Allowed: SUPER_ADMIN, MANAGER, CENTER
+      if (!currentSession || role === 'DOCTOR' || !isAllowedRole) {
+        router.replace('/dashboard');
+        setAuthorized(false);
+      } else {
+        setAuthorized(true);
+      }
+    };
+
+    checkAuth();
+    window.addEventListener('radionline_session_changed', checkAuth);
+    return () => window.removeEventListener('radionline_session_changed', checkAuth);
+  }, [router]);
+
+  const canManageDoctors = session?.role === 'SUPER_ADMIN' || session?.role === 'MANAGER';
+  const canEditSignature = session?.role === 'SUPER_ADMIN';
 
   const { widths, startResizing } = useResizableColumns({
-    name: 220,
-    contact: 200,
+    name: 240,
+    contact: 220,
     credentials: 260,
     status: 90,
     actions: 80,
@@ -50,11 +74,13 @@ export default function DoctorsPage() {
   };
 
   useEffect(() => {
-    loadDoctors();
-    const handleDoctorsChanged = () => loadDoctors();
-    window.addEventListener('radionline_doctors_changed', handleDoctorsChanged);
-    return () => window.removeEventListener('radionline_doctors_changed', handleDoctorsChanged);
-  }, []);
+    if (authorized) {
+      loadDoctors();
+      const handleDoctorsChanged = () => loadDoctors();
+      window.addEventListener('radionline_doctors_changed', handleDoctorsChanged);
+      return () => window.removeEventListener('radionline_doctors_changed', handleDoctorsChanged);
+    }
+  }, [authorized]);
 
   const filteredDoctors = useMemo(() => {
     return doctors.filter(
@@ -83,7 +109,6 @@ export default function DoctorsPage() {
 
   // Delete doctor: Super Admin deletes; a Manager's delete becomes a request for approval.
   const handleDeleteDoctor = async (id: string) => {
-    const session = RadiologyStore.getSession();
     const isManager = session?.role === 'MANAGER';
     const ok = await confirm({
       title: isManager ? 'Request doctor deletion' : 'Delete doctor profile',
@@ -108,6 +133,10 @@ export default function DoctorsPage() {
     loadDoctors();
   };
 
+  if (authorized !== true) {
+    return null;
+  }
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 text-slate-900">
       <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-4 space-y-3 max-w-7xl w-full mx-auto">
@@ -121,14 +150,16 @@ export default function DoctorsPage() {
             </h1>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center justify-center gap-2 px-3.5 py-2 bg-[#009ef7] hover:bg-[#008be0] text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-all shadow-xs cursor-pointer shrink-0 font-mono"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Doctor</span>
-          </button>
+          {canManageDoctors && (
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center justify-center gap-2 px-3.5 py-2 bg-[#009ef7] hover:bg-[#008be0] text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-all shadow-xs cursor-pointer shrink-0 font-mono"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Doctor</span>
+            </button>
+          )}
         </div>
 
         {/* Filter Toolbar & Data Card */}
@@ -154,7 +185,7 @@ export default function DoctorsPage() {
           {/* Mobile & Desktop Responsive Container */}
           <div className="flex-1 overflow-y-auto">
             {filteredDoctors.length === 0 ? (
-              /* Wowed Empty State Card */
+              /* Empty State Card */
               <div className="p-12 text-center flex flex-col items-center justify-center">
                 <div className="w-16 h-16 bg-indigo-50 border border-indigo-200 rounded-full flex items-center justify-center mb-4 text-indigo-600">
                   <UserPlus className="w-8 h-8" />
@@ -163,65 +194,78 @@ export default function DoctorsPage() {
                   No Doctors / Radiologists Registered Yet
                 </h3>
                 <p className="text-xs text-slate-500 max-w-md mt-1 mb-6">
-                  Add consultant radiologist accounts to enable case assignment, digital signatures, and doctor logins.
+                  {canManageDoctors
+                    ? 'Add consultant radiologist accounts to enable case assignment, digital signatures, and doctor logins.'
+                    : 'No doctors are currently available in the directory.'}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#009ef7] hover:bg-[#008be0] text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-all shadow-xs cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add First Doctor</span>
-                </button>
+                {canManageDoctors && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#009ef7] hover:bg-[#008be0] text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-all shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add First Doctor</span>
+                  </button>
+                )}
               </div>
             ) : (
               <>
                 {/* Phones: compact doctor cards (shared RowCard pattern, < md) */}
                 <RowCardList testId="doctor-cards">
-                  {filteredDoctors.map((doc) => (
-                    <RowCard
-                      key={doc.id}
-                      title={doc.fullName}
-                      subtitle={
-                        <span>
-                          {doc.degree || 'M.D. (Radiodiagnosis)'} &middot; {doc.registrationNumber ? `Reg. No. ${doc.registrationNumber}` : 'Reg. no. not set'}
-                        </span>
-                      }
-                      aside={
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded font-mono">
-                          Active
-                        </span>
-                      }
-                      fields={[
-                        { label: 'Email', value: doc.email, full: true },
-                        { label: 'Phone', value: <span className="font-mono">{doc.contactNumber}</span> },
+                  {filteredDoctors.map((doc) => {
+                    const fields = [
+                      { label: 'Email', value: doc.email, full: true },
+                      { label: 'Phone', value: <span className="font-mono">{doc.contactNumber}</span> },
+                    ];
+                    if (canManageDoctors) {
+                      fields.push(
                         { label: 'Username', value: <span className="font-mono">{doc.username || doc.email}</span> },
-                        { label: 'Password', value: <span className="font-mono">{doc.password || 'N/A'}</span> },
-                      ]}
-                      actions={
-                        <>
-                          {canEditSignature && (
-                            <button
-                              type="button"
-                              onClick={() => setEditDoctor(doc)}
-                              className="px-3 py-1.5 text-slate-700 hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold inline-flex items-center gap-1"
-                            >
-                              <PenLine className="w-3.5 h-3.5" />
-                              <span>Signature details</span>
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteDoctor(doc.id)}
-                            className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold inline-flex items-center gap-1"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Delete</span>
-                          </button>
-                        </>
-                      }
-                    />
-                  ))}
+                        { label: 'Password', value: <span className="font-mono">{doc.password || 'N/A'}</span> }
+                      );
+                    }
+                    return (
+                      <RowCard
+                        key={doc.id}
+                        title={doc.fullName}
+                        subtitle={
+                          <span>
+                            {doc.degree || 'M.D. (Radiodiagnosis)'} &middot; {doc.registrationNumber ? `Reg. No. ${doc.registrationNumber}` : 'Reg. no. not set'}
+                          </span>
+                        }
+                        aside={
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded font-mono">
+                            Active
+                          </span>
+                        }
+                        fields={fields}
+                        actions={
+                          canManageDoctors ? (
+                            <>
+                              {canEditSignature && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditDoctor(doc)}
+                                  className="px-3 py-1.5 text-slate-700 hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold inline-flex items-center gap-1"
+                                >
+                                  <PenLine className="w-3.5 h-3.5" />
+                                  <span>Signature details</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteDoctor(doc.id)}
+                                className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold inline-flex items-center gap-1"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Delete</span>
+                              </button>
+                            </>
+                          ) : undefined
+                        }
+                      />
+                    );
+                  })}
                 </RowCardList>
 
                 {/* Tablet + desktop: table (tablets hide low-priority columns, see ResponsiveTable) */}
@@ -237,18 +281,22 @@ export default function DoctorsPage() {
                           <span>Contact Info</span>
                           <div className="col-resizer" onMouseDown={(e) => startResizing('contact', e.clientX, widths.contact)} />
                         </th>
-                        <th title="Login Credentials" style={{ width: widths.credentials, position: 'relative' }}>
-                          <span>Login Credentials</span>
-                          <div className="col-resizer" onMouseDown={(e) => startResizing('credentials', e.clientX, widths.credentials)} />
-                        </th>
+                        {canManageDoctors && (
+                          <th title="Login Credentials" style={{ width: widths.credentials, position: 'relative' }}>
+                            <span>Login Credentials</span>
+                            <div className="col-resizer" onMouseDown={(e) => startResizing('credentials', e.clientX, widths.credentials)} />
+                          </th>
+                        )}
                         <th title="Status" className={RT_TABLET_HIDE} style={{ width: widths.status, position: 'relative' }}>
                           <span>Status</span>
                           <div className="col-resizer" onMouseDown={(e) => startResizing('status', e.clientX, widths.status)} />
                         </th>
-                        <th title="Actions" style={{ width: widths.actions, textAlign: 'right', position: 'relative' }}>
-                          <span>Actions</span>
-                          <div className="col-resizer" onMouseDown={(e) => startResizing('actions', e.clientX, widths.actions)} />
-                        </th>
+                        {canManageDoctors && (
+                          <th title="Actions" style={{ width: widths.actions, textAlign: 'right', position: 'relative' }}>
+                            <span>Actions</span>
+                            <div className="col-resizer" onMouseDown={(e) => startResizing('actions', e.clientX, widths.actions)} />
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -271,39 +319,43 @@ export default function DoctorsPage() {
                             <div className="font-semibold text-slate-800">{doc.email}</div>
                             <div className="font-mono text-[11px] text-slate-500">{doc.contactNumber}</div>
                           </td>
-                          <td title={`User: ${doc.username || doc.email} | Pass: ${doc.password || 'N/A'}`} className="p-3.5">
-                            <div className="font-mono text-[11px] bg-amber-50 border border-amber-200 px-2.5 py-1 rounded inline-flex gap-3 text-amber-900">
-                              <span>USER: <strong>{doc.username || doc.email}</strong></span>
-                              <span>PASS: <strong>{doc.password || 'N/A'}</strong></span>
-                            </div>
-                          </td>
+                          {canManageDoctors && (
+                            <td title={`User: ${doc.username || doc.email} | Pass: ${doc.password || 'N/A'}`} className="p-3.5">
+                              <div className="font-mono text-[11px] bg-amber-50 border border-amber-200 px-2.5 py-1 rounded inline-flex gap-3 text-amber-900">
+                                <span>USER: <strong>{doc.username || doc.email}</strong></span>
+                                <span>PASS: <strong>{doc.password || 'N/A'}</strong></span>
+                              </div>
+                            </td>
+                          )}
                           <td title="Active" className={`p-3.5 ${RT_TABLET_HIDE}`}>
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded font-mono">
                               <CheckCircle className="w-3 h-3 text-emerald-600" />
                               <span>Active</span>
                             </span>
                           </td>
-                          <td className="p-3.5 text-right whitespace-nowrap">
-                            {canEditSignature && (
+                          {canManageDoctors && (
+                            <td className="p-3.5 text-right whitespace-nowrap">
+                              {canEditSignature && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditDoctor(doc)}
+                                  className="p-1.5 text-slate-400 hover:text-[#009ef7] transition-colors cursor-pointer rounded hover:bg-sky-50"
+                                  title="Edit signature details"
+                                  aria-label="Edit signature details"
+                                >
+                                  <PenLine className="w-4 h-4" />
+                                </button>
+                              )}
                               <button
                                 type="button"
-                                onClick={() => setEditDoctor(doc)}
-                                className="p-1.5 text-slate-400 hover:text-[#009ef7] transition-colors cursor-pointer rounded hover:bg-sky-50"
-                                title="Edit signature details"
-                                aria-label="Edit signature details"
+                                onClick={() => handleDeleteDoctor(doc.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer rounded hover:bg-rose-50"
+                                title="Delete Doctor"
                               >
-                                <PenLine className="w-4 h-4" />
+                                <Trash2 className="w-4 h-4" />
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteDoctor(doc.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer rounded hover:bg-rose-50"
-                              title="Delete Doctor"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>

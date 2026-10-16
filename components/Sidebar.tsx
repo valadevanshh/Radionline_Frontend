@@ -119,7 +119,6 @@ export default function Sidebar({
           { href: '/dashboard/all-reports', label: 'All Reports', icon: FileText },
           { href: '/dashboard/doctor-earnings', label: 'Earnings', icon: Wallet },
           { href: '/dashboard/document-editor', label: 'Templates', icon: BookmarkPlus },
-          { href: '/dashboard/doctors', label: 'Doctors', icon: Users },
           { href: '/dashboard/profile', label: 'My Profile', icon: UserCircle },
         ];
       case 'CENTER': {
@@ -129,6 +128,7 @@ export default function Sidebar({
           items.push({ href: '/dashboard', label: 'Overview', icon: LayoutDashboard });
           items.push({ href: '/dashboard/all-reports', label: 'All Reports', icon: FileText });
         }
+        items.push({ href: '/dashboard/doctors', label: 'Doctors', icon: Users });
         if (hasCenterLevel(session, 'invoices', 'read')) items.push({ href: '/dashboard/center-invoices', label: 'Invoices', icon: Receipt });
         if (hasCenterLevel(session, 'center_info', 'read')) items.push({ href: '/dashboard/center-info', label: 'Center Info', icon: Building });
         if (session?.canManageCenterUsers) items.push({ href: '/dashboard/center-users', label: 'Users', icon: UserCog });

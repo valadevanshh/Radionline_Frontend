@@ -107,6 +107,8 @@ export default function ReviewSignReportModal({
       findings,
       impression,
       content: contentHtml,
+      doctorId: session?.doctorId || String(session?.userId || ''),
+      doctorName: session?.name,
     });
 
     setSaveTemplateModalOpen(false);

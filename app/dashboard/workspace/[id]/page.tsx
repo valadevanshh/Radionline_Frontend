@@ -46,16 +46,42 @@ export default function CaseWorkspacePage() {
       try {
         const remote = await ApiClient.getReportById(id);
         if (!cancelled) {
+          const sess = RadiologyStore.getSession();
+          if (sess?.role === 'DOCTOR') {
+            const docId = sess.doctorId || sess.email || '';
+            const isClaimedByOther = Boolean(
+              (remote.claimedByDoctorId && remote.claimedByDoctorId !== docId && remote.claimedByDoctorId !== sess.email && remote.claimedByDoctorId !== 'UNCLAIMED') ||
+              (remote.assignedDoctorId && remote.assignedDoctorId !== docId && remote.assignedDoctorId !== sess.email && remote.assignedDoctorId !== 'ALL' && (remote.status === 'In Review' || remote.status === 'Completed' || remote.claimStatus === 'CLAIMED')) ||
+              (remote.studies && remote.studies.some((s) => s.claimedBy && s.claimedBy !== docId && s.claimedBy !== sess.email && s.claimedBy !== 'UNCLAIMED'))
+            );
+            if (isClaimedByOther) {
+              setLoadError('Access Denied: This case has been accepted by another doctor.');
+              return;
+            }
+          } else if (sess?.role === 'CENTER') {
+            const centerIds = new Set(sess.centers?.map((c) => c.centerId) || (sess.centerId ? [sess.centerId] : []));
+            if (centerIds.size > 0 && remote.radiologyCenterId && !centerIds.has(remote.radiologyCenterId)) {
+              setLoadError('Access Denied: This case belongs to another radiology centre.');
+              return;
+            }
+          }
           setReport(remote);
           RadiologyStore.saveReport(remote);
         }
-      } catch (err) {
+      } catch (err: any) {
+        const errMsg = err instanceof Error ? err.message : String(err || '');
+        if (errMsg.includes('403') || errMsg.toLowerCase().includes('access denied')) {
+          if (!cancelled) {
+            setLoadError('Access Denied: This case has been accepted by another doctor or belongs to another centre.');
+          }
+          return;
+        }
         const local = RadiologyStore.getReports().find((r) => r.id === id) || null;
         if (!cancelled) {
           if (local) {
             setReport(local);
           } else {
-            setLoadError(err instanceof Error ? err.message : 'Failed to load case');
+            setLoadError(errMsg || 'Failed to load case');
           }
         }
       } finally {

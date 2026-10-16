@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -123,12 +123,40 @@ export default function DashboardOverviewPage() {
     };
   }, []);
 
-  const completedCount = reports.filter((r) => r.status === 'Completed').length;
-  const pendingCount = reports.filter((r) => r.status !== 'Completed').length;
-  const urgentCount = reports.filter((r) => r.isUrgent && r.status !== 'Completed').length;
+  const visibleReports = useMemo(() => {
+    return reports.filter((r: XRayReport) => {
+      if (session?.role === 'CENTER') {
+        const centerIds = new Set(
+          session.centers?.map((c) => c.centerId) || (session.centerId ? [session.centerId] : [])
+        );
+        if (centerIds.size > 0 && !centerIds.has(r.radiologyCenterId)) return false;
+      } else if (session?.role === 'DOCTOR') {
+        const docId = session.doctorId || session.email || '';
+        const isClaimed = Boolean(
+          (r.claimStatus === 'CLAIMED') ||
+          (r.claimedByDoctorId && r.claimedByDoctorId !== 'UNCLAIMED') ||
+          (r.status === 'In Review' || r.status === 'Completed') ||
+          (r.studies && r.studies.some((s) => s.claimedBy && s.claimedBy !== 'UNCLAIMED'))
+        );
+        if (isClaimed) {
+          const isMine = Boolean(
+            (r.claimedByDoctorId && (r.claimedByDoctorId === docId || r.claimedByDoctorId === session.email)) ||
+            (r.assignedDoctorId && (r.assignedDoctorId === docId || r.assignedDoctorId === session.email)) ||
+            (r.studies && r.studies.some((s) => s.claimedBy === docId || s.claimedBy === session.email))
+          );
+          if (!isMine) return false;
+        }
+      }
+      return true;
+    });
+  }, [reports, session]);
+
+  const completedCount = visibleReports.filter((r: XRayReport) => r.status === 'Completed').length;
+  const pendingCount = visibleReports.filter((r: XRayReport) => r.status !== 'Completed').length;
+  const urgentCount = visibleReports.filter((r: XRayReport) => r.isUrgent && r.status !== 'Completed').length;
 
   const metrics: Metric[] = [
-    { label: 'TOTAL CASES', value: String(reports.length), delta: 'Live', trend: 'up', color: 'navy' },
+    { label: 'TOTAL CASES', value: String(visibleReports.length), delta: 'Live', trend: 'up', color: 'navy' },
     { label: 'COMPLETED', value: String(completedCount), delta: 'Live', trend: 'up', color: 'teal' },
     { label: 'PENDING REVIEW', value: String(pendingCount), delta: 'Live', trend: 'down', color: 'amber' },
     { label: 'STAT URGENT', value: String(urgentCount), delta: 'STAT', trend: 'neutral', color: 'red' },
@@ -165,11 +193,11 @@ export default function DashboardOverviewPage() {
     setIsPreviewOpen(true);
   };
 
-  const pendingReports = reports
-    .filter((r) => r.status === 'Pending')
-    .sort((a, b) => (a.isUrgent === b.isUrgent ? 0 : a.isUrgent ? -1 : 1));
+  const pendingReports = visibleReports
+    .filter((r: XRayReport) => r.status === 'Pending')
+    .sort((a: XRayReport, b: XRayReport) => (a.isUrgent === b.isUrgent ? 0 : a.isUrgent ? -1 : 1));
 
-  const sortedReports = [...reports].sort((a, b) => (a.isUrgent === b.isUrgent ? 0 : a.isUrgent ? -1 : 1));
+  const sortedReports = [...visibleReports].sort((a: XRayReport, b: XRayReport) => (a.isUrgent === b.isUrgent ? 0 : a.isUrgent ? -1 : 1));
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 text-slate-900">
@@ -188,7 +216,7 @@ export default function DashboardOverviewPage() {
           {/* Desktop Metric Chips */}
           <div className="hidden md:flex items-center gap-1.5 flex-wrap font-mono text-[11px]">
             <span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-bold rounded border border-slate-200">
-              TOTAL: <strong className="text-slate-900">{reports.length}</strong>
+              TOTAL: <strong className="text-slate-900">{visibleReports.length}</strong>
             </span>
             <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold rounded border border-emerald-200">
               COMPLETED: <strong>{completedCount}</strong>
@@ -228,7 +256,7 @@ export default function DashboardOverviewPage() {
             href="/dashboard/all-reports"
             className="px-3 py-1.5 bg-transparent text-slate-700 border-[1.5px] border-slate-300 hover:bg-slate-100 hover:text-slate-900 text-xs font-bold font-mono rounded-lg transition-colors inline-flex items-center gap-1"
           >
-            <span>All Reports ({reports.length})</span>
+            <span>All Reports ({visibleReports.length})</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
 
@@ -249,7 +277,7 @@ export default function DashboardOverviewPage() {
         <div className="flex md:hidden items-center justify-between gap-2 pt-1 border-t border-slate-100 font-mono text-[10px]">
           <div className="flex-1 bg-slate-100/80 p-1.5 rounded-lg text-center border border-slate-200/60">
             <div className="text-slate-500 font-semibold text-[9px] uppercase">Total</div>
-            <div className="font-extrabold text-slate-900 text-xs">{reports.length}</div>
+            <div className="font-extrabold text-slate-900 text-xs">{visibleReports.length}</div>
           </div>
           <div className="flex-1 bg-emerald-50/80 p-1.5 rounded-lg text-center border border-emerald-200/60">
             <div className="text-emerald-700 font-semibold text-[9px] uppercase">Completed</div>
@@ -316,23 +344,15 @@ export default function DashboardOverviewPage() {
               onSelectOption={handleSelectReportOption}
             />
             {isDoctor && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => openWorkspace(pendingReports[0])}
-                  className="btn-pacs"
-                >
-                  <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
-                  <span>PACS</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openWorkspace(pendingReports[0])}
-                  className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded"
-                >
-                  Report
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={() => openWorkspace(pendingReports[0])}
+                className="inline-flex items-center justify-center p-2 rounded-lg border border-[#009ef7]/40 bg-white text-[#009ef7] hover:bg-[#009ef7] hover:text-white transition-all shrink-0 cursor-pointer shadow-2xs"
+                title="Open PACS DICOM Viewer"
+                aria-label="PACS Viewer"
+              >
+                <Eye className="w-4 h-4" />
+              </button>
             )}
           </div>
         </div>
@@ -367,7 +387,7 @@ export default function DashboardOverviewPage() {
                         STAT URGENT
                       </span>
                     )}
-                    {r.bodyParts.map((bp, i) => (
+                    {r.bodyParts.map((bp: string, i: number) => (
                       <span key={i} className="px-1.5 py-0.5 bg-slate-100 text-slate-700 font-mono text-[10px] font-bold rounded border border-slate-200">
                         {bp}
                       </span>
@@ -385,20 +405,15 @@ export default function DashboardOverviewPage() {
                       onSelectOption={handleSelectReportOption}
                     />
                     {isDoctor && (
-                      <>
-                        <button type="button" onClick={() => openWorkspace(r)} className="btn-pacs">
-                          <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
-                          <span>PACS</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openWorkspace(r)}
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg transition-colors inline-flex items-center gap-1"
-                        >
-                          <FileEdit className="w-3.5 h-3.5" />
-                          <span>Report</span>
-                        </button>
-                      </>
+                      <button
+                        type="button"
+                        onClick={() => openWorkspace(r)}
+                        className="inline-flex items-center justify-center p-2 rounded-lg border border-[#009ef7]/40 bg-white text-[#009ef7] hover:bg-[#009ef7] hover:text-white transition-all shrink-0 cursor-pointer shadow-2xs"
+                        title="Open PACS DICOM Viewer"
+                        aria-label="PACS Viewer"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
                     )}
                     <RowChatButton onClick={() => setChatTarget(r)} />
                     {canEditCase(session, r) && <RowEditButton onClick={() => setEditTarget(r)} />}
@@ -485,24 +500,15 @@ export default function DashboardOverviewPage() {
                         onSelectOption={handleSelectReportOption}
                       />
                       {isDoctor && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => openWorkspace(r)}
-                            className="btn-pacs"
-                          >
-                            <Eye className="w-3.5 h-3.5 text-[#009ef7]" />
-                            <span>PACS</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openWorkspace(r)}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] rounded transition-colors inline-flex items-center gap-1"
-                          >
-                            <FileEdit className="w-3 h-3" />
-                            <span>Report</span>
-                          </button>
-                        </>
+                        <button
+                          type="button"
+                          onClick={() => openWorkspace(r)}
+                          className="inline-flex items-center justify-center p-2 rounded-lg border border-[#009ef7]/40 bg-white text-[#009ef7] hover:bg-[#009ef7] hover:text-white transition-all shrink-0 cursor-pointer shadow-2xs"
+                          title="Open PACS DICOM Viewer"
+                          aria-label="PACS Viewer"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
                       )}
                       <RowChatButton compact onClick={() => setChatTarget(r)} />
                       {canEditCase(session, r) && <RowEditButton compact onClick={() => setEditTarget(r)} />}

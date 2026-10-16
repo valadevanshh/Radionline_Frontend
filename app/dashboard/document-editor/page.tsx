@@ -1,30 +1,28 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { RADIOLOGY_TEMPLATES } from '@/lib/radiology-templates';
-import { STUDY_MODALITY_OPTIONS } from '@/components/NewXRayReportModal';
 import {
-  FileText,
   BookmarkPlus,
-  Activity,
+  Plus,
   Search,
-  Check,
-  X,
+  FileEdit,
+  Trash2,
+  Stethoscope,
+  Building2,
+  Layers,
 } from 'lucide-react';
-import { RadiologyStore, XRayReport, DocTemplate, RadiologyCenter } from '@/lib/radiology-store';
-import { ApiClient, apiErrorMessage, isPendingApproval } from '@/lib/api-client';
-import { canWriteTemplates, showCenterColumn, useSession } from '@/lib/access';
+import { RadiologyStore, DocTemplate, RadiologyCenter } from '@/lib/radiology-store';
+import { ApiClient, apiErrorMessage } from '@/lib/api-client';
+import { canWriteTemplates, useSession } from '@/lib/access';
 import { toast } from '@/components/ui/Toast';
-import { formatPatientDisplayId } from '@/lib/uuid';
 
-import { PageShell, PageHeader, StatusBadge } from '@/components/ui';
+import { PageShell, PageHeader } from '@/components/ui';
 import ReportTemplateModal from '@/components/ReportTemplateModal';
 
 export default function DocumentEditorStudioPage() {
-  const [reports, setReports] = useState<XRayReport[]>([]);
-  const [selectedReport, setSelectedReport] = useState<XRayReport | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedModality, setSelectedModality] = useState('ALL');
   const [savedTemplates, setSavedTemplates] = useState<DocTemplate[]>([]);
   const [allCenters, setAllCenters] = useState<RadiologyCenter[]>([]);
 
@@ -40,24 +38,15 @@ export default function DocumentEditorStudioPage() {
     }
   }, [session, router]);
 
-  const openWorkspace = (report: XRayReport | null) => {
-    if (!report) return;
-    router.push(`/dashboard/workspace/${report.id}`);
-  };
-
   const loadData = async () => {
     try {
-      const [reps, tmpls, cntrs] = await Promise.all([
-        ApiClient.getReports(),
+      const [tmpls, cntrs] = await Promise.all([
         ApiClient.getTemplates(),
         ApiClient.getCenters(),
       ]);
-      setReports(reps);
       setSavedTemplates(tmpls);
       setAllCenters(cntrs.length > 0 ? cntrs : RadiologyStore.getCenters());
     } catch {
-      const list = RadiologyStore.getReports();
-      setReports(list);
       setSavedTemplates(RadiologyStore.getTemplates());
       setAllCenters(RadiologyStore.getCenters());
     }
@@ -66,15 +55,12 @@ export default function DocumentEditorStudioPage() {
   useEffect(() => {
     loadData();
 
-    const handleReportsChange = () => loadData();
     const handleTemplatesChange = () => loadData();
     const handleCentersChange = () => loadData();
 
-    window.addEventListener('radionline_reports_changed', handleReportsChange);
     window.addEventListener('radionline_templates_changed', handleTemplatesChange);
     window.addEventListener('radionline_centers_changed', handleCentersChange);
     return () => {
-      window.removeEventListener('radionline_reports_changed', handleReportsChange);
       window.removeEventListener('radionline_templates_changed', handleTemplatesChange);
       window.removeEventListener('radionline_centers_changed', handleCentersChange);
     };
@@ -92,12 +78,46 @@ export default function DocumentEditorStudioPage() {
     setCreateTemplateOpen(true);
   };
 
-  const filteredReports = reports.filter(
-    (r) =>
-      r.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.patientNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.bodyParts.some((bp) => bp.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const handleDeleteTemplate = async (tmpl: DocTemplate) => {
+    if (!window.confirm(`Are you sure you want to delete template "${tmpl.title}"?`)) return;
+    try {
+      await ApiClient.deleteTemplate(tmpl.id);
+      RadiologyStore.deleteTemplate(tmpl.id);
+      toast.success('Template deleted successfully');
+      loadData();
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not delete template'));
+    }
+  };
+
+  // Distinct modalities list from templates
+  const modalities = useMemo(() => {
+    const set = new Set<string>();
+    savedTemplates.forEach((t) => {
+      if (t.modality) set.add(t.modality.trim());
+    });
+    return Array.from(set).sort();
+  }, [savedTemplates]);
+
+  const filteredTemplates = useMemo(() => {
+    return savedTemplates.filter((t) => {
+      if (selectedModality !== 'ALL' && t.modality.trim().toLowerCase() !== selectedModality.trim().toLowerCase()) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchTitle = (t.title || '').toLowerCase().includes(q);
+        const matchModality = (t.modality || '').toLowerCase().includes(q);
+        const matchBodyPart = (t.bodyPart || '').toLowerCase().includes(q);
+        const matchFindings = (t.findings || '').toLowerCase().includes(q);
+        const matchImpression = (t.impression || '').toLowerCase().includes(q);
+        const matchCenter = (t.centerName || '').toLowerCase().includes(q);
+        const matchDoctor = (t.doctorName || '').toLowerCase().includes(q);
+        return matchTitle || matchModality || matchBodyPart || matchFindings || matchImpression || matchCenter || matchDoctor;
+      }
+      return true;
+    });
+  }, [savedTemplates, selectedModality, searchQuery]);
 
   if (session && session.role !== 'DOCTOR') {
     return null;
@@ -107,194 +127,195 @@ export default function DocumentEditorStudioPage() {
     <PageShell className="p-0">
       <PageHeader
         title={
-          <div className="flex items-center gap-2">
-            <BookmarkPlus className="w-5 h-5 text-[#009ef7]" />
-            <span>Radiology Document & Template Studio</span>
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-[#009ef7]/10 text-[#009ef7] border border-[#009ef7]/20 rounded-xl">
+              <BookmarkPlus className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-base text-slate-900 tracking-tight font-mono uppercase">
+                  Radiology Report Templates
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-sky-50 text-[#009ef7] border border-sky-200 text-[10px] font-mono font-bold">
+                  {filteredTemplates.length} {filteredTemplates.length === 1 ? 'Template' : 'Templates'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 font-sans mt-0.5">
+                Standardized master report templates for radiological findings and impressions
+              </p>
+            </div>
           </div>
         }
-        subtitle="Manage report templates, master findings library, and PACS report editor"
         actions={
-          <div className="flex items-center gap-2">
-            {canSaveTemplate && (
-              <button
-                type="button"
-                onClick={handleOpenCreateTemplate}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
-              >
-                <BookmarkPlus className="w-3.5 h-3.5 text-[#009ef7]" />
-                <span>Save Template</span>
-              </button>
-            )}
-
+          canSaveTemplate ? (
             <button
               type="button"
-              onClick={() => openWorkspace(selectedReport)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              onClick={handleOpenCreateTemplate}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#009ef7] hover:bg-[#008be0] text-xs font-bold text-white shadow-xs hover:shadow transition-all cursor-pointer font-mono uppercase tracking-wider"
             >
-              <Activity className="w-3.5 h-3.5 text-slate-600" />
-              <span>PACS Viewer</span>
+              <Plus className="w-4 h-4" />
+              <span>Create Template</span>
             </button>
-
-            <button
-              type="button"
-              onClick={() => openWorkspace(selectedReport)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#009ef7] hover:bg-[#008be0] text-xs font-bold text-white shadow-xs cursor-pointer"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Open Studio</span>
-            </button>
-          </div>
+          ) : undefined
         }
       />
 
-      {/* Main Studio Body */}
-      <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-        {/* Left Side: Patient Selector Sidebar */}
-        <div className="w-full md:w-80 border-r border-slate-200 bg-white flex flex-col overflow-hidden shrink-0">
-          <div className="p-2.5 border-b border-slate-200">
-            <div className="relative">
-              <Search className="rn-icon-vcenter w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+      {/* Main Body: Templates Only */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/60">
+        <div className="max-w-7xl mx-auto space-y-4">
+          {/* Search & Filter Toolbar */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-xs flex flex-col sm:flex-row items-center gap-3">
+            <div className="relative flex-1 w-full">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search patient..."
+                placeholder="Search templates by title, body part, modality, or findings..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="rn-input-iconpad w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#009ef7]"
+                className="w-full pl-10 pr-4 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-[#009ef7] bg-slate-50/50 focus:bg-white transition-colors"
               />
             </div>
-          </div>
 
-          <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-            {filteredReports.map((r) => (
-              <div
-                key={r.id}
-                onClick={() => setSelectedReport(r)}
-                className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
-                  selectedReport?.id === r.id
-                    ? 'border-[#009ef7] bg-sky-50/60'
-                    : 'border-slate-200 bg-white hover:bg-slate-50'
-                }`}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <select
+                value={selectedModality}
+                onChange={(e) => setSelectedModality(e.target.value)}
+                className="px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-[#009ef7] bg-slate-50/50 focus:bg-white text-slate-700 font-medium cursor-pointer"
               >
-                <div className="flex justify-between items-center text-[10px] font-mono">
-                  {formatPatientDisplayId(r.patientNumber) ? (
-                    <span className="font-bold text-[#009ef7]">{r.patientNumber}</span>
-                  ) : (
-                    <span className="font-semibold text-slate-500">{r.modality || 'Study'}</span>
-                  )}
-                  <span className="text-slate-400">{r.studyDate}</span>
-                </div>
-                <div className="font-bold text-xs text-slate-900 mt-0.5">{r.fullName}</div>
-                <div className="text-[10px] font-mono text-slate-500">{r.bodyParts.join(', ')}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+                <option value="ALL">All Modalities</option>
+                {modalities.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
 
-        {/* Right Side: Active Workspace & Templates */}
-        <div className="flex-1 flex flex-col overflow-y-auto p-4 space-y-4 bg-slate-50/50">
-          {/* Success banner */ false && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 flex items-center gap-2">
-              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>New template created successfully! It is now available in your template library.</span>
-            </div>
-          )}
-
-          {selectedReport ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-xs">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2">
-                  {formatPatientDisplayId(selectedReport.patientNumber) && (
-                    <span className="px-2 py-0.5 rounded bg-slate-900 text-white font-mono text-[10px] font-bold">
-                      {selectedReport.patientNumber}
-                    </span>
-                  )}
-                  <span className="font-bold text-sm text-slate-900">{selectedReport.fullName}</span>
-                </div>
-                <StatusBadge status={selectedReport.status} />
-              </div>
-
-              <div className="font-mono text-xs text-slate-600 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div>AGE/SEX: <strong>{selectedReport.age}/{selectedReport.gender}</strong></div>
-                {showCenterColumn(session) && <div>CENTER: <strong>{selectedReport.radiologyCenterName}</strong></div>}
-                <div>DOCTOR: <strong>{selectedReport.assignedDoctorName}</strong></div>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
+              {(searchQuery || selectedModality !== 'ALL') && (
                 <button
                   type="button"
-                  onClick={() => openWorkspace(selectedReport)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#009ef7] hover:bg-[#008be0] text-xs font-bold text-white shadow-xs cursor-pointer"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSelectedModality('ALL');
+                  }}
+                  className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors font-medium cursor-pointer"
                 >
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>Edit in DOC Studio</span>
+                  Reset
                 </button>
+              )}
+            </div>
+          </div>
 
-                {canSaveTemplate && (
-                  <button
-                    type="button"
-                    onClick={handleOpenCreateTemplate}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer"
-                  >
-                    <BookmarkPlus className="w-3.5 h-3.5 text-[#009ef7]" />
-                    <span>Save New Template</span>
-                  </button>
-                )}
+          {/* Templates Grid */}
+          {filteredTemplates.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center flex flex-col items-center justify-center space-y-3 shadow-xs">
+              <div className="p-3 bg-slate-100 rounded-full text-slate-400">
+                <BookmarkPlus className="w-8 h-8" />
               </div>
+              <h3 className="font-bold text-sm text-slate-900">No Templates Found</h3>
+              <p className="text-xs text-slate-500 max-w-sm">
+                {searchQuery || selectedModality !== 'ALL'
+                  ? 'No templates match your current search and modality filter.'
+                  : 'No report templates are currently available.'}
+              </p>
+              {canSaveTemplate && (
+                <button
+                  type="button"
+                  onClick={handleOpenCreateTemplate}
+                  className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#009ef7] hover:bg-[#008be0] text-xs font-bold text-white shadow-xs transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create Template</span>
+                </button>
+              )}
             </div>
           ) : (
-            <div className="p-8 text-center text-xs text-slate-400 italic bg-white rounded-xl border border-slate-200">
-              Select a patient report from the list to start editing.
-            </div>
-          )}
-
-          {/* Saved Templates List */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              SAVED RADIOLOGY REPORT TEMPLATES ({savedTemplates.length})
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }}>
-              {savedTemplates.map((tmpl) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredTemplates.map((tmpl) => (
                 <div
                   key={tmpl.id}
-                  onClick={() => openWorkspace(selectedReport)}
-                  style={{
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    padding: 10,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
-                  }}
+                  className="bg-white border border-slate-200 hover:border-[#009ef7]/60 hover:shadow-md transition-all rounded-2xl p-4 flex flex-col justify-between group shadow-2xs"
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span className="tag" style={{ background: 'var(--teal-light)', color: 'var(--teal)' }}>
-                      {tmpl.modality}
-                    </span>
-                    <span className="mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>{tmpl.centerName}</span>
-                  </div>
-                  <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>{tmpl.title}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-                    <span style={{ fontSize: 10, color: '#009ef7', fontWeight: 600 }}>Use Template →</span>
-                    {canSaveTemplate && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenEditTemplate(tmpl);
-                        }}
-                        className="text-[10px] font-bold text-slate-500 hover:text-purple-600 px-1.5 py-0.5 rounded hover:bg-purple-50 transition-colors"
+                  <div>
+                    {/* Top Row: Modality & Center Badges */}
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold font-mono uppercase bg-sky-50 text-[#009ef7] border border-sky-200">
+                        {tmpl.modality}
+                      </span>
+                      <span
+                        className="text-[10px] font-mono text-slate-400 truncate max-w-[120px] flex items-center gap-1"
+                        title={tmpl.centerName || 'All Centers'}
                       >
-                        Edit in Report View ✎
-                      </button>
+                        <Building2 className="w-3 h-3 text-slate-300 shrink-0" />
+                        <span className="truncate">{tmpl.centerName || 'All Centers'}</span>
+                      </span>
+                    </div>
+
+                    {/* Title */}
+                    <h3 className="font-bold text-sm text-slate-900 group-hover:text-[#009ef7] transition-colors line-clamp-2 leading-snug">
+                      {tmpl.title}
+                    </h3>
+
+                    {/* Creator Tag */}
+                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                      {tmpl.doctorName ? (
+                        <span className="text-[10px] text-purple-700 font-semibold bg-purple-50 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                          <Stethoscope className="w-3 h-3" />
+                          <span>Dr. {tmpl.doctorName}</span>
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                          <Layers className="w-3 h-3" />
+                          <span>System Standard</span>
+                        </span>
+                      )}
+                      {tmpl.bodyPart && (
+                        <span className="text-[10px] font-mono text-slate-500 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">
+                          {tmpl.bodyPart}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Snippet Preview */}
+                    {(tmpl.findings || tmpl.impression) && (
+                      <div className="mt-3 bg-slate-50/70 border border-slate-100 rounded-xl p-2.5">
+                        <p className="text-[11px] text-slate-600 line-clamp-3 leading-relaxed font-serif italic">
+                          "{tmpl.findings || tmpl.impression}"
+                        </p>
+                      </div>
                     )}
+                  </div>
+
+                  {/* Bottom Actions */}
+                  <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-100">
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {tmpl.createdAt ? tmpl.createdAt.slice(0, 10) : ''}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {canSaveTemplate && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditTemplate(tmpl)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-700 hover:text-[#009ef7] hover:bg-sky-50 border border-slate-200 transition-colors cursor-pointer"
+                          title="Edit template in report view"
+                        >
+                          <FileEdit className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
+                      )}
+                      {canSaveTemplate && (tmpl.doctorId || !tmpl.id.startsWith('sys-')) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTemplate(tmpl)}
+                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          title="Delete template"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -307,14 +328,6 @@ export default function DocumentEditorStudioPage() {
             setEditingTemplate(null);
           }}
           initialTemplate={editingTemplate}
-          prefill={selectedReport ? {
-            title: `${selectedReport.bodyParts?.join(', ') || 'Study'} — Master Template`,
-            centerId: selectedReport.radiologyCenterId || 'ALL',
-            modality: selectedReport.modality || 'X-Ray',
-            bodyPart: selectedReport.bodyParts?.[0] || 'CHEST PA/AP',
-            findings: selectedReport.findings,
-            impression: selectedReport.impression,
-          } : undefined}
           onSaved={() => loadData()}
         />
       )}
