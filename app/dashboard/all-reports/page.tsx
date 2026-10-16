@@ -44,6 +44,7 @@ import { STUDY_MODALITY_OPTIONS } from '@/components/NewXRayReportModal';
 import { useResizableColumns } from '@/lib/use-resizable-columns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { UrgentBadge, PortableBadge } from '@/components/ui/CaseFlags';
 
 function AllPatientReportsContent() {
   const searchParams = useSearchParams();
@@ -526,16 +527,8 @@ function AllPatientReportsContent() {
               }
               tags={
                 <>
-                  {report.isUrgent && (
-                    <span className="px-1.5 py-0.5 bg-rose-600 text-white font-mono font-bold text-[9px] rounded uppercase">
-                      URGENT STAT
-                    </span>
-                  )}
-                  {report.isPortable && (
-                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 font-mono font-bold text-[9px] rounded border border-amber-300 uppercase">
-                      PORTABLE
-                    </span>
-                  )}
+                  {report.isUrgent && <UrgentBadge />}
+                  {report.isPortable && <PortableBadge />}
                   {report.bodyParts.map((bp, i) => (
                     <span key={i} className="px-1.5 py-0.5 bg-slate-100 text-slate-700 font-mono font-bold text-[10px] rounded border border-slate-200">
                       {bp}
@@ -648,17 +641,10 @@ function AllPatientReportsContent() {
                     )}
                     <td title={formatPatientDisplayId(report.patientNumber) ? `${report.fullName} (${report.patientNumber})` : report.fullName} className="p-3">
                       <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap">
-                        <span className={report.isUrgent ? "text-red-500 font-bold" : undefined}>{report.fullName}</span>{report.isPartial ? <span className="ml-2 text-[10px] text-amber-600 font-semibold">{report.signedStudyCount}/{report.studyCount || report.bodyParts?.length} reported</span> : null}
-                        {report.isUrgent && (
-                          <span className="px-1.5 py-0.5 bg-rose-600 text-white font-mono font-bold text-[9px] rounded uppercase animate-pulse">
-                            STAT URGENT
-                          </span>
-                        )}
-                        {report.isPortable && (
-                          <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 font-mono font-bold text-[9px] rounded border border-amber-300 uppercase">
-                            PORTABLE
-                          </span>
-                        )}
+                        <span className={report.isUrgent ? "text-red-500 font-bold" : undefined}>{report.fullName}</span>
+                        {report.isUrgent && <UrgentBadge />}
+                        {report.isPortable && <PortableBadge />}
+                        {report.isPartial ? <span className="ml-1 text-[10px] text-amber-600 font-semibold">{report.signedStudyCount}/{report.studyCount || report.bodyParts?.length} reported</span> : null}
                       </div>
                       {formatPatientDisplayId(report.patientNumber) && (
                         <div className="font-mono text-[10px] text-slate-500 font-bold">{report.patientNumber}</div>

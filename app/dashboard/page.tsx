@@ -32,6 +32,7 @@ import { formatPatientDisplayId } from '@/lib/uuid';
 import { useResizableColumns } from '@/lib/use-resizable-columns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { PriorityBadge } from '@/components/ui/PriorityBadge';
+import { UrgentBadge, PortableBadge } from '@/components/ui/CaseFlags';
 import { RowCard, RowCardList, RT_ACTIONS, RT_CONTAINER, RT_TABLET_HIDE, RT_TABLET_ONLY } from '@/components/ui/ResponsiveTable';
 import ReportOptionsPopover from '@/components/ReportOptionsPopover';
 import ReportPreviewModal from '@/components/ReportPreviewModal';
@@ -382,11 +383,8 @@ export default function DashboardOverviewPage() {
                 }
                 tags={
                   <>
-                    {r.isUrgent && (
-                      <span className="px-1.5 py-0.5 bg-rose-600 text-white font-mono font-bold text-[9px] rounded uppercase">
-                        STAT URGENT
-                      </span>
-                    )}
+                    {r.isUrgent && <UrgentBadge />}
+                    {r.isPortable && <PortableBadge />}
                     {r.bodyParts.map((bp: string, i: number) => (
                       <span key={i} className="px-1.5 py-0.5 bg-slate-100 text-slate-700 font-mono text-[10px] font-bold rounded border border-slate-200">
                         {bp}
@@ -457,13 +455,10 @@ export default function DashboardOverviewPage() {
               {sortedReports.map((r) => (
                 <tr key={r.id} className={`hover:bg-slate-50/80 transition-colors ${r.isUrgent ? 'bg-rose-50/20' : ''}`}>
                   <td title={formatPatientDisplayId(r.patientNumber) ? `${r.fullName} (${r.patientNumber})` : r.fullName} className="p-3">
-                    <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
                       <span>{r.fullName}</span>
-                      {r.isUrgent && (
-                        <span className="px-1.5 py-0.5 bg-rose-600 text-white font-mono font-bold text-[9px] rounded uppercase animate-pulse">
-                          STAT URGENT
-                        </span>
-                      )}
+                      {r.isUrgent && <UrgentBadge />}
+                      {r.isPortable && <PortableBadge />}
                     </div>
                     <div className="font-mono text-[10px] text-slate-500">
                       {formatPatientDisplayId(r.patientNumber) ? `${r.patientNumber} • ` : ''}{r.gender}/{r.age}y

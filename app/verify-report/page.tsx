@@ -11,6 +11,7 @@ import {
 import { ApiClient } from '@/lib/api-client';
 import { RadiologyStore, XRayReport, formatDateDDMMYYYY } from '@/lib/radiology-store';
 import { formatPatientDisplayId } from '@/lib/uuid';
+import { UrgentBadge, PortableBadge } from '@/components/ui/CaseFlags';
 
 function VerifyReportContent() {
   const searchParams = useSearchParams();
@@ -197,16 +198,8 @@ function VerifyReportContent() {
                 {bp}
               </span>
             ))}
-            {report.isUrgent && (
-              <span className="px-2.5 py-1 bg-rose-600 text-white font-mono font-bold text-xs rounded-md uppercase">
-                STAT URGENT
-              </span>
-            )}
-            {report.isPortable && (
-              <span className="px-2.5 py-1 bg-amber-500 text-slate-950 font-mono font-bold text-xs rounded-md uppercase">
-                PORTABLE MACHINE
-              </span>
-            )}
+            {report.isUrgent && <UrgentBadge className="w-6 h-6" iconClassName="w-4 h-4" />}
+            {report.isPortable && <PortableBadge className="w-6 h-6" iconClassName="w-4 h-4" />}
           </div>
 
           {/* Findings Section */}

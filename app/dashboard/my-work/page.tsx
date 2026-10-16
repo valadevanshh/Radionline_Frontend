@@ -17,6 +17,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatDate } from '@/lib/format-date';
 import { formatPatientDisplayId } from '@/lib/uuid';
 import { RowCard, RowCardList, RT_CONTAINER, RT_TABLE_ONLY } from '@/components/ui/ResponsiveTable';
+import { UrgentBadge, PortableBadge } from '@/components/ui/CaseFlags';
 
 type StatusFilter = '' | 'CLAIMED' | 'Completed';
 
@@ -201,10 +202,14 @@ export default function MyWorkPage() {
                   key={row.id}
                   tone={row.isUrgent ? 'urgent' : 'default'}
                   title={
-                    <span className={row.isUrgent ? 'text-red-500' : undefined}>
-                      {row.fullName}
+                    <span className="inline-flex items-center gap-1.5 flex-wrap">
+                      <span className={row.isUrgent ? 'text-red-500' : undefined}>
+                        {row.fullName}
+                      </span>
+                      {row.isUrgent && <UrgentBadge />}
+                      {row.isPortable && <PortableBadge />}
                       {row.isPartial || ((row.signedStudyCount || 0) > 0 && (row.signedStudyCount || 0) < (row.studyCount || row.bodyParts?.length || 0)) ? (
-                        <span className="ml-2 text-[10px] font-semibold text-amber-600">
+                        <span className="ml-1 text-[10px] font-semibold text-amber-600">
                           {row.signedStudyCount || 0} of {row.studyCount || row.bodyParts?.length || 0} reported
                         </span>
                       ) : null}
@@ -254,7 +259,12 @@ export default function MyWorkPage() {
                   {data.items.map((row) => (
                     <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-3 py-2.5">
-                        <div className={`font-bold ${row.isUrgent ? "text-red-500" : "text-slate-900"}`}>{row.fullName}{row.isPartial || ((row.signedStudyCount||0)>0 && (row.signedStudyCount||0)<(row.studyCount||row.bodyParts?.length||0)) ? <span className="ml-2 text-[10px] font-semibold text-amber-600">{row.signedStudyCount || 0} of {row.studyCount || row.bodyParts?.length || 0} reported</span> : null}</div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`font-bold ${row.isUrgent ? "text-red-500" : "text-slate-900"}`}>{row.fullName}</span>
+                          {row.isUrgent && <UrgentBadge />}
+                          {row.isPortable && <PortableBadge />}
+                          {row.isPartial || ((row.signedStudyCount||0)>0 && (row.signedStudyCount||0)<(row.studyCount||row.bodyParts?.length||0)) ? <span className="ml-1 text-[10px] font-semibold text-amber-600">{row.signedStudyCount || 0} of {row.studyCount || row.bodyParts?.length || 0} reported</span> : null}
+                        </div>
                         {formatPatientDisplayId(row.patientNumber) && (
                           <div className="font-mono text-[10px] text-slate-500">{row.patientNumber}</div>
                         )}

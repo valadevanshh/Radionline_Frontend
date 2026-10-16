@@ -23,6 +23,7 @@ import { ApiClient, getAccessToken, WS_BASE_URL, apiErrorMessage } from '@/lib/a
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { PriorityBadge } from '@/components/ui/PriorityBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { UrgentBadge, PortableBadge } from '@/components/ui/CaseFlags';
 import { formatPatientDisplayId } from '@/lib/uuid';
 
 // A new live task banner shows for exactly 3 seconds; the list re-checks every 10s while the socket is down
@@ -297,11 +298,8 @@ export default function LiveDashboardPage() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className={`text-sm font-bold truncate ${r.isUrgent ? 'text-red-500' : 'text-slate-900'}`}>{r.fullName}</span>
-                          {r.isUrgent && (
-                            <span className="px-1.5 py-0.5 bg-rose-600 text-white font-mono font-bold text-[9px] rounded uppercase animate-pulse flex items-center gap-1">
-                              <AlertTriangle className="w-2.5 h-2.5" /> STAT
-                            </span>
-                          )}
+                          {r.isUrgent && <UrgentBadge />}
+                          {r.isPortable && <PortableBadge />}
                         </div>
                         <div className="text-[11px] text-slate-500 mt-0.5">
                           {formatPatientDisplayId(r.patientNumber) ? <span className="font-mono font-bold text-[#009ef7] mr-1">{r.patientNumber}</span> : null}
@@ -351,11 +349,8 @@ export default function LiveDashboardPage() {
                           <td className={`px-3 py-2.5 ${r.isUrgent ? 'border-l-4 border-rose-500' : ''}`}>
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className={`font-bold ${r.isUrgent ? 'text-red-500' : 'text-slate-900'}`}>{r.fullName}</span>
-                              {r.isUrgent && (
-                                <span className="px-1.5 py-0.5 bg-rose-600 text-white font-mono font-bold text-[9px] rounded uppercase animate-pulse flex items-center gap-1">
-                                  <AlertTriangle className="w-2.5 h-2.5" /> STAT
-                                </span>
-                              )}
+                              {r.isUrgent && <UrgentBadge />}
+                              {r.isPortable && <PortableBadge />}
                             </div>
                             <div className="text-[11px] text-slate-500 mt-0.5 whitespace-nowrap">
                               {formatPatientDisplayId(r.patientNumber) ? <span className="font-mono font-bold text-[#009ef7] mr-1">{r.patientNumber}</span> : null}
@@ -429,11 +424,8 @@ export default function LiveDashboardPage() {
                       ) : (
                         <span className="text-xs font-semibold text-slate-500">{r.modality || 'Study'}</span>
                       )}
-                      {r.isUrgent && (
-                        <span className="px-1.5 py-0.5 bg-rose-600 text-white font-mono font-bold text-[9px] rounded uppercase animate-pulse flex items-center gap-1">
-                          <AlertTriangle className="w-2.5 h-2.5" /> URGENT
-                        </span>
-                      )}
+                      {r.isUrgent && <UrgentBadge />}
+                      {r.isPortable && <PortableBadge />}
                     </div>
                     <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full border border-emerald-200">
                       ACCEPTED

@@ -26,3 +26,6 @@ export { ConfirmDialog, ConfirmProvider, useConfirm } from './ConfirmDialog';
 export type { ConfirmDialogProps, ConfirmOptions } from './ConfirmDialog';
 
 export { ToastProvider, toast } from './Toast';
+
+export { CaseFlags, UrgentBadge, PortableBadge } from './CaseFlags';
+export type { CaseFlagsProps, UrgentBadgeProps, PortableBadgeProps } from './CaseFlags';

@@ -9,6 +9,7 @@ import { ApiClient, apiErrorMessage, resolveMediaUrl } from '@/lib/api-client';
 import { canWriteTemplates, useSession } from '@/lib/access';
 import { formatPatientDisplayId } from '@/lib/uuid';
 import ReportTemplateModal from '@/components/ReportTemplateModal';
+import { UrgentBadge, PortableBadge } from '@/components/ui/CaseFlags';
 
 
 interface ReviewSignReportModalProps {
@@ -161,11 +162,8 @@ export default function ReviewSignReportModal({
                 <h3 className="text-sm font-bold uppercase tracking-wider text-white">
                   Radiologist Case Review & Digital Sign-Off
                 </h3>
-                {report.isUrgent && (
-                  <span className="px-2 py-0.5 bg-rose-600 text-white font-mono font-bold text-[10px] rounded uppercase animate-pulse flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3 text-white" /> STAT URGENT
-                  </span>
-                )}
+                {report.isUrgent && <UrgentBadge />}
+                {report.isPortable && <PortableBadge />}
               </div>
               <p className="text-[10px] text-slate-300 font-mono">
                 {report.fullName}{formatPatientDisplayId(report.patientNumber) ? ` · ${report.patientNumber}` : ''}
