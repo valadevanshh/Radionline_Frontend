@@ -75,9 +75,9 @@ interface StudyDraft {
 
 const fieldStyle: React.CSSProperties = {
   width: '100%',
-  height: 36,
+  height: 40,
   padding: '0 10px',
-  fontSize: 14,
+  fontSize: 16, // 16px avoids iOS zoom-on-focus
   borderRadius: 8,
   border: '1px solid #cbd5e1',
   background: '#fff',
@@ -87,9 +87,10 @@ const fieldErrorStyle: React.CSSProperties = { ...fieldStyle, border: '1px solid
 const areaStyle: React.CSSProperties = {
   ...fieldStyle,
   height: 'auto',
-  minHeight: 64,
-  padding: '8px 10px',
+  minHeight: 72,
+  padding: '10px',
   lineHeight: 1.35,
+  fontSize: 16,
 };
 
 function fileKind(file: File): PickedFile['kind'] | null {
@@ -613,7 +614,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
   const renderThumb = (f: PickedFile, onRemove?: () => void) => (
     <div
       key={f.key}
-      className="relative rounded-lg border border-slate-200 bg-slate-50 overflow-hidden w-16 h-16 shrink-0"
+      className="relative rounded-lg border border-slate-200 bg-slate-50 overflow-hidden w-[4.5rem] h-[4.5rem] sm:w-16 sm:h-16 shrink-0"
       data-testid="upload-thumb"
     >
       {f.previewUrl ? (
@@ -677,15 +678,15 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
         role="dialog"
         aria-modal="true"
         aria-labelledby="upload-dialog-title"
-        className="relative bg-white text-slate-900 w-full sm:max-w-xl rounded-t-2xl sm:rounded-xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ maxHeight: 'min(94dvh, 860px)' }}
+        className="relative bg-white text-slate-900 w-full sm:max-w-xl md:max-w-2xl rounded-t-2xl sm:rounded-xl shadow-2xl flex flex-col overflow-hidden"
+        style={{ maxHeight: 'min(96dvh, 920px)' }}
       >
-        <div className="flex items-center justify-between gap-2 px-3.5 sm:px-4 pt-3 pb-2 border-b border-slate-100 shrink-0">
+        <div className="flex items-center justify-between gap-2 px-3 sm:px-5 pt-3 pb-2.5 border-b border-slate-100 shrink-0">
           <div className="min-w-0">
-            <h2 id="upload-dialog-title" className="text-[15px] font-bold text-slate-900 leading-tight">
+            <h2 id="upload-dialog-title" className="text-[16px] sm:text-[17px] font-bold text-slate-900 leading-tight">
               {isEdit ? 'Edit patient details' : 'Upload Image'}
             </h2>
-            <p className="text-[11px] text-slate-500 truncate">
+            <p className="text-[11px] sm:text-[12px] text-slate-500 truncate">
               {isEdit
                 ? `${initialReport?.fullName || ''} · ${initialReport?.radiologyCenterName || ''}`
                 : selectedCenter && centers.length === 1
@@ -698,14 +699,14 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
             onClick={onClose}
             disabled={submitting}
             aria-label="Close"
-            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 disabled:opacity-40 shrink-0"
+            className="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 disabled:opacity-40 shrink-0"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form id="upload-image-form" noValidate onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="px-3.5 sm:px-4 py-3 space-y-3">
+        <form id="upload-image-form" noValidate onSubmit={handleSubmit} className="flex-1 overflow-y-auto overscroll-contain">
+          <div className="px-3 sm:px-5 py-3 sm:py-4 space-y-3 sm:space-y-3.5">
             {formError && (
               <div
                 role="alert"
@@ -738,13 +739,13 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                 <FieldError msg={errors.fullName} />
               </div>
 
-              <div className="grid grid-cols-[minmax(0,1.1fr)_88px_minmax(0,1fr)] gap-2 items-end">
-                <div data-field="age">
+              <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1.2fr)_96px_minmax(0,1fr)] gap-2 items-end">
+                <div data-field="age" className="col-span-1">
                   <FieldLabel required htmlFor="up-age">
                     Age
                   </FieldLabel>
                   <div
-                    className={`flex items-stretch rounded-lg border overflow-hidden bg-white ${
+                    className={`flex items-stretch rounded-lg border overflow-hidden bg-white h-10 ${
                       errors.age ? 'border-rose-400' : 'border-slate-300'
                     }`}
                   >
@@ -752,9 +753,9 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                       type="button"
                       onClick={() => bumpAge(-1)}
                       aria-label="Decrease age"
-                      className="w-8 shrink-0 flex items-center justify-center text-slate-600 hover:bg-slate-50 border-r border-slate-200"
+                      className="w-10 shrink-0 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:bg-slate-100 border-r border-slate-200"
                     >
-                      <Minus className="w-3.5 h-3.5" />
+                      <Minus className="w-4 h-4" />
                     </button>
                     <input
                       id="up-age"
@@ -766,21 +767,21 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                         if (errors.age) setErrors((x) => ({ ...x, age: '' }));
                       }}
                       placeholder="0"
-                      className="flex-1 min-w-0 text-center text-[14px] font-semibold text-slate-900 outline-none h-9"
+                      className="flex-1 min-w-0 text-center text-[16px] font-semibold text-slate-900 outline-none h-full"
                       data-testid="patient-age"
                     />
                     <button
                       type="button"
                       onClick={() => bumpAge(1)}
                       aria-label="Increase age"
-                      className="w-8 shrink-0 flex items-center justify-center text-slate-600 hover:bg-slate-50 border-l border-slate-200"
+                      className="w-10 shrink-0 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:bg-slate-100 border-l border-slate-200"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="w-4 h-4" />
                     </button>
                   </div>
                   <FieldError msg={errors.age} />
                 </div>
-                <div>
+                <div className="col-span-1">
                   <FieldLabel htmlFor="up-age-unit">Unit</FieldLabel>
                   <select
                     id="up-age-unit"
@@ -794,7 +795,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                     <option value="Days">Days</option>
                   </select>
                 </div>
-                <div data-field="gender">
+                <div data-field="gender" className="col-span-2 sm:col-span-1">
                   <FieldLabel required htmlFor="up-gender">
                     Gender
                   </FieldLabel>
@@ -896,22 +897,22 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                 </>
               )}
 
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-0.5">
-                <label className="inline-flex items-center gap-2 text-[13px] font-semibold text-slate-800 cursor-pointer" data-testid="urgent-toggle">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-0.5">
+                <label className="inline-flex items-center gap-2.5 min-h-10 text-[14px] font-semibold text-slate-800 cursor-pointer" data-testid="urgent-toggle">
                   <input
                     type="checkbox"
                     checked={isUrgent}
                     onChange={(e) => setIsUrgent(e.target.checked)}
-                    className="w-4 h-4 accent-rose-500"
+                    className="w-5 h-5 accent-rose-500"
                   />
                   Urgent
                 </label>
-                <label className="inline-flex items-center gap-2 text-[13px] font-semibold text-slate-800 cursor-pointer" data-testid="portable-toggle">
+                <label className="inline-flex items-center gap-2.5 min-h-10 text-[14px] font-semibold text-slate-800 cursor-pointer" data-testid="portable-toggle">
                   <input
                     type="checkbox"
                     checked={isPortable}
                     onChange={(e) => setIsPortable(e.target.checked)}
-                    className="w-4 h-4 accent-[#009ef7]"
+                    className="w-5 h-5 accent-[#009ef7]"
                   />
                   Portable
                 </label>
@@ -952,42 +953,9 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                         )}
                       </div>
 
-                      <div className="flex gap-2.5 items-start">
-                        {/* Primary / views */}
-                        <div className="flex flex-wrap gap-1.5 min-w-0 flex-1">
-                          {study.views.map((f) => renderThumb(f, () => removeView(study.key, f.key)))}
-                          <button
-                            type="button"
-                            disabled={submitting}
-                            onClick={() => {
-                              activeStudyKey.current = study.key;
-                              studyFileRefs.current[study.key]?.click();
-                            }}
-                            className="w-16 h-16 rounded-lg border-2 border-dashed border-slate-300 hover:border-[#009ef7] text-slate-500 hover:text-[#009ef7] flex flex-col items-center justify-center gap-0.5 bg-white shrink-0"
-                            data-testid="add-view"
-                            title={study.views.length ? 'Add view' : 'Upload image'}
-                          >
-                            {study.views.length ? <ImagePlus className="w-4 h-4" /> : <UploadCloud className="w-4 h-4" />}
-                            <span className="text-[9px] font-bold leading-tight text-center px-0.5">
-                              {study.views.length ? 'Add view' : 'Upload'}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            disabled={submitting}
-                            onClick={() => {
-                              activeStudyKey.current = study.key;
-                              cameraInputRef.current?.click();
-                            }}
-                            className="sm:hidden w-16 h-16 rounded-lg border border-slate-300 text-slate-600 flex flex-col items-center justify-center gap-0.5 bg-white shrink-0"
-                          >
-                            <Camera className="w-4 h-4" />
-                            <span className="text-[9px] font-bold">Photo</span>
-                          </button>
-                        </div>
-
-                        {/* Body part */}
-                        <div className="w-[46%] max-w-[200px] shrink-0 space-y-1.5">
+                      <div className="flex flex-col sm:flex-row gap-2 sm:gap-2.5 sm:items-start">
+                        {/* Body part — full width on phone, side column on tablet+ */}
+                        <div className="w-full sm:w-[42%] sm:max-w-[220px] sm:order-2 shrink-0 space-y-1.5">
                           <select
                             value={bpValue}
                             onChange={(e) =>
@@ -1019,6 +987,39 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                             />
                           )}
                         </div>
+
+                        {/* Views */}
+                        <div className="flex flex-wrap gap-1.5 min-w-0 flex-1 sm:order-1">
+                          {study.views.map((f) => renderThumb(f, () => removeView(study.key, f.key)))}
+                          <button
+                            type="button"
+                            disabled={submitting}
+                            onClick={() => {
+                              activeStudyKey.current = study.key;
+                              studyFileRefs.current[study.key]?.click();
+                            }}
+                            className="w-[4.5rem] h-[4.5rem] sm:w-16 sm:h-16 rounded-lg border-2 border-dashed border-slate-300 hover:border-[#009ef7] active:border-[#009ef7] text-slate-500 hover:text-[#009ef7] flex flex-col items-center justify-center gap-0.5 bg-white shrink-0"
+                            data-testid="add-view"
+                            title={study.views.length ? 'Add view' : 'Upload image'}
+                          >
+                            {study.views.length ? <ImagePlus className="w-5 h-5" /> : <UploadCloud className="w-5 h-5" />}
+                            <span className="text-[10px] font-bold leading-tight text-center px-0.5">
+                              {study.views.length ? 'Add view' : 'Upload'}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={submitting}
+                            onClick={() => {
+                              activeStudyKey.current = study.key;
+                              cameraInputRef.current?.click();
+                            }}
+                            className="md:hidden w-[4.5rem] h-[4.5rem] sm:w-16 sm:h-16 rounded-lg border border-slate-300 text-slate-600 flex flex-col items-center justify-center gap-0.5 bg-white shrink-0"
+                          >
+                            <Camera className="w-5 h-5" />
+                            <span className="text-[10px] font-bold">Photo</span>
+                          </button>
+                        </div>
                       </div>
 
                       <input
@@ -1042,10 +1043,10 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                   type="button"
                   disabled={submitting}
                   onClick={() => setStudies((prev) => [...prev, newStudy()])}
-                  className="w-full h-9 rounded-lg border border-dashed border-slate-300 hover:border-[#009ef7] text-[12px] font-bold text-slate-700 hover:text-[#009ef7] inline-flex items-center justify-center gap-1.5 bg-white"
+                  className="w-full h-10 sm:h-9 rounded-lg border border-dashed border-slate-300 hover:border-[#009ef7] active:border-[#009ef7] text-[13px] sm:text-[12px] font-bold text-slate-700 hover:text-[#009ef7] inline-flex items-center justify-center gap-1.5 bg-white"
                   data-testid="add-study"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-4 h-4" />
                   Add Another Study
                 </button>
                 <FieldError msg={errors.studies} />
@@ -1202,23 +1203,23 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
         </form>
 
         <div
-          className="shrink-0 border-t border-slate-100 bg-white px-3.5 sm:px-4 py-2.5"
-          style={{ paddingBottom: 'max(10px, env(safe-area-inset-bottom))' }}
+          className="shrink-0 border-t border-slate-100 bg-white px-3 sm:px-5 py-2.5 sm:py-3"
+          style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
         >
           {submitting && uploadPct !== null && (
-            <div className="h-1 rounded-full bg-slate-100 overflow-hidden mb-2" data-testid="upload-progress">
+            <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden mb-2" data-testid="upload-progress">
               <div className="h-full bg-[#009ef7] transition-all" style={{ width: `${uploadPct}%` }} />
             </div>
           )}
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-500 flex-1 min-w-0 truncate" data-testid="upload-status">
+            <span className="text-[11px] sm:text-[12px] text-slate-500 flex-1 min-w-0 truncate" data-testid="upload-status">
               {footerStatus}
             </span>
             <button
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="h-9 px-3 rounded-lg text-[13px] font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+              className="h-10 sm:h-9 px-3.5 rounded-lg text-[14px] sm:text-[13px] font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
             >
               Cancel
             </button>
@@ -1226,10 +1227,10 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
               type="submit"
               form="upload-image-form"
               disabled={submitting || preparing}
-              className="h-9 px-4 rounded-lg bg-[#009ef7] hover:bg-[#008be0] disabled:opacity-60 text-white text-[13px] font-semibold inline-flex items-center gap-1.5"
+              className="h-10 sm:h-9 px-4 sm:px-5 rounded-lg bg-[#009ef7] hover:bg-[#008be0] disabled:opacity-60 text-white text-[14px] sm:text-[13px] font-semibold inline-flex items-center gap-1.5"
               data-testid="upload-submit"
             >
-              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isEdit ? <Check className="w-3.5 h-3.5" /> : <UploadCloud className="w-3.5 h-3.5" />}
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : isEdit ? <Check className="w-4 h-4" /> : <UploadCloud className="w-4 h-4" />}
               {isEdit ? 'Save' : 'Upload'}
             </button>
           </div>

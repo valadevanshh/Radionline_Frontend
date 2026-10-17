@@ -485,7 +485,17 @@ export default function DicomViewerModal({
 
   const handleOpenSaveTemplate = () => {
     if (!canWriteTemplates(RadiologyStore.getSession())) return;
-    setSaveTmplTitle(reportTitle || (report?.bodyParts?.join(', ') ? `${report.bodyParts.join(', ')} — Custom Template` : 'New Custom Radiology Template'));
+    if (!findingText.trim() && !impressionText.trim()) {
+      setStatusToast('Write findings or impression first, then save as a new template.');
+      setTimeout(() => setStatusToast(null), 3500);
+      return;
+    }
+    const activePart =
+      report?.bodyParts?.[activeBodyPartIdx] || report?.bodyParts?.[0] || '';
+    setSaveTmplTitle(
+      reportTitle?.trim() ||
+        (activePart ? `${activePart} — Custom Template` : 'New Custom Radiology Template'),
+    );
     {
       const sess = RadiologyStore.getSession();
       const wanted = report?.radiologyCenterId || 'ALL';
@@ -500,60 +510,18 @@ export default function DicomViewerModal({
     setSaveTemplateModalOpen(true);
   };
 
-  const handleConfirmSaveTemplate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canWriteTemplates(RadiologyStore.getSession()) || !saveTmplTitle.trim()) return;
-
-    let centerName = 'All Centers';
-    if (saveTmplCenterId !== 'ALL') {
-      const matched = allCenters.find((c) => c.id === saveTmplCenterId);
-      if (matched) centerName = matched.centerName;
-    }
-
-    const contentHtml = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
-        <h2 style="color: #009ef7; border-bottom: 2px solid #009ef7; padding-bottom: 4px; text-transform: uppercase;">
-          ${reportTitle || saveTmplTitle}
-        </h2>
-        <h3 style="color: #0f172a; margin-bottom: 8px;">RADIOLOGICAL FINDINGS:</h3>
-        <p>${findingText.replace(/\n/g, '<br/>')}</p>
-        <br/>
-        <h3 style="color: #0f172a; margin-bottom: 8px;">IMPRESSION & CONCLUSION:</h3>
-        <div style="background-color: #f1f5f9; padding: 10px; border-left: 4px solid #009ef7;">
-          <p>${impressionText.replace(/\n/g, '<br/>')}</p>
-        </div>
-      </div>
-    `;
-
-    const sess = RadiologyStore.getSession();
-    const tmplPayload = {
-      title: saveTmplTitle.trim(),
-      centerId: saveTmplCenterId,
-      centerName,
-      modality: report?.modality || saveTmplModality,
-      bodyPart: report?.bodyParts?.[0] || saveTmplModality,
-      findings: findingText,
-      impression: impressionText,
-      content: contentHtml,
-      doctorId: sess?.doctorId || String(sess?.userId || ''),
-      doctorName: sess?.name,
-    };
-    ApiClient.saveTemplate(tmplPayload)
-      .then((saved) => {
-        setSaveTemplateModalOpen(false);
-        if (saved && (saved as { pendingApproval?: boolean }).pendingApproval) {
-          setStatusToast((saved as { message?: string }).message || 'Template change sent to the Super Admin for approval.');
-          setTimeout(() => setStatusToast(null), 4000);
-          return;
-        }
-        RadiologyStore.saveTemplate(saved);
-        setSaveTemplateSuccess(true);
-        setTimeout(() => setSaveTemplateSuccess(false), 3000);
-      })
-      .catch((err) => {
-        setStatusToast(apiErrorMessage(err, 'Could not save the template'));
-        setTimeout(() => setStatusToast(null), 4000);
-      });
+  const handleTemplateSaved = (saved: DocTemplate) => {
+    RadiologyStore.saveTemplate(saved);
+    setStoredTemplates((prev) => {
+      const byId = new Map(prev.map((t) => [t.id, t]));
+      byId.set(saved.id, saved);
+      return Array.from(byId.values());
+    });
+    setSelectedTemplateId(`stored_${saved.id}`);
+    setSaveTemplateSuccess(true);
+    setStatusToast(`Template “${saved.title}” saved — available in your list.`);
+    setTimeout(() => setSaveTemplateSuccess(false), 3000);
+    setTimeout(() => setStatusToast(null), 4000);
   };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -681,7 +649,7 @@ export default function DicomViewerModal({
       setReportTitle(matchedTitle || `X-RAY ${firstPart.toUpperCase()} EXAMINATION`);
       setFindingText(rMap[firstPart] || '');
       setImpressionText(iMap[firstPart] || '');
-      setSelectedTemplateId(matchedTemplateKey);
+      setSelectedTemplateId(matchedTemplateKey || 'blank');
 
     };
 
@@ -762,6 +730,10 @@ export default function DicomViewerModal({
   const viewerSession = RadiologyStore.getSession();
   const canDrawArrows = viewerSession?.role === 'DOCTOR' || viewerSession?.role === 'SUPER_ADMIN';
   const canCreateTemplate = canWriteTemplates(viewerSession);
+  const isBlankTemplate = !selectedTemplateId || selectedTemplateId === 'blank';
+  const hasReportDraftContent = Boolean(findingText.trim() || impressionText.trim());
+  /** Doctor wrote from a blank (or cleared) template — offer Save as new template. */
+  const showSaveAsNewTemplate = canCreateTemplate && isBlankTemplate && hasReportDraftContent;
   const myUserId = viewerSession?.userId;
   const canRemoveMark = (m: ImageAnnotation) =>
     viewerSession?.role === 'SUPER_ADMIN' || (myUserId != null && m.authorUserId === myUserId);
@@ -1888,10 +1860,21 @@ export default function DicomViewerModal({
               <button
                 type="button"
                 onClick={() => { handleOpenSaveTemplate(); setMoreMenuOpen(false); }}
-                className={`w-full flex items-center gap-2 px-3 py-2.5 text-left ${theme === 'dark' ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}
+                className={`w-full flex items-center gap-2 px-3 py-2.5 text-left ${
+                  showSaveAsNewTemplate
+                    ? theme === 'dark'
+                      ? 'bg-purple-900/50 text-purple-200 hover:bg-purple-900'
+                      : 'bg-purple-50 text-purple-800 hover:bg-purple-100'
+                    : theme === 'dark'
+                    ? 'hover:bg-slate-800'
+                    : 'hover:bg-slate-50'
+                }`}
               >
                 <BookmarkPlus className="w-4 h-4" />
-                Save New Template
+                Save as new template
+                {showSaveAsNewTemplate && (
+                  <span className="ml-auto text-[10px] font-bold uppercase tracking-wide opacity-80">New</span>
+                )}
               </button>
               )}
               <button
@@ -2374,11 +2357,10 @@ export default function DicomViewerModal({
               <div className="flex items-center gap-1 min-w-0 flex-1 basis-[min(100%,18rem)]">
                 <Sparkles className={`w-3.5 h-3.5 ${theme === 'dark' ? 'text-cyan-400' : 'text-blue-600'}`} />
                 <select
-                  value={selectedTemplateId}
+                  value={selectedTemplateId || 'blank'}
                   onChange={(e) => {
                     const tId = e.target.value;
-                    setSelectedTemplateId(tId);
-                    if (!tId) return;
+                    setSelectedTemplateId(tId === 'blank' ? 'blank' : tId);
 
                     const htmlToPlain = (html: string) =>
                       html
@@ -2420,6 +2402,18 @@ export default function DicomViewerModal({
                       }
                     };
 
+                    if (tId === 'blank' || !tId) {
+                      setFindingText('');
+                      setImpressionText('');
+                      const parts = report?.bodyParts?.length ? report.bodyParts : [];
+                      const currentPart = parts[activeBodyPartIdx] || parts[0];
+                      if (currentPart) {
+                        setBodyPartReports((prev) => ({ ...prev, [currentPart]: '' }));
+                        setBodyPartImpressions((prev) => ({ ...prev, [currentPart]: '' }));
+                      }
+                      return;
+                    }
+
                     if (tId.startsWith('stored_')) {
                       const id = tId.replace('stored_', '');
                       const tmpl = storedTemplates.find((t) => t.id === id);
@@ -2440,11 +2434,12 @@ export default function DicomViewerModal({
                       ? 'bg-slate-950 border-cyan-500/50 text-cyan-300 hover:border-cyan-400 focus:ring-1 focus:ring-cyan-400'
                       : 'bg-white border-blue-300 text-blue-800 hover:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-xs'
                   }`}
+                  data-testid="template-select"
                 >
-                  <option value="">Load Report Template...</option>
+                  <option value="blank">Blank template — write your own</option>
                   {filteredTemplates.length === 0 && !showAllTemplates && (
                     <option value="" disabled>
-                      No templates match modality/body part
+                      No saved templates match this study
                     </option>
                   )}
                   {filteredTemplates.map((tmpl) => (
@@ -2459,7 +2454,7 @@ export default function DicomViewerModal({
                 </select>
 
                 <label
-                  className={`flex items-center gap-1 px-1.5 py-1 text-[10px] font-bold border rounded cursor-pointer select-none ${
+                  className={`flex items-center gap-1 px-1.5 py-1 text-[10px] font-bold border rounded cursor-pointer select-none shrink-0 ${
                     theme === 'dark'
                       ? 'border-slate-700 text-slate-300 hover:bg-slate-800'
                       : 'border-slate-300 text-slate-600 hover:bg-slate-50'
@@ -2479,18 +2474,29 @@ export default function DicomViewerModal({
                 <button
                   type="button"
                   onClick={handleOpenSaveTemplate}
-                  title="Save current findings as reusable template"
-                  aria-label="Save New Template"
-                  className={`min-h-[36px] min-w-[36px] px-2 text-xs font-bold border rounded flex items-center justify-center gap-1 transition-all cursor-pointer shrink-0 ${
+                  title={
+                    showSaveAsNewTemplate
+                      ? 'Save this blank report as a reusable template'
+                      : 'Save current findings as a new reusable template'
+                  }
+                  aria-label="Save as new template"
+                  data-testid="save-as-template"
+                  className={`min-h-[36px] px-2.5 text-[11px] sm:text-xs font-bold border rounded flex items-center justify-center gap-1 transition-all cursor-pointer shrink-0 ${
                     saveTemplateSuccess
                       ? 'bg-emerald-600 border-emerald-500 text-white'
+                      : showSaveAsNewTemplate
+                      ? theme === 'dark'
+                        ? 'bg-purple-600 border-purple-400 text-white shadow-md shadow-purple-900/40'
+                        : 'bg-purple-600 border-purple-500 text-white shadow-sm'
                       : theme === 'dark'
                       ? 'bg-purple-950/80 border-purple-500/60 text-purple-300 hover:bg-purple-900 hover:text-white'
                       : 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200'
                   }`}
                 >
                   {saveTemplateSuccess ? <CheckCircle2 className="w-4 h-4" /> : <BookmarkPlus className="w-4 h-4" />}
-                  <span className="hidden xl:inline whitespace-nowrap">{saveTemplateSuccess ? 'Saved!' : 'Save Template'}</span>
+                  <span className="whitespace-nowrap">
+                    {saveTemplateSuccess ? 'Saved!' : 'Save as new template'}
+                  </span>
                 </button>
                 )}
               </div>
@@ -2605,6 +2611,29 @@ export default function DicomViewerModal({
               </select>
             </div>
 
+            {showSaveAsNewTemplate && (
+              <div
+                className={`shrink-0 px-2.5 py-1.5 flex flex-wrap items-center gap-2 border-b print:hidden no-print ${
+                  theme === 'dark'
+                    ? 'bg-purple-950/70 border-purple-700/50 text-purple-100'
+                    : 'bg-purple-50 border-purple-200 text-purple-900'
+                }`}
+                data-testid="save-template-nudge"
+              >
+                <BookmarkPlus className="w-3.5 h-3.5 shrink-0" />
+                <p className="text-[11px] sm:text-[12px] font-medium flex-1 min-w-0">
+                  You wrote this from a blank template. Save it to reuse on similar studies.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleOpenSaveTemplate}
+                  className="h-7 px-2.5 rounded-md bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold shrink-0"
+                >
+                  Save as new template
+                </button>
+              </div>
+            )}
+
             {/* Study chips + page zoom: screen-only bar above the A4 page */}
             <div className={`shrink-0 border-b px-2 py-1.5 flex items-center gap-2 select-none print:hidden no-print ${
               theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-100 border-slate-300 text-slate-700'
@@ -2702,6 +2731,24 @@ export default function DicomViewerModal({
                   <MessageSquare className="w-5 h-5" />
                 </button>
               )}
+              {canCreateTemplate && (
+                <button
+                  type="button"
+                  onClick={handleOpenSaveTemplate}
+                  title="Save as new template"
+                  data-testid="save-as-template-mobile"
+                  className={`flex items-center justify-center gap-1 h-11 px-2.5 rounded-lg border text-[12px] font-bold shrink-0 ${
+                    showSaveAsNewTemplate
+                      ? 'bg-purple-600 border-purple-500 text-white'
+                      : theme === 'dark'
+                      ? 'border-purple-500/50 text-purple-300'
+                      : 'border-purple-300 text-purple-800'
+                  }`}
+                >
+                  <BookmarkPlus className="w-4 h-4" />
+                  <span className="hidden min-[380px]:inline">Template</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -2761,17 +2808,14 @@ export default function DicomViewerModal({
           isOpen={saveTemplateModalOpen}
           onClose={() => setSaveTemplateModalOpen(false)}
           prefill={{
-            title: `${sheetTitleFor(sheetActivePart)} Template`,
-            centerId: report?.radiologyCenterId || 'ALL',
-            modality: studyModality || 'X-Ray',
+            title: saveTmplTitle || `${sheetTitleFor(sheetActivePart)} Template`,
+            centerId: saveTmplCenterId || report?.radiologyCenterId || 'ALL',
+            modality: saveTmplModality || studyModality || 'X-Ray',
             bodyPart: sheetActivePart,
             findings: findingText,
             impression: impressionText,
           }}
-          onSaved={() => {
-            setSaveTemplateSuccess(true);
-            setTimeout(() => setSaveTemplateSuccess(false), 3000);
-          }}
+          onSaved={handleTemplateSaved}
         />
       )}
 
