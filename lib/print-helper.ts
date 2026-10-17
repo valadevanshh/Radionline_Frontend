@@ -126,10 +126,10 @@ export function resolveLetterhead(payload: Pick<PrintReportPayload, 'letterheadM
   const mode: LetterheadMode =
     payload.withHeader === false ? 'preprinted' : payload.letterheadMode || (url ? 'full-page' : 'header');
   const side = A4_PAGE.marginSideMm;
-  if (mode === 'preprinted') return { mode, kind: 'none', topMm: 38, bottomMm: 30, sideMm: side, compact: false };
-  if (mode === 'none') return { mode, kind: 'none', topMm: A4_PAGE.marginTopMm, bottomMm: A4_PAGE.marginBottomMm, sideMm: side, compact: false };
+  if (mode === 'preprinted') return { mode, kind: 'none', topMm: 38, bottomMm: 22, sideMm: side, compact: true };
+  if (mode === 'none') return { mode, kind: 'none', topMm: A4_PAGE.marginTopMm, bottomMm: A4_PAGE.marginBottomMm, sideMm: side, compact: true };
   if (url && mode === 'full-page') return { mode, kind: 'bg', topMm: 48, bottomMm: 30, sideMm: side, compact: true };
-  if (url && mode === 'header') return { mode, kind: 'crop', topMm: 50, bottomMm: A4_PAGE.marginBottomMm, sideMm: side, compact: false };
+  if (url && mode === 'header') return { mode, kind: 'crop', topMm: 50, bottomMm: A4_PAGE.marginBottomMm, sideMm: side, compact: true };
   if (url && mode === 'footer') return { mode, kind: 'footer', topMm: A4_PAGE.marginTopMm, bottomMm: 32, sideMm: side, compact: false };
   // A letterhead mode but no artwork uploaded: the text letterhead
   return { mode, kind: 'text', topMm: A4_PAGE.marginTopMm, bottomMm: A4_PAGE.marginBottomMm, sideMm: side, compact: false };
