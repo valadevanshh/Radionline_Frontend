@@ -1,11 +1,22 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Receipt, Lock, Unlock, CheckCircle2, Clock, RefreshCw } from 'lucide-react';
-import { ApiClient } from '@/lib/api-client';
+import {
+  Receipt,
+  Lock,
+  Unlock,
+  CheckCircle2,
+  Clock,
+  RefreshCw,
+  CalendarDays,
+  CalendarRange,
+} from 'lucide-react';
+import { ApiClient, resolveMediaUrl } from '@/lib/api-client';
 import { RadiologyStore } from '@/lib/radiology-store';
 import { useConfirm, StatusBadge } from '@/components/ui';
 import { RowCard, RowCardList, RT_CONTAINER, RT_TABLE_ONLY } from '@/components/ui/ResponsiveTable';
+import { InvoiceActions } from '@/components/InvoiceActions';
+import { currentBillingPeriodIST, formatPeriodLabel } from '@/lib/invoice-print';
 
 type InvoiceRow = {
   id: string;
@@ -23,13 +34,17 @@ type InvoiceRow = {
 
 export default function SuperAdminInvoicesPage() {
   const confirm = useConfirm();
+  const currentPeriod = useMemo(() => currentBillingPeriodIST(), []);
   const [tab, setTab] = useState<'center' | 'doctor'>('center');
+  const [viewMode, setViewMode] = useState<'monthly' | 'day'>('monthly');
+  const [dayFilter, setDayFilter] = useState('');
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [periods, setPeriods] = useState<any[]>([]);
   const [pricing, setPricing] = useState<any>(null);
-  const [periodFilter, setPeriodFilter] = useState('');
+  const [centersById, setCentersById] = useState<Record<string, { headerTemplateUrl?: string | null }>>({});
+  const [periodFilter, setPeriodFilter] = useState(currentPeriod);
   const [statusFilter, setStatusFilter] = useState('');
-  const [lockPeriod, setLockPeriod] = useState('');
+  const [lockPeriod, setLockPeriod] = useState(currentPeriod);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -49,7 +64,7 @@ export default function SuperAdminInvoicesPage() {
     setLoading(true);
     setError(null);
     try {
-      const [inv, per, pr] = await Promise.all([
+      const [inv, per, pr, centers] = await Promise.all([
         ApiClient.getInvoices({
           partyType: tab === 'center' ? 'center' : 'doctor',
           period: periodFilter || undefined,
@@ -57,15 +72,17 @@ export default function SuperAdminInvoicesPage() {
         }),
         ApiClient.getBillingPeriods().catch(() => []),
         ApiClient.getPricing().catch(() => null),
+        ApiClient.getCenters().catch(() => []),
       ]);
       setInvoices(inv);
       setPeriods(per);
       setPricing(pr);
-      if (!lockPeriod) {
-        const now = new Date();
-        const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        setLockPeriod(ym);
+      const map: Record<string, { headerTemplateUrl?: string | null }> = {};
+      for (const c of centers || []) {
+        map[c.id] = { headerTemplateUrl: c.headerTemplateUrl };
       }
+      setCentersById(map);
+      if (!lockPeriod) setLockPeriod(currentPeriod);
     } catch (e: any) {
       setError(e?.message || 'Failed to load invoices');
     } finally {
@@ -97,6 +114,26 @@ export default function SuperAdminInvoicesPage() {
       if (selectedId === id) await openDetail(id);
     } catch (e: any) {
       setError(e?.message || 'Failed to update status');
+    }
+  };
+
+  const markMonthPaid = async () => {
+    const period = periodFilter || lockPeriod || currentPeriod;
+    const ok = await confirm({
+      title: `Mark ${formatPeriodLabel(period)} paid?`,
+      message: `All ${tab === 'center' ? 'centre' : 'doctor'} invoices for ${period} will be marked paid. This is the monthly settlement action.`,
+      confirmLabel: 'Mark month paid',
+      variant: 'primary',
+    });
+    if (!ok) return;
+    try {
+      const res = await ApiClient.markPeriodPaid(period, tab);
+      setNotice(`Marked ${res.updated} of ${res.matched} invoices paid for ${res.period}.`);
+      setTimeout(() => setNotice(null), 4000);
+      await load();
+      if (selectedId) await openDetail(selectedId);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to mark period paid');
     }
   };
 
@@ -132,8 +169,32 @@ export default function SuperAdminInvoicesPage() {
   const periodOptions = useMemo(() => {
     const fromInv = invoices.map((i) => i.billingPeriod);
     const fromLocks = periods.map((p) => p.period);
-    return Array.from(new Set([...fromLocks, ...fromInv])).sort().reverse();
-  }, [invoices, periods]);
+    const set = new Set([currentPeriod, ...fromLocks, ...fromInv]);
+    return Array.from(set).sort().reverse();
+  }, [invoices, periods, currentPeriod]);
+
+  const filteredDays = useMemo(() => {
+    const days = detail?.byDay || [];
+    if (viewMode === 'day' && dayFilter) {
+      return days.filter((d: any) => d.serviceDate === dayFilter);
+    }
+    return days;
+  }, [detail, viewMode, dayFilter]);
+
+  const displayTotal = useMemo(() => {
+    if (viewMode === 'day' && dayFilter && detail) {
+      return filteredDays.reduce((s: number, d: any) => s + Number(d.dayTotal || 0), 0);
+    }
+    return detail?.totalAmount ?? 0;
+  }, [viewMode, dayFilter, detail, filteredDays]);
+
+  const letterheadFor = (inv: { partyType?: string; partyId?: string } | null) => {
+    if (!inv || inv.partyType !== 'center') return null;
+    return resolveMediaUrl(centersById[inv.partyId || '']?.headerTemplateUrl || '') || null;
+  };
+
+  const monthPendingCount = invoices.filter((i) => i.status !== 'paid').length;
+  const monthTotal = invoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
 
   return (
     <div className="h-full overflow-auto bg-[var(--bg)] p-4 sm:p-6">
@@ -146,9 +207,10 @@ export default function SuperAdminInvoicesPage() {
             <div>
               <h1 className="text-base sm:text-lg font-bold text-slate-900">Invoices & Billing</h1>
               <p className="text-[11px] text-slate-500 font-mono">
+                Monthly settlement (IST) ·{' '}
                 {pricing?.variesByCenter ? 'Default: ' : ''}
                 Center ₹{pricing?.center?.firstStudy ?? 30}/+{pricing?.center?.additionalStudy ?? 15} · Doctor ₹
-                {pricing?.doctor?.firstStudy ?? 20}/+{pricing?.doctor?.additionalStudy ?? 10} · IST months
+                {pricing?.doctor?.firstStudy ?? 20}/+{pricing?.doctor?.additionalStudy ?? 10}
               </p>
             </div>
           </div>
@@ -161,33 +223,100 @@ export default function SuperAdminInvoicesPage() {
           </button>
         </div>
 
-        {/* Lock month control */}
-        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 flex flex-wrap items-end gap-3">
-          <div>
-            <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Billing period (YYYY-MM)</label>
-            <input
-              value={lockPeriod}
-              onChange={(e) => setLockPeriod(e.target.value)}
-              placeholder="2026-09"
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-mono w-36"
-            />
+        {/* Month toolbar */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Billing month</label>
+              <select
+                value={periodFilter}
+                onChange={(e) => {
+                  setPeriodFilter(e.target.value);
+                  setLockPeriod(e.target.value);
+                  setSelectedId(null);
+                  setDetail(null);
+                  setDayFilter('');
+                }}
+                className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-mono bg-white min-w-[140px]"
+              >
+                {periodOptions.map((p) => (
+                  <option key={p} value={p}>
+                    {p} · {formatPeriodLabel(p)}
+                    {p === currentPeriod ? ' (current)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">View</label>
+              <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode('monthly');
+                    setDayFilter('');
+                  }}
+                  className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold cursor-pointer ${
+                    viewMode === 'monthly' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <CalendarRange className="w-3.5 h-3.5" /> Monthly
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('day')}
+                  className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold cursor-pointer border-l border-slate-200 ${
+                    viewMode === 'day' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <CalendarDays className="w-3.5 h-3.5" /> Day-based
+                </button>
+              </div>
+            </div>
+            {viewMode === 'day' && (
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Service day</label>
+                <input
+                  type="date"
+                  value={dayFilter}
+                  onChange={(e) => setDayFilter(e.target.value)}
+                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-mono bg-white"
+                />
+              </div>
+            )}
+            <div className="flex-1 min-w-[160px] text-[11px] text-slate-500 pb-1">
+              <span className="font-mono font-bold text-slate-800">₹{monthTotal.toLocaleString('en-IN')}</span>
+              {' · '}
+              {invoices.length} invoice{invoices.length === 1 ? '' : 's'}
+              {monthPendingCount > 0 ? ` · ${monthPendingCount} unpaid` : ' · all paid'}
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => doLock(false)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 cursor-pointer"
-          >
-            <Lock className="w-3.5 h-3.5" /> Lock / Close Month
-          </button>
-          <button
-            type="button"
-            onClick={() => doLock(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
-          >
-            <Unlock className="w-3.5 h-3.5" /> Unlock
-          </button>
-          <div className="text-[11px] text-slate-500 flex-1 min-w-[200px]">
-            Only Super Admin can lock a month or mark invoices paid/pending. Locked totals never change.
+          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={markMonthPaid}
+              disabled={!periodFilter || monthPendingCount === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 cursor-pointer disabled:opacity-40"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" /> Mark month paid
+            </button>
+            <button
+              type="button"
+              onClick={() => doLock(false)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 cursor-pointer"
+            >
+              <Lock className="w-3.5 h-3.5" /> Lock / Close Month
+            </button>
+            <button
+              type="button"
+              onClick={() => doLock(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              <Unlock className="w-3.5 h-3.5" /> Unlock
+            </button>
+            <span className="text-[11px] text-slate-500">
+              Lock freezes totals · Mark paid settles the month
+            </span>
           </div>
         </div>
 
@@ -213,20 +342,7 @@ export default function SuperAdminInvoicesPage() {
           ))}
         </div>
 
-        {/* Filters */}
         <div className="flex flex-wrap gap-2">
-          <select
-            value={periodFilter}
-            onChange={(e) => setPeriodFilter(e.target.value)}
-            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-mono bg-white"
-          >
-            <option value="">All periods</option>
-            {periodOptions.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -253,10 +369,13 @@ export default function SuperAdminInvoicesPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           <div className="lg:col-span-3 rounded-xl border border-slate-200 bg-slate-50 md:bg-white overflow-hidden">
-            {/* Phones: compact invoice cards (shared RowCard pattern, < md) */}
             <RowCardList
               isEmpty={loading || invoices.length === 0}
-              empty={loading ? 'Loading...' : 'No invoices yet. Sign off a report to accrue charges.'}
+              empty={
+                loading
+                  ? 'Loading...'
+                  : `No invoices for ${periodFilter || 'this period'}. Sign off a report to accrue charges.`
+              }
               testId="invoice-cards"
             >
               {invoices.map((inv) => (
@@ -327,7 +446,7 @@ export default function SuperAdminInvoicesPage() {
                   ) : invoices.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-3 py-8 text-center text-slate-400 italic">
-                        No invoices yet. Sign off a report to accrue charges.
+                        No invoices for {periodFilter || 'this period'}.
                       </td>
                     </tr>
                   ) : (
@@ -377,33 +496,93 @@ export default function SuperAdminInvoicesPage() {
           <div ref={detailRef} className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 min-h-[280px] scroll-mt-3">
             {!detail ? (
               <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">
-                Select an invoice to view per-day / per-center breakdown
+                Select an invoice to generate, download, or inspect breakdown
               </div>
             ) : (
               <div className="space-y-3">
                 <div>
                   <div className="text-sm font-bold text-slate-900">{detail.partyName}</div>
-                  <div className="text-[11px] font-mono text-slate-500 flex items-center gap-2 mt-1">
+                  <div className="text-[11px] font-mono text-slate-500 flex items-center gap-2 mt-1 flex-wrap">
                     <span>{detail.id}</span> · <span>{detail.billingPeriod}</span> ·{' '}
                     <StatusBadge status={detail.status.toUpperCase()} />
                   </div>
                   <div className="mt-1 text-lg font-bold font-mono text-slate-900">
-                    ₹{detail.totalAmount}{' '}
+                    ₹{displayTotal}{' '}
                     <span className="text-xs font-normal text-slate-500">{detail.currency}</span>
+                    {viewMode === 'day' && dayFilter && (
+                      <span className="ml-2 text-[10px] font-normal text-slate-500">for {dayFilter}</span>
+                    )}
                     {detail.locked && (
                       <span className="ml-2 text-[10px] uppercase text-slate-500 font-bold">Locked</span>
                     )}
                   </div>
                 </div>
 
-                {detail.byDay?.length > 0 && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase text-slate-500 mb-1.5">
+                    Generate invoice
+                    {viewMode === 'day' && dayFilter ? ` · ${dayFilter}` : ' · full month'}
+                  </div>
+                  {viewMode === 'day' && !dayFilter && (
+                    <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5 mb-2">
+                      Select a service day above to generate a day-based invoice.
+                    </div>
+                  )}
+                  <InvoiceActions
+                    invoice={{
+                      id: detail.id,
+                      partyType: detail.partyType,
+                      partyName: detail.partyName,
+                      billingPeriod: detail.billingPeriod,
+                      status: detail.status,
+                      totalAmount: detail.totalAmount,
+                      currency: detail.currency,
+                      locked: detail.locked,
+                      byDay: detail.byDay,
+                      lineItems: detail.lineItems,
+                      issuerName: 'Radionline',
+                    }}
+                    letterheadUrl={letterheadFor(detail)}
+                    serviceDate={viewMode === 'day' ? dayFilter || null : null}
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => markStatus(detail.id, 'paid')}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-xs font-bold cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Mark this paid
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => markStatus(detail.id, 'pending')}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 text-xs font-bold cursor-pointer"
+                  >
+                    <Clock className="w-3.5 h-3.5" /> Mark pending
+                  </button>
+                </div>
+
+                {filteredDays?.length > 0 && (
                   <div>
-                    <div className="text-[10px] font-bold uppercase text-slate-500 mb-1">Per-day studies</div>
+                    <div className="text-[10px] font-bold uppercase text-slate-500 mb-1">
+                      {viewMode === 'day' && dayFilter ? 'Selected day' : 'Per-day studies'}
+                    </div>
                     <div className="space-y-2 max-h-72 overflow-auto">
-                      {detail.byDay.map((day: any) => (
+                      {filteredDays.map((day: any) => (
                         <div key={day.serviceDate} className="rounded-lg border border-slate-100 bg-slate-50 p-2">
                           <div className="flex justify-between text-[11px] font-bold">
-                            <span>{day.serviceDate}</span>
+                            <button
+                              type="button"
+                              className="hover:text-[#009ef7] cursor-pointer"
+                              onClick={() => {
+                                setViewMode('day');
+                                setDayFilter(day.serviceDate);
+                              }}
+                            >
+                              {day.serviceDate}
+                            </button>
                             <span className="font-mono">₹{day.dayTotal}</span>
                           </div>
                           <ul className="mt-1 space-y-0.5">
@@ -447,4 +626,3 @@ export default function SuperAdminInvoicesPage() {
     </div>
   );
 }
-

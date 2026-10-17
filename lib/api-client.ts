@@ -861,6 +861,17 @@ export const ApiClient = {
     );
   },
 
+  /** Super Admin: mark all invoices for a YYYY-MM period as paid. */
+  async markPeriodPaid(period: string, partyType?: 'center' | 'doctor') {
+    return fetchJson<{ period: string; partyType?: string | null; matched: number; updated: number }>(
+      '/billing/mark-period-paid',
+      {
+        method: 'POST',
+        body: JSON.stringify({ period, partyType: partyType || null }),
+      }
+    );
+  },
+
   async getInvoices(params?: {
     partyType?: string;
     partyId?: string;
