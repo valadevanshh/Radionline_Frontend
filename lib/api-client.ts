@@ -190,6 +190,14 @@ export interface DoctorProfileUpdate {
   degree?: string;
   registrationNumber?: string;
   signatureUrl?: string;
+  /** data: URL = new upload, '' = remove, omit = keep */
+  photoUrl?: string;
+  /** number = set, null = clear, omit = keep */
+  yearsOfExperience?: number | null;
+  expertise?: string[];
+  /** data: URL (PDF/DOC/DOCX) = new upload, '' = remove, omit = keep */
+  cvUrl?: string;
+  cvFileName?: string;
 }
 
 export interface PendingApproval {
@@ -492,7 +500,11 @@ export const ApiClient = {
   },
 
 
-  async saveReport(report: Partial<XRayReport>) {
+  async saveReport(
+    report: Partial<XRayReport> & {
+      studyUploads?: { bodyPart: string; images: string[] }[];
+    },
+  ) {
     return fetchJson<XRayReport & Partial<PendingApprovalResult>>('/reports', {
       method: 'POST',
       body: JSON.stringify(report),
@@ -582,6 +594,11 @@ export const ApiClient = {
   // Doctors
   async getDoctors() {
     return fetchJson<Doctor[]>('/doctors');
+  },
+
+  /** Doctors directory with profile details (Super Admin, Manager, centre logins). */
+  async getDoctorDirectory() {
+    return fetchJson<Doctor[]>('/doctors/directory');
   },
 
   async saveDoctor(doctor: Partial<Doctor>) {

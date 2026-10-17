@@ -1,26 +1,19 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Users,
-  Search,
-  Plus,
-  Mail,
-  Phone,
-  CheckCircle,
-  Trash2,
-  UserPlus,
-  PenLine,
-} from 'lucide-react';
+import { Users, Search, Plus, Trash2, UserPlus, Briefcase, AlertTriangle, RefreshCw, SearchX } from 'lucide-react';
 import { RadiologyStore, Doctor, UserAccount } from '@/lib/radiology-store';
 import AddDoctorModal from '@/components/AddDoctorModal';
 import { ApiClient, apiErrorMessage, isPendingApproval } from '@/lib/api-client';
 import { toast } from '@/components/ui/Toast';
 import { useConfirm, Modal } from '@/components/ui';
-import { RowCard, RowCardList, RT_CONTAINER, RT_TABLE_ONLY, RT_TABLET_HIDE } from '@/components/ui/ResponsiveTable';
 import DoctorSignatureForm from '@/components/DoctorSignatureForm';
-import { useResizableColumns } from '@/lib/use-resizable-columns';
+import DoctorAvatar from '@/components/DoctorAvatar';
+import DoctorDetailsModal from '@/components/DoctorDetailsModal';
+import { experienceLabel } from '@/lib/doctor-profile';
+
+const TOP_TAGS = 3;
 
 export default function DoctorsPage() {
   const router = useRouter();
@@ -28,9 +21,14 @@ export default function DoctorsPage() {
   const [session, setSession] = useState<UserAccount | null>(null);
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [usingCache, setUsingCache] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  // Super Admin: edit a doctor's report signature details (degree / reg no / signature)
+  // Card click: full profile
+  const [viewDoctor, setViewDoctor] = useState<Doctor | null>(null);
+  // Super Admin: edit a doctor's profile + report signature details
   const [editDoctor, setEditDoctor] = useState<Doctor | null>(null);
 
   useEffect(() => {
@@ -55,23 +53,30 @@ export default function DoctorsPage() {
 
   const canManageDoctors = session?.role === 'SUPER_ADMIN' || session?.role === 'MANAGER';
   const canEditSignature = session?.role === 'SUPER_ADMIN';
+  const isManager = session?.role === 'MANAGER';
 
-  const { widths, startResizing } = useResizableColumns({
-    name: 240,
-    contact: 220,
-    credentials: 260,
-    status: 90,
-    actions: 80,
-  });
-
-  const loadDoctors = async () => {
+  const loadDoctors = useCallback(async () => {
+    setLoadError('');
     try {
-      const data = await ApiClient.getDoctors();
+      let data: Doctor[];
+      try {
+        data = await ApiClient.getDoctorDirectory();
+      } catch (err) {
+        // API not restarted yet (no /doctors/directory): use the plain list
+        if (!/API error 404/.test(err instanceof Error ? err.message : '')) throw err;
+        data = await ApiClient.getDoctors();
+      }
       setDoctors(data);
-    } catch {
-      setDoctors(RadiologyStore.getDoctors());
+      setUsingCache(false);
+    } catch (err) {
+      const cached = RadiologyStore.getDoctors();
+      setDoctors(cached);
+      setUsingCache(cached.length > 0);
+      setLoadError(apiErrorMessage(err, 'Could not load the doctors'));
+    } finally {
+      setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (authorized) {
@@ -80,14 +85,23 @@ export default function DoctorsPage() {
       window.addEventListener('radionline_doctors_changed', handleDoctorsChanged);
       return () => window.removeEventListener('radionline_doctors_changed', handleDoctorsChanged);
     }
-  }, [authorized]);
+  }, [authorized, loadDoctors]);
+
+  // Keep an open profile in step with the reloaded list
+  useEffect(() => {
+    setViewDoctor((cur) => (cur ? doctors.find((d) => d.id === cur.id) || cur : cur));
+  }, [doctors]);
 
   const filteredDoctors = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return doctors;
     return doctors.filter(
       (d) =>
-        d.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        d.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        d.contactNumber.includes(searchQuery)
+        (d.fullName || '').toLowerCase().includes(q) ||
+        (d.email || '').toLowerCase().includes(q) ||
+        (d.contactNumber || '').includes(q) ||
+        (d.degree || '').toLowerCase().includes(q) ||
+        (d.expertise || []).some((t) => t.toLowerCase().includes(q))
     );
   }, [doctors, searchQuery]);
 
@@ -109,7 +123,6 @@ export default function DoctorsPage() {
 
   // Delete doctor: Super Admin deletes; a Manager's delete becomes a request for approval.
   const handleDeleteDoctor = async (id: string) => {
-    const isManager = session?.role === 'MANAGER';
     const ok = await confirm({
       title: isManager ? 'Request doctor deletion' : 'Delete doctor profile',
       message: isManager
@@ -126,6 +139,7 @@ export default function DoctorsPage() {
         return;
       }
       RadiologyStore.deleteDoctor(id);
+      setViewDoctor((cur) => (cur?.id === id ? null : cur));
       toast.success('Doctor deleted.');
     } catch (err) {
       toast.error(apiErrorMessage(err, 'Could not delete the doctor'));
@@ -137,17 +151,22 @@ export default function DoctorsPage() {
     return null;
   }
 
+  const showError = !!loadError && !usingCache;
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 text-slate-900">
       <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-4 space-y-3 max-w-7xl w-full mx-auto">
-        
+
         {/* Page Top Action Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-xs">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2 font-mono">
-              <Users className="w-5 h-5 text-[#009ef7]" />
-              <span>Radiologists & Doctors Directory</span>
+              <Users className="w-5 h-5 text-[#009ef7] shrink-0" />
+              <span>Radiologists & Doctors</span>
             </h1>
+            <p className="mt-0.5 text-[12px] text-slate-500">
+              Card view of each doctor — click a card to open the full profile (photo, experience, expertise, CV).
+            </p>
           </div>
 
           {canManageDoctors && (
@@ -164,17 +183,19 @@ export default function DoctorsPage() {
 
         {/* Filter Toolbar & Data Card */}
         <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col min-h-0">
-          
+
           {/* Search Filter Strip */}
-          <div className="p-3 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between gap-4 flex-wrap shrink-0">
-            <div className="relative flex-1 min-w-[240px] max-w-md">
+          <div className="p-3 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between gap-3 flex-wrap shrink-0">
+            <div className="relative flex-1 min-w-[200px] max-w-md">
               <Search className="rn-icon-vcenter w-4 h-4 absolute left-3 top-2 text-slate-400 pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search doctor by name, email, or phone..."
+                placeholder="Search by name or expertise..."
                 className="rn-input-iconpad w-full pl-9 pr-3 py-1.5 border border-slate-300 bg-white text-slate-900 rounded-lg text-xs focus:outline-none focus:border-[#009ef7]"
+                aria-label="Search doctors by name or expertise"
+                data-testid="doctor-search"
               />
             </div>
             <div className="text-xs font-mono text-slate-500 font-bold">
@@ -182,9 +203,63 @@ export default function DoctorsPage() {
             </div>
           </div>
 
-          {/* Mobile & Desktop Responsive Container */}
+          {usingCache && loadError && (
+            <div className="mx-3 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900" role="status">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span className="flex-1 min-w-[160px]">{loadError}. Showing the last saved list.</span>
+              <button
+                type="button"
+                onClick={() => loadDoctors()}
+                className="inline-flex items-center gap-1 font-bold text-amber-900 hover:underline"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Retry
+              </button>
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto">
-            {filteredDoctors.length === 0 ? (
+            {loading ? (
+              /* Loading skeleton cards */
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 p-3" aria-busy="true" aria-label="Loading doctors">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="rounded-xl border border-slate-200 bg-white p-4 animate-pulse">
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-slate-200" />
+                      <div className="flex-1 space-y-2 pt-1">
+                        <div className="h-3.5 w-2/3 rounded bg-slate-200" />
+                        <div className="h-3 w-1/2 rounded bg-slate-100" />
+                        <div className="h-3 w-1/3 rounded bg-slate-100" />
+                      </div>
+                    </div>
+                    <div className="mt-4 flex gap-1.5">
+                      <div className="h-5 w-12 rounded bg-slate-100" />
+                      <div className="h-5 w-10 rounded bg-slate-100" />
+                      <div className="h-5 w-14 rounded bg-slate-100" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : showError ? (
+              /* Error state */
+              <div className="p-12 text-center flex flex-col items-center justify-center" role="alert">
+                <div className="w-16 h-16 bg-rose-50 border border-rose-200 rounded-full flex items-center justify-center mb-4 text-rose-600">
+                  <AlertTriangle className="w-8 h-8" />
+                </div>
+                <h3 className="text-base font-extrabold text-slate-900 tracking-tight font-mono">Could not load doctors</h3>
+                <p className="text-xs text-slate-500 max-w-md mt-1 mb-6">{loadError}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoading(true);
+                    loadDoctors();
+                  }}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#009ef7] hover:bg-[#008be0] text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-all shadow-xs cursor-pointer"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Try again</span>
+                </button>
+              </div>
+            ) : doctors.length === 0 ? (
               /* Empty State Card */
               <div className="p-12 text-center flex flex-col items-center justify-center">
                 <div className="w-16 h-16 bg-indigo-50 border border-indigo-200 rounded-full flex items-center justify-center mb-4 text-indigo-600">
@@ -209,159 +284,107 @@ export default function DoctorsPage() {
                   </button>
                 )}
               </div>
-            ) : (
-              <>
-                {/* Phones: compact doctor cards (shared RowCard pattern, < md) */}
-                <RowCardList testId="doctor-cards">
-                  {filteredDoctors.map((doc) => {
-                    const fields = [
-                      { label: 'Email', value: doc.email, full: true },
-                      { label: 'Phone', value: <span className="font-mono">{doc.contactNumber}</span> },
-                    ];
-                    if (canManageDoctors) {
-                      fields.push(
-                        { label: 'Username', value: <span className="font-mono">{doc.username || doc.email}</span> },
-                        { label: 'Password', value: <span className="font-mono">{doc.password || 'N/A'}</span> }
-                      );
-                    }
-                    return (
-                      <RowCard
-                        key={doc.id}
-                        title={doc.fullName}
-                        subtitle={
-                          <span>
-                            {doc.degree || 'M.D. (Radiodiagnosis)'} &middot; {doc.registrationNumber ? `Reg. No. ${doc.registrationNumber}` : 'Reg. no. not set'}
-                          </span>
-                        }
-                        aside={
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded font-mono">
-                            Active
-                          </span>
-                        }
-                        fields={fields}
-                        actions={
-                          canManageDoctors ? (
-                            <>
-                              {canEditSignature && (
-                                <button
-                                  type="button"
-                                  onClick={() => setEditDoctor(doc)}
-                                  className="px-3 py-1.5 text-slate-700 hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold inline-flex items-center gap-1"
-                                >
-                                  <PenLine className="w-3.5 h-3.5" />
-                                  <span>Signature details</span>
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteDoctor(doc.id)}
-                                className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold inline-flex items-center gap-1"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                <span>Delete</span>
-                              </button>
-                            </>
-                          ) : undefined
-                        }
-                      />
-                    );
-                  })}
-                </RowCardList>
-
-                {/* Tablet + desktop: table (tablets hide low-priority columns, see ResponsiveTable) */}
-                <div className={`${RT_TABLE_ONLY} ${RT_CONTAINER} data-table-container bg-white`}>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th title="Doctor Name & Qualification" style={{ width: widths.name, position: 'relative' }}>
-                          <span>Doctor Name & Qualification</span>
-                          <div className="col-resizer" onMouseDown={(e) => startResizing('name', e.clientX, widths.name)} />
-                        </th>
-                        <th title="Contact Info" style={{ width: widths.contact, position: 'relative' }}>
-                          <span>Contact Info</span>
-                          <div className="col-resizer" onMouseDown={(e) => startResizing('contact', e.clientX, widths.contact)} />
-                        </th>
-                        {canManageDoctors && (
-                          <th title="Login Credentials" style={{ width: widths.credentials, position: 'relative' }}>
-                            <span>Login Credentials</span>
-                            <div className="col-resizer" onMouseDown={(e) => startResizing('credentials', e.clientX, widths.credentials)} />
-                          </th>
-                        )}
-                        <th title="Status" className={RT_TABLET_HIDE} style={{ width: widths.status, position: 'relative' }}>
-                          <span>Status</span>
-                          <div className="col-resizer" onMouseDown={(e) => startResizing('status', e.clientX, widths.status)} />
-                        </th>
-                        {canManageDoctors && (
-                          <th title="Actions" style={{ width: widths.actions, textAlign: 'right', position: 'relative' }}>
-                            <span>Actions</span>
-                            <div className="col-resizer" onMouseDown={(e) => startResizing('actions', e.clientX, widths.actions)} />
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredDoctors.map((doc) => (
-                        <tr key={doc.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td title={`${doc.fullName} (${doc.degree || 'M.D.'})`} className="p-3.5">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center font-bold text-indigo-600 text-sm shrink-0 font-mono">
-                                {doc.firstName ? doc.firstName.charAt(0) : 'D'}
-                              </div>
-                              <div>
-                                <div className="font-bold text-slate-900">{doc.fullName}</div>
-                                <div className="text-[11px] text-slate-500 font-medium">
-                                  {doc.degree || 'M.D. (Radiodiagnosis)'} &middot; {doc.registrationNumber ? `Reg. No. ${doc.registrationNumber}` : 'Reg. no. not set'}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td title={`${doc.email} | ${doc.contactNumber}`} className="p-3.5">
-                            <div className="font-semibold text-slate-800">{doc.email}</div>
-                            <div className="font-mono text-[11px] text-slate-500">{doc.contactNumber}</div>
-                          </td>
-                          {canManageDoctors && (
-                            <td title={`User: ${doc.username || doc.email} | Pass: ${doc.password || 'N/A'}`} className="p-3.5">
-                              <div className="font-mono text-[11px] bg-amber-50 border border-amber-200 px-2.5 py-1 rounded inline-flex gap-3 text-amber-900">
-                                <span>USER: <strong>{doc.username || doc.email}</strong></span>
-                                <span>PASS: <strong>{doc.password || 'N/A'}</strong></span>
-                              </div>
-                            </td>
-                          )}
-                          <td title="Active" className={`p-3.5 ${RT_TABLET_HIDE}`}>
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded font-mono">
-                              <CheckCircle className="w-3 h-3 text-emerald-600" />
-                              <span>Active</span>
-                            </span>
-                          </td>
-                          {canManageDoctors && (
-                            <td className="p-3.5 text-right whitespace-nowrap">
-                              {canEditSignature && (
-                                <button
-                                  type="button"
-                                  onClick={() => setEditDoctor(doc)}
-                                  className="p-1.5 text-slate-400 hover:text-[#009ef7] transition-colors cursor-pointer rounded hover:bg-sky-50"
-                                  title="Edit signature details"
-                                  aria-label="Edit signature details"
-                                >
-                                  <PenLine className="w-4 h-4" />
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteDoctor(doc.id)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer rounded hover:bg-rose-50"
-                                title="Delete Doctor"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            ) : filteredDoctors.length === 0 ? (
+              /* No search matches */
+              <div className="p-12 text-center flex flex-col items-center justify-center">
+                <div className="w-16 h-16 bg-slate-50 border border-slate-200 rounded-full flex items-center justify-center mb-4 text-slate-500">
+                  <SearchX className="w-8 h-8" />
                 </div>
-              </>
+                <h3 className="text-base font-extrabold text-slate-900 tracking-tight font-mono">No matching doctors</h3>
+                <p className="text-xs text-slate-500 max-w-md mt-1 mb-6">
+                  Nobody matches &ldquo;{searchQuery.trim()}&rdquo;. Try another name or expertise.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold rounded-lg cursor-pointer"
+                >
+                  Clear search
+                </button>
+              </div>
+            ) : (
+              /* Doctor cards: 1 col phones, 2 tablets, 3 laptops, 4 large desktops */
+              <div
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 p-3"
+                data-testid="doctor-cards"
+              >
+                {filteredDoctors.map((doc) => {
+                  const tags = doc.expertise || [];
+                  const extra = tags.length - TOP_TAGS;
+                  return (
+                    <div
+                      key={doc.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setViewDoctor(doc)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setViewDoctor(doc);
+                        }
+                      }}
+                      aria-label={`View profile of ${doc.fullName}`}
+                      className="group relative flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-xs text-left cursor-pointer transition-all hover:border-[#009ef7]/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009ef7]/40"
+                      data-testid="doctor-card"
+                    >
+                      <div className="flex items-start gap-3">
+                        <DoctorAvatar name={doc.fullName} photoUrl={doc.photoUrl} size="md" />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-[14px] text-slate-900 truncate group-hover:text-[#009ef7]" title={doc.fullName}>
+                            {doc.fullName}
+                          </div>
+                          <div className="text-[12px] text-slate-500 font-medium truncate" title={doc.degree || 'M.D. (Radiodiagnosis)'}>
+                            {doc.degree || 'M.D. (Radiodiagnosis)'}
+                          </div>
+                          <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+                            <Briefcase className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{experienceLabel(doc.yearsOfExperience)}</span>
+                          </div>
+                        </div>
+                        {canManageDoctors && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteDoctor(doc.id);
+                            }}
+                            className="p-1.5 -mr-1.5 -mt-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer rounded hover:bg-rose-50 shrink-0"
+                            title={isManager ? 'Request deletion' : 'Delete Doctor'}
+                            aria-label={`${isManager ? 'Request deletion of' : 'Delete'} ${doc.fullName}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-1.5 min-h-[24px]">
+                        {tags.length ? (
+                          <>
+                            {tags.slice(0, TOP_TAGS).map((t) => (
+                              <span
+                                key={t}
+                                className="max-w-[10rem] truncate rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-800"
+                              >
+                                {t}
+                              </span>
+                            ))}
+                            {extra > 0 && (
+                              <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                +{extra}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">No expertise listed</span>
+                        )}
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] font-semibold text-[#009ef7] opacity-0 group-hover:opacity-100 transition-opacity">
+                        View full profile →
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 
@@ -369,10 +392,33 @@ export default function DoctorsPage() {
 
       </div>
 
+      <DoctorDetailsModal
+        doctor={viewDoctor}
+        onClose={() => setViewDoctor(null)}
+        showCredentials={canManageDoctors}
+        onEdit={
+          canEditSignature
+            ? (d) => {
+                setViewDoctor(null);
+                setEditDoctor(d);
+              }
+            : undefined
+        }
+        onDelete={
+          canManageDoctors
+            ? (d) => {
+                setViewDoctor(null);
+                handleDeleteDoctor(d.id);
+              }
+            : undefined
+        }
+        deleteLabel={isManager ? 'Request deletion' : 'Delete'}
+      />
+
       <Modal
         open={!!editDoctor}
         onClose={() => setEditDoctor(null)}
-        title={editDoctor ? `Signature details - ${editDoctor.fullName}` : 'Signature details'}
+        title={editDoctor ? `Profile details - ${editDoctor.fullName}` : 'Profile details'}
         size="lg"
       >
         {editDoctor && (

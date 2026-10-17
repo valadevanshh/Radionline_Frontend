@@ -74,6 +74,13 @@ export interface Doctor {
   degree?: string;
   registrationNumber?: string;
   createdAt: string;
+  /** Profile picture (stored path / URL) */
+  photoUrl?: string | null;
+  yearsOfExperience?: number | null;
+  /** Expertise / specialisations, e.g. Neuro, MSK, Chest */
+  expertise?: string[];
+  cvUrl?: string | null;
+  cvFileName?: string | null;
 }
 
 export interface RadiologyCenter {
