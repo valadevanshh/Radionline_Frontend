@@ -446,12 +446,12 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
         continue;
       }
       if (studyKey === 'slip' && f.size > MAX_ATTACHMENT_BYTES && kind !== 'image') {
-        rejected.push(`${f.name} (over 5 MB)`);
+        rejected.push(`${f.name} (File must be 5 MB or smaller)`);
         continue;
       }
       const blob = kind === 'image' ? await compressImage(f) : f;
       if (studyKey === 'slip' && blob.size > MAX_ATTACHMENT_BYTES) {
-        rejected.push(`${f.name} (over 5 MB)`);
+        rejected.push(`${f.name} (File must be 5 MB or smaller)`);
         continue;
       }
       let previewUrl: string | null = null;

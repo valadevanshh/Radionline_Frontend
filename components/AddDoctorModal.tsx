@@ -252,8 +252,8 @@ export default function AddDoctorModal({ isOpen, onClose, onSave }: AddDoctorMod
                     setSignatureName('');
                     setSignatureData('');
                     if (!f) return;
-                    if (f.size > 2 * 1024 * 1024) {
-                      alert('The signature image must be 2 MB or smaller.');
+                    if (f.size > 5 * 1024 * 1024) {
+                      alert('Signature image: File must be 5 MB or smaller.');
                       e.target.value = '';
                       return;
                     }

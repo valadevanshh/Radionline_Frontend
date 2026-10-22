@@ -22,7 +22,7 @@ import {
   readAsDataUrl,
 } from '@/lib/doctor-profile';
 
-const MAX_BYTES = 2 * 1024 * 1024;
+const MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPT = 'image/png,image/jpeg,image/webp';
 
 /** A placeholder image is not a real signature. */
@@ -97,7 +97,7 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
       return;
     }
     if (file.size > MAX_BYTES) {
-      setError('The signature image must be 2 MB or smaller.');
+      setError('Signature image: File must be 5 MB or smaller.');
       return;
     }
     const reader = new FileReader();
@@ -118,7 +118,7 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
       return;
     }
     if (file.size > PHOTO_MAX_BYTES) {
-      setError('The profile picture must be 2 MB or smaller.');
+      setError('Profile picture: File must be 5 MB or smaller.');
       return;
     }
     try {
@@ -139,7 +139,7 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
       return;
     }
     if (file.size > CV_MAX_BYTES) {
-      setError('The CV must be 5 MB or smaller.');
+      setError('CV: File must be 5 MB or smaller.');
       return;
     }
     if (file.size === 0) {
@@ -227,7 +227,7 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
                 </Button>
               )}
             </div>
-            <p className="mt-2 text-[11px] text-slate-500">PNG, JPG or WEBP, up to 2 MB. A square photo looks best.</p>
+            <p className="mt-2 text-[11px] text-slate-500">PNG, JPG or WEBP, up to 5 MB. A square photo looks best.</p>
           </div>
           <input
             ref={photoRef}
@@ -332,7 +332,7 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
             }}
           />
         </div>
-        <p className="mt-1.5 text-[11px] text-slate-500">PNG, JPG or WEBP, up to 2 MB. A transparent PNG looks best.</p>
+        <p className="mt-1.5 text-[11px] text-slate-500">PNG, JPG or WEBP, up to 5 MB. A transparent PNG looks best.</p>
       </section>
 
       <section>

@@ -1,6 +1,6 @@
 /** Shared helpers for the doctor profile (My Profile) and the Doctors directory. */
 
-export const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+export const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 export const PHOTO_ACCEPT = 'image/png,image/jpeg,image/webp';
 
 export const CV_MAX_BYTES = 5 * 1024 * 1024;
