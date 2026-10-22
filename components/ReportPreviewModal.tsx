@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { X, Printer, CheckCircle, AlertTriangle } from 'lucide-react';
 import { XRayReport, RadiologyStore, RadiologyCenter, formatDateDDMMYYYY } from '@/lib/radiology-store';
 import { formatPatientDisplayId } from '@/lib/uuid';
-import { printReportElement, type PrintReportPayload } from '@/lib/print-helper';
+import { printReportElement, type PrintReportPayload, formatReportAge, shortReportId } from '@/lib/print-helper';
 import PaginatedReport from '@/components/PaginatedReport';
 import { ApiClient, publicReportLink, resolveMediaUrl } from '@/lib/api-client';
 import { usableSignatureUrl } from '@/components/DoctorSignatureForm';
@@ -115,7 +115,10 @@ export default function ReportPreviewModal({
     patientName: report.fullName,
     patientId: formatPatientDisplayId(report.patientNumber) || '—',
     ageSex: `${report.age} ${report.ageUnit === 'Months' ? 'M' : report.ageUnit === 'Days' ? 'D' : 'Y'} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,
+    gender: report.gender || '',
+    age: formatReportAge(report.age, report.ageUnit, report),
     studyDate: formatDateDDMMYYYY(report.studyDate),
+    reportDate: activeStudy?.reportDate || activeStudy?.signedAt || report.reportDate || '',
     referringDoctor: report.referringPhysicianName || '',
     modality: activeStudy?.modality || 'X-Ray',
     studyParts: activeBodyPart,
@@ -133,6 +136,8 @@ export default function ReportPreviewModal({
     doctorRegNo: docRegNo,
     doctorSignatureUrl: docSignature,
     reportedAt: activeStudy?.signedAt ? formatDateDDMMYYYY(activeStudy.signedAt) : formatDateDDMMYYYY(report.studyDate),
+    reportId: shortReportId(activeStudy?.id || report.id),
+    isPortable: !!report.isPortable,
   };
 
   const handlePrint = () => {

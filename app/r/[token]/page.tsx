@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Printer, ShieldCheck } from 'lucide-react';
 import { fetchPublicReport, resolveMediaUrl, type PublicReport } from '@/lib/api-client';
-import { printReportElement, type PrintReportPayload } from '@/lib/print-helper';
+import { printReportElement, type PrintReportPayload, formatReportAge } from '@/lib/print-helper';
 import PaginatedReport from '@/components/PaginatedReport';
 import { usableSignatureUrl } from '@/components/DoctorSignatureForm';
 
@@ -73,7 +73,10 @@ export default function PublicReportPage() {
     patientName: patient.name,
     patientId: patient.patientId,
     ageSex,
+    gender: patient.gender || '',
+    age: formatReportAge(patient.age, patient.ageUnit),
     studyDate: patient.studyDate,
+    reportDate: study.reportDate || signedAt || '',
     referringDoctor: referringName(patient.referringDoctor),
     modality: study.modality,
     studyParts: study.bodyPart,
@@ -84,6 +87,8 @@ export default function PublicReportPage() {
     doctorRegNo: signer.registrationNumber || '',
     doctorSignatureUrl: sigUrl,
     reportedAt,
+    reportId: study.reportId || '',
+    isPortable: !!study.isPortable,
   };
 
   const handlePrint = () => {

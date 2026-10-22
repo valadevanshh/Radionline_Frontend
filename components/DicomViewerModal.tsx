@@ -66,7 +66,7 @@ import { XRayReport, RadiologyStore, DocTemplate, RadiologyCenter, Doctor } from
 import { formatPatientDisplayId } from '@/lib/uuid';
 import { AUTOCOMPLETE_SUGGESTIONS } from '@/lib/radiology-autocomplete';
 import { STUDY_MODALITY_OPTIONS } from '@/components/NewXRayReportModal';
-import { printReportElement, type PrintReportPayload, A4_PAGE } from '@/lib/print-helper';
+import { printReportElement, type PrintReportPayload, A4_PAGE, formatReportAge, shortReportId } from '@/lib/print-helper';
 import { usableSignatureUrl } from '@/components/DoctorSignatureForm';
 import ReportTemplateModal from '@/components/ReportTemplateModal';
 import A4ReportEditor from '@/components/A4ReportEditor';
@@ -255,6 +255,26 @@ export default function DicomViewerModal({
 }: DicomViewerModalProps) {
   const [isReportingOpen, setIsReportingOpen] = useState(true);
   const [withHeader, setWithHeader] = useState(true);
+  // Reporting date per study, only when the doctor changed it (otherwise the server stamps the signing date)
+  const [reportDateEdits, setReportDateEdits] = useState<Record<string, string>>({});
+  // Formatting toolbar (bold/italic/underline/align/font) is hidden by default; the choice is remembered.
+  const [showFormatting, setShowFormatting] = useState<boolean>(() => {
+    try {
+      return typeof window !== 'undefined' && localStorage.getItem('radionline_show_formatting_v1') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleFormatting = () =>
+    setShowFormatting((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem('radionline_show_formatting_v1', next ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
   const [gridLayout, setGridLayout] = useState<GridLayout>('1x1');
   const [activeViewportIdx, setActiveViewportIdx] = useState(0);
   const [mobileActiveView, setMobileActiveView] = useState<'dicom' | 'report'>('dicom');
@@ -795,7 +815,14 @@ export default function DicomViewerModal({
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
 
   // Width of the report pane (right side) in % of the workspace; the image viewer gets the rest.
-  const [reportWidthPercent, setReportWidthPercent] = useState<number>(45);
+  const [reportWidthPercent, setReportWidthPercent] = useState<number>(() => {
+    try {
+      const v = Number(typeof window !== 'undefined' ? localStorage.getItem('radionline_report_split_v1') : '');
+      return Number.isFinite(v) && v >= 25 && v <= 75 ? v : 45;
+    } catch {
+      return 45;
+    }
+  });
 
   // A4 pages: measure the scroll viewport so the pages can be scaled to fit (or shown at 100%).
   // The pages themselves (letterhead, QR, "n of N pages", doctor block on the last page) are laid
@@ -933,6 +960,7 @@ export default function DicomViewerModal({
       dicomSnapshots: [],
       // saved so the public QR view shows the same title as the page / PDF
       title: sheetTitleFor(currentPart),
+      reportDate: reportDateEdits[studyId] || undefined,
     };
 
     try {
@@ -1031,6 +1059,7 @@ export default function DicomViewerModal({
         findings: findingText,
         impression: impressionText,
         technique: techText,
+        reportDate: reportDateEdits[studyId] || undefined,
       });
       setStudyStatuses((prev) => ({ ...prev, [currentPart]: 'DRAFT' }));
       setStatusToast(`Draft saved for ${currentPart}`);
@@ -1476,7 +1505,9 @@ export default function DicomViewerModal({
     const offsetX = e.clientX - rect.left;
     // Viewer is on the left, so the pointer offset is the viewer's width; the report gets the rest.
     const pct = 100 - (offsetX / rect.width) * 100;
-    const clampedPct = Math.max(20, Math.min(80, pct));
+    // Keep both panes usable: at least 360px (or 25%) each.
+    const minPct = Math.max(25, (360 / rect.width) * 100);
+    const clampedPct = Math.max(minPct, Math.min(100 - minPct, pct));
     setReportWidthPercent(clampedPct);
   };
 
@@ -1486,6 +1517,9 @@ export default function DicomViewerModal({
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
       } catch (err) {}
       setIsDraggingSplitter(false);
+      try {
+        localStorage.setItem('radionline_report_split_v1', String(Math.round(reportWidthPercent * 10) / 10));
+      } catch {}
     }
   };
 
@@ -1549,6 +1583,13 @@ export default function DicomViewerModal({
   const [qrHarvestEl, sheetQrSvg] = useQrSvgMarkup(qrLink);
   // A signed study is dated by when it was signed (as on the public view)
   const sheetReportedAt = frozenSigner?.signedAt ? new Date(frozenSigner.signedAt).toLocaleString() : reportDate;
+  const todayIsoLocal = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+  // Shown / printed reporting date: doctor's edit, else the stored one, else today
+  const activeReportDate =
+    (activeStudyInfo?.id && reportDateEdits[activeStudyInfo.id]) || activeStudyInfo?.reportDate || todayIsoLocal;
   const isSuperAdmin = RadiologyStore.getSession()?.role === 'SUPER_ADMIN';
   const handleRevokePublicLink = async () => {
     if (!report || !activeStudyInfo?.id || !activePublicToken) return;
@@ -1605,9 +1646,9 @@ export default function DicomViewerModal({
   // Geometry: A4 pages stacked on screen (the page count comes from the paginator)
   const sheetWidthPx = A4_PAGE.widthMm * MM_PX;
   const sheetHeightPx = stackedPagesHeightPx(sheetPageCount);
-  const sheetGutterPx = pageViewportW > 0 && pageViewportW < 640 ? 10 : 24;
+  const sheetGutterPx = pageViewportW > 0 && pageViewportW < 640 ? 6 : 12;
   const sheetScale = pageZoom === 'fit' && pageViewportW > 0
-    ? Math.min(1, Math.max(0.2, (pageViewportW - 2 * sheetGutterPx) / sheetWidthPx))
+    ? Math.min(1.6, Math.max(0.2, (pageViewportW - 2 * sheetGutterPx) / sheetWidthPx))
     : 1;
 
   const buildPrintPayload = (forScreen = false): PrintReportPayload => {
@@ -1633,7 +1674,10 @@ export default function DicomViewerModal({
       patientName,
       patientId,
       ageSex,
+      gender: report?.gender || '',
+      age: formatReportAge(report?.age, report?.ageUnit, report),
       studyDate,
+      reportDate: activeReportDate,
       referringDoctor: referringDoctorName,
       modality: studyModality,
       studyParts: currentPart,
@@ -1645,6 +1689,8 @@ export default function DicomViewerModal({
       doctorRegNo,
       doctorSignatureUrl,
       reportedAt: sheetReportedAt,
+      reportId: shortReportId(activeStudyInfo?.id || report?.id),
+      isPortable: !!report?.isPortable,
       bodyFontPt: sheetFontPt,
       bodyFontFamily: sheetFontStack,
       findingsCss,
@@ -1670,7 +1716,7 @@ export default function DicomViewerModal({
       
 
       {/* 1. COMPACT WORKSPACE TOP BAR */}
-      <div className={`border-b px-2 sm:px-3 py-2 flex items-center gap-2 shrink-0 z-30 print:hidden no-print ${
+      <div className={`border-b px-2 sm:px-3 py-2 lg:py-1 flex items-center gap-2 shrink-0 z-30 print:hidden no-print ${
         theme === 'dark' ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-200'
       }`}>
         {/* Back / Close */}
@@ -1919,7 +1965,7 @@ export default function DicomViewerModal({
           <button
             type="button"
             onClick={() => setHistoryExpanded((v) => !v)}
-            className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-[13px] ${
+            className={`w-full flex items-center gap-2 px-3 py-1.5 lg:py-1 text-left text-[13px] lg:text-[12px] ${
               theme === 'dark' ? 'text-slate-300' : 'text-slate-600'
             }`}
           >
@@ -1961,7 +2007,7 @@ export default function DicomViewerModal({
           {/* Single consolidated viewer toolbar */}
           <div
             data-testid="viewer-toolbar"
-            className={`shrink-0 border-b px-2 pl-12 lg:pl-2 py-1.5 flex items-center gap-1 select-none text-[13px] print:hidden no-print order-last lg:order-none ${
+            className={`shrink-0 border-b px-2 pl-12 lg:pl-2 py-1.5 lg:py-1 flex items-center gap-1 select-none text-[13px] print:hidden no-print order-last lg:order-none ${
               theme === 'dark' ? 'bg-slate-900/95 border-slate-800 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'
             }`}
           >
@@ -1971,7 +2017,7 @@ export default function DicomViewerModal({
                 type="button"
                 onClick={() => handleToolClick(t.id)}
                 title={t.label}
-                className={`flex items-center justify-center gap-1 min-h-[40px] min-w-[40px] px-2 rounded-lg text-[12px] font-semibold shrink-0 ${
+                className={`flex items-center justify-center gap-1 min-h-[40px] min-w-[40px] lg:min-h-[32px] lg:min-w-[32px] px-2 rounded-lg text-[12px] font-semibold shrink-0 ${
                   activeTool === t.id
                     ? 'bg-[#009ef7] text-white'
                     : (theme === 'dark' ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-300' : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200')
@@ -1986,7 +2032,7 @@ export default function DicomViewerModal({
               type="button"
               onClick={handleResetActiveViewport}
               title="Reset view"
-              className={`flex items-center justify-center gap-1 min-h-[40px] min-w-[40px] px-2 rounded-lg text-[12px] font-semibold shrink-0 ${
+              className={`flex items-center justify-center gap-1 min-h-[40px] min-w-[40px] lg:min-h-[32px] lg:min-w-[32px] px-2 rounded-lg text-[12px] font-semibold shrink-0 ${
                 theme === 'dark' ? 'bg-slate-800/80 hover:bg-slate-700 text-cyan-300' : 'bg-white hover:bg-slate-100 text-blue-700 border border-slate-200'
               }`}
             >
@@ -2074,6 +2120,32 @@ export default function DicomViewerModal({
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Series thumbnails (compact, in the viewer toolbar) */}
+            <div className="ml-auto min-w-0 flex items-center gap-1.5 overflow-x-auto no-scrollbar pl-1" data-testid="series-strip">
+              <span className="text-[10px] font-bold font-mono text-slate-400 shrink-0 hidden xl:inline">{studyDate}</span>
+              {seriesList.map((s, idx) => (
+                <div
+                  key={s.id}
+                  onClick={() => {
+                    setViewportSeries((prev) => {
+                      const next = [...prev];
+                      next[activeViewportIdx] = idx;
+                      return next;
+                    });
+                  }}
+                  title={`${s.title}`}
+                  className={`w-11 h-8 border-2 cursor-pointer relative overflow-hidden rounded shrink-0 ${
+                    viewportSeries[activeViewportIdx] === idx ? 'border-cyan-400 ring-2 ring-cyan-500/40' : 'border-slate-700 opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  <img src={s.imageUrl} alt={s.title} className="w-full h-full object-cover" />
+                  <span className="absolute bottom-0 inset-x-0 bg-slate-950/80 text-cyan-300 text-[7px] leading-[9px] font-mono text-center font-bold truncate">
+                    {s.bodyPart.split(' ')[0]}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -2326,7 +2398,7 @@ export default function DicomViewerModal({
             onPointerMove={handleSplitterPointerMove}
             onPointerUp={handleSplitterPointerUp}
             onPointerCancel={handleSplitterPointerUp}
-            onDoubleClick={() => setReportWidthPercent(45)}
+            onDoubleClick={() => { setReportWidthPercent(45); try { localStorage.setItem('radionline_report_split_v1', '45'); } catch {} }}
             className={`hidden lg:flex w-2.5 bg-slate-950 border-x border-slate-800 hover:border-cyan-500/60 hover:bg-cyan-500/10 cursor-col-resize select-none items-center justify-center shrink-0 z-30 transition-colors group print:hidden no-print ${
               isDraggingSplitter ? 'bg-cyan-500/20 border-cyan-400' : ''
             }`}
@@ -2350,12 +2422,12 @@ export default function DicomViewerModal({
           >
             
             {/* Rich Formatting Toolbar */}
-            <div className={`border-b p-1.5 flex flex-wrap items-center gap-1.5 text-[13px] shrink-0 select-none print:hidden no-print ${
+            <div className={`@container border-b p-1 flex flex-wrap items-center gap-1.5 text-[13px] shrink-0 select-none print:hidden no-print ${
               theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-100 border-slate-300 text-slate-800'
             }`}>
               {/* REPORT TEMPLATE DROPDOWN SELECTOR */}
-              <div className="flex items-center gap-1 min-w-0 flex-1 basis-[min(100%,18rem)]">
-                <Sparkles className={`w-3.5 h-3.5 ${theme === 'dark' ? 'text-cyan-400' : 'text-blue-600'}`} />
+              <div className="flex items-center gap-1 min-w-[min(100%,12.5rem)] flex-[1_1_18rem]">
+                <Sparkles className={`w-3.5 h-3.5 shrink-0 ${theme === 'dark' ? 'text-cyan-400' : 'text-blue-600'}`} />
                 <select
                   value={selectedTemplateId || 'blank'}
                   onChange={(e) => {
@@ -2429,7 +2501,7 @@ export default function DicomViewerModal({
                       }
                     }
                   }}
-                  className={`min-w-0 flex-1 max-w-full px-2 py-1.5 text-[13px] border font-semibold rounded cursor-pointer transition-all ${
+                  className={`min-w-0 w-0 flex-1 truncate px-2 py-1.5 text-[13px] border font-semibold rounded cursor-pointer transition-all ${
                     theme === 'dark'
                       ? 'bg-slate-950 border-cyan-500/50 text-cyan-300 hover:border-cyan-400 focus:ring-1 focus:ring-cyan-400'
                       : 'bg-white border-blue-300 text-blue-800 hover:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-xs'
@@ -2481,7 +2553,7 @@ export default function DicomViewerModal({
                   }
                   aria-label="Save as new template"
                   data-testid="save-as-template"
-                  className={`min-h-[36px] px-2.5 text-[11px] sm:text-xs font-bold border rounded flex items-center justify-center gap-1 transition-all cursor-pointer shrink-0 ${
+                  className={`min-h-[32px] min-w-[32px] px-2 text-[11px] sm:text-xs font-bold border rounded flex items-center justify-center gap-1 transition-all cursor-pointer shrink-0 ${
                     saveTemplateSuccess
                       ? 'bg-emerald-600 border-emerald-500 text-white'
                       : showSaveAsNewTemplate
@@ -2494,7 +2566,7 @@ export default function DicomViewerModal({
                   }`}
                 >
                   {saveTemplateSuccess ? <CheckCircle2 className="w-4 h-4" /> : <BookmarkPlus className="w-4 h-4" />}
-                  <span className="whitespace-nowrap">
+                  <span className="whitespace-nowrap hidden @min-[760px]:inline">
                     {saveTemplateSuccess ? 'Saved!' : 'Save as new template'}
                   </span>
                 </button>
@@ -2506,7 +2578,7 @@ export default function DicomViewerModal({
               <button
                 type="button"
                 onClick={() => setWithHeader(!withHeader)}
-                className={`px-2.5 py-1 text-[10px] font-bold border transition-all cursor-pointer rounded shrink-0 ${
+                className={`px-2 py-0.5 text-[10px] leading-4 font-bold border transition-all cursor-pointer rounded-full whitespace-nowrap shrink-0 ${
                   withHeader
                     ? (theme === 'dark' ? 'bg-cyan-600 text-white border-cyan-500 font-extrabold' : 'bg-blue-600 text-white border-blue-500 font-extrabold')
                     : (theme === 'dark' ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-white text-slate-700 border-slate-300')
@@ -2514,6 +2586,64 @@ export default function DicomViewerModal({
               >
                 {withHeader ? 'Header Included' : 'No Header'}
               </button>
+
+              <button
+                type="button"
+                onClick={toggleFormatting}
+                aria-pressed={showFormatting}
+                aria-label="Formatting"
+                title={showFormatting ? 'Hide formatting' : 'Formatting'}
+                data-testid="formatting-toggle"
+                className={`p-1 border rounded transition-colors cursor-pointer shrink-0 ${
+                  showFormatting
+                    ? (theme === 'dark' ? 'bg-cyan-600 text-white border-cyan-500' : 'bg-blue-600 text-white border-blue-500')
+                    : (theme === 'dark' ? 'hover:bg-slate-800 border-slate-700 text-slate-200' : 'hover:bg-slate-200 border-slate-300 text-slate-800')
+                }`}
+              >
+                <Type className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Page count + zoom (moved here from the study-chips bar to save a row) */}
+              <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                <input
+                  type="date"
+                  value={activeReportDate}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    const id = activeStudyInfo?.id;
+                    if (id && v) setReportDateEdits((prev) => ({ ...prev, [id]: v }));
+                  }}
+                  title="Report date (defaults to today; set automatically when you sign unless you change it)"
+                  aria-label="Report date"
+                  data-testid="report-date"
+                  className={`h-7 px-1 text-[11px] border rounded shrink-0 cursor-pointer ${
+                    theme === 'dark' ? 'bg-slate-950 border-slate-700 text-slate-200 [color-scheme:dark]' : 'bg-white border-slate-300 text-slate-800'
+                  }`}
+                />
+                <span className="text-[11px] font-medium opacity-70 shrink-0 hidden sm:inline" data-testid="page-count">
+                  A4 &middot; {sheetPageCount} {sheetPageCount === 1 ? 'page' : 'pages'}
+                </span>
+                <div className={`flex rounded-md border overflow-hidden shrink-0 ${theme === 'dark' ? 'border-slate-700' : 'border-slate-300'}`} role="group" aria-label="Page zoom">
+                  {(['fit', 'actual'] as const).map((z) => (
+                    <button
+                      key={z}
+                      type="button"
+                      onClick={() => setPageZoom(z)}
+                      data-testid={`page-zoom-${z}`}
+                      className={`h-7 px-2 text-[12px] font-semibold cursor-pointer ${
+                        pageZoom === z
+                          ? (theme === 'dark' ? 'bg-cyan-600 text-white' : 'bg-blue-600 text-white')
+                          : (theme === 'dark' ? 'bg-slate-950 text-slate-300' : 'bg-white text-slate-700')
+                      }`}
+                    >
+                      {z === 'fit' ? 'Fit' : '100%'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {showFormatting && (
+              <>
 
               <div className={`h-4 w-px mx-0.5 ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-300'}`} />
 
@@ -2609,11 +2739,13 @@ export default function DicomViewerModal({
                 <option value="text-sm">Normal (11pt)</option>
                 <option value="text-base">Large (12pt)</option>
               </select>
+              </>
+              )}
             </div>
 
             {showSaveAsNewTemplate && (
               <div
-                className={`shrink-0 px-2.5 py-1.5 flex flex-wrap items-center gap-2 border-b print:hidden no-print ${
+                className={`shrink-0 px-2.5 py-1 flex flex-wrap items-center gap-2 border-b print:hidden no-print ${
                   theme === 'dark'
                     ? 'bg-purple-950/70 border-purple-700/50 text-purple-100'
                     : 'bg-purple-50 border-purple-200 text-purple-900'
@@ -2634,8 +2766,9 @@ export default function DicomViewerModal({
               </div>
             )}
 
-            {/* Study chips + page zoom: screen-only bar above the A4 page */}
-            <div className={`shrink-0 border-b px-2 py-1.5 flex items-center gap-2 select-none print:hidden no-print ${
+            {/* Study chips: screen-only bar above the A4 page (only when the case has several studies) */}
+            {(report?.bodyParts?.length || 0) > 1 && (
+            <div className={`shrink-0 border-b px-2 py-1 flex items-center gap-2 select-none print:hidden no-print ${
               theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-100 border-slate-300 text-slate-700'
             }`}>
               <div className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto no-scrollbar" data-testid="study-chips">
@@ -2665,27 +2798,8 @@ export default function DicomViewerModal({
                   );
                 })}
               </div>
-              <span className="text-[11px] font-medium opacity-70 shrink-0 hidden sm:inline" data-testid="page-count">
-                A4 &middot; {sheetPageCount} {sheetPageCount === 1 ? 'page' : 'pages'}
-              </span>
-              <div className={`flex rounded-md border overflow-hidden shrink-0 ${theme === 'dark' ? 'border-slate-700' : 'border-slate-300'}`} role="group" aria-label="Page zoom">
-                {(['fit', 'actual'] as const).map((z) => (
-                  <button
-                    key={z}
-                    type="button"
-                    onClick={() => setPageZoom(z)}
-                    data-testid={`page-zoom-${z}`}
-                    className={`h-8 px-2.5 text-[12px] font-semibold cursor-pointer ${
-                      pageZoom === z
-                        ? (theme === 'dark' ? 'bg-cyan-600 text-white' : 'bg-blue-600 text-white')
-                        : (theme === 'dark' ? 'bg-slate-950 text-slate-300' : 'bg-white text-slate-700')
-                    }`}
-                  >
-                    {z === 'fit' ? 'Fit' : '100%'}
-                  </button>
-                ))}
-              </div>
             </div>
+            )}
 
             {/* A4 page (210 x 297 mm), laid out with the same stylesheet as the PDF and scaled to fit */}
             <div
@@ -2772,31 +2886,6 @@ export default function DicomViewerModal({
               </button>
             </div>
 
-            {/* Bottom Thumbnail Bar */}
-            <div className="bg-slate-900 border-t border-slate-800 p-2 flex items-center gap-2 overflow-x-auto text-xs shrink-0 no-scrollbar print:hidden no-print">
-              <span className="text-[10px] font-bold font-mono text-slate-400 shrink-0">{studyDate}</span>
-
-              {seriesList.map((s, idx) => (
-                <div
-                  key={s.id}
-                  onClick={() => {
-                    setViewportSeries((prev) => {
-                      const next = [...prev];
-                      next[activeViewportIdx] = idx;
-                      return next;
-                    });
-                  }}
-                  className={`w-14 h-11 border-2 cursor-pointer relative overflow-hidden rounded shrink-0 ${
-                    viewportSeries[activeViewportIdx] === idx ? 'border-cyan-400 ring-2 ring-cyan-500/40' : 'border-slate-700 opacity-70 hover:opacity-100'
-                  }`}
-                >
-                  <img src={s.imageUrl} alt={s.title} className="w-full h-full object-cover" />
-                  <span className="absolute bottom-0 inset-x-0 bg-slate-950/80 text-cyan-300 text-[8px] font-mono text-center font-bold truncate">
-                    {s.bodyPart.split(' ')[0]}
-                  </span>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 

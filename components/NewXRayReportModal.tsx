@@ -13,6 +13,9 @@ import {
   Building2,
   Minus,
   ImagePlus,
+  ArrowLeft,
+  Paperclip,
+  RotateCcw,
 } from 'lucide-react';
 import { RadiologyStore, XRayReport, Doctor, RadiologyCenter } from '@/lib/radiology-store';
 import { ApiClient, apiErrorMessage, isPendingApproval, resolveMediaUrl } from '@/lib/api-client';
@@ -148,6 +151,28 @@ function todayDDMMYYYY(): string {
   return `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}`;
 }
 
+/** Today as YYYY-MM-DD in the browser's local time zone (IST for the centres). */
+function todayIso(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+/** DD-MM-YYYY / DD/MM/YYYY / YYYY-MM-DD -> YYYY-MM-DD for <input type="date"> ('' if unknown). */
+function toIsoDate(v?: string | null): string {
+  const s = String(v || '').trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  return '';
+}
+
+/** YYYY-MM-DD -> DD-MM-YYYY (the stored study date format). */
+function isoToDDMMYYYY(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+}
+
 function newStudy(): StudyDraft {
   return { key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, bodyPart: '', customPart: '', views: [] };
 }
@@ -184,6 +209,25 @@ function FieldLabel({ children, required, htmlFor }: { children: React.ReactNode
   );
 }
 
+const compactField: React.CSSProperties = { ...fieldStyle, height: 36, fontSize: 14 };
+const compactFieldError: React.CSSProperties = { ...compactField, border: '1px solid #f43f5e' };
+const compactArea: React.CSSProperties = { ...compactField, height: 'auto', minHeight: 52, padding: '7px 10px', lineHeight: 1.35, resize: 'vertical' };
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+function ageNum(v: string): number {
+  const n = Number(v);
+  return v.trim() === '' || !Number.isFinite(n) ? 0 : n;
+}
+
+/** Y/M/D boxes -> legacy single age + unit, using the largest non-zero unit. */
+export function deriveAgeFromParts(y: string, m: string, d: string): { age: number; ageUnit: AgeUnit } {
+  const Y = ageNum(y), M = ageNum(m), D = ageNum(d);
+  if (Y > 0) return { age: Y, ageUnit: 'Years' };
+  if (M > 0) return { age: M, ageUnit: 'Months' };
+  if (D > 0) return { age: D, ageUnit: 'Days' };
+  return { age: 0, ageUnit: 'Years' };
+}
+
 function FieldError({ msg }: { msg?: string }) {
   if (!msg) return null;
   return <p className="mt-0.5 text-[11px] font-medium text-rose-600">{msg}</p>;
@@ -195,9 +239,11 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
   const [caseId, setCaseId] = useState('');
   const [patientNumber, setPatientNumber] = useState('');
   const [fullName, setFullName] = useState('');
-  const [age, setAge] = useState<string>('');
-  const [ageUnit, setAgeUnit] = useState<AgeUnit>('Years');
+  const [ageY, setAgeY] = useState<string>('');
+  const [ageM, setAgeM] = useState<string>('');
+  const [ageD, setAgeD] = useState<string>('');
   const [gender, setGender] = useState<Gender | ''>('');
+  const [studyDate, setStudyDate] = useState<string>(todayIso());
   const [centerId, setCenterId] = useState('');
   const [modality, setModality] = useState<string>('X-Ray');
   const [modalityChoices, setModalityChoices] = useState<string[]>([...STUDY_MODALITY_OPTIONS]);
@@ -248,8 +294,25 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
       setCaseId(initialReport.id);
       setPatientNumber(initialReport.patientNumber || '');
       setFullName(initialReport.fullName || '');
-      setAge(initialReport.age !== undefined && initialReport.age !== null ? String(initialReport.age) : '');
-      setAgeUnit((initialReport.ageUnit as AgeUnit) || 'Years');
+      {
+        const r = initialReport;
+        const a = r.age !== undefined && r.age !== null ? String(r.age) : '';
+        const unit = (r.ageUnit as AgeUnit) || 'Years';
+        const hasParts = r.ageYears != null || r.ageMonths != null || r.ageDays != null;
+        const parts = hasParts
+          ? { y: String(r.ageYears ?? 0), m: String(r.ageMonths ?? 0), d: String(r.ageDays ?? 0) }
+          : { y: '', m: '', d: '' };
+        const derived = deriveAgeFromParts(parts.y, parts.m, parts.d);
+        if (hasParts && String(derived.age) === a && derived.ageUnit === unit) {
+          setAgeY(parts.y);
+          setAgeM(parts.m === '0' ? '' : parts.m);
+          setAgeD(parts.d === '0' ? '' : parts.d);
+        } else {
+          setAgeY(unit === 'Years' ? a : '');
+          setAgeM(unit === 'Months' ? a : '');
+          setAgeD(unit === 'Days' ? a : '');
+        }
+      }
       setGender(((initialReport.gender as Gender) || '') as Gender | '');
       setCenterId(initialReport.radiologyCenterId || '');
       setModality(initialReport.modality || 'X-Ray');
@@ -269,12 +332,15 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
       setPhone(initialReport.phone || '');
       setNotes(initialReport.clinicalNotes || '');
       setSendTo(initialReport.assignedDoctorIds?.[0] || initialReport.assignedDoctorId || 'ALL');
+      setStudyDate(toIsoDate(initialReport.studyDate) || todayIso());
     } else {
       setCaseId(generateUUID());
+      setStudyDate(todayIso());
       setPatientNumber('');
       setFullName('');
-      setAge('');
-      setAgeUnit('Years');
+      setAgeY('');
+      setAgeM('');
+      setAgeD('');
       setGender('');
       setModality('X-Ray');
       setStudies([newStudy()]);
@@ -340,11 +406,30 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
 
   if (!isOpen) return null;
 
-  const bumpAge = (delta: number) => {
-    const n = age.trim() === '' ? 0 : Number(age);
-    const next = Math.min(150, Math.max(0, (Number.isFinite(n) ? n : 0) + delta));
-    setAge(String(next));
-    if (errors.age) setErrors((x) => ({ ...x, age: '' }));
+  const { age: derivedAge, ageUnit } = deriveAgeFromParts(ageY, ageM, ageD);
+  const ageParts = { ageYears: ageNum(ageY), ageMonths: ageNum(ageM), ageDays: ageNum(ageD) };
+
+  const clearForm = () => {
+    if (submitting) return;
+    setPatientNumber('');
+    setFullName('');
+    setAgeY('');
+    setAgeM('');
+    setAgeD('');
+    setGender('');
+    setStudyDate(todayIso());
+    setModality('X-Ray');
+    setStudies([newStudy()]);
+    setIsUrgent(false);
+    setIsPortable(false);
+    setReferringDoctor('');
+    setPhone('');
+    setNotes('');
+    setSendTo('ALL');
+    setSlips([]);
+    setErrors({});
+    setFormError(null);
+    setUploadPct(null);
   };
 
   const pickFilesInto = async (files: FileList | File[] | null, studyKey: string | 'edit' | 'slip') => {
@@ -360,7 +445,15 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
         rejected.push(f.name);
         continue;
       }
+      if (studyKey === 'slip' && f.size > MAX_ATTACHMENT_BYTES && kind !== 'image') {
+        rejected.push(`${f.name} (over 5 MB)`);
+        continue;
+      }
       const blob = kind === 'image' ? await compressImage(f) : f;
+      if (studyKey === 'slip' && blob.size > MAX_ATTACHMENT_BYTES) {
+        rejected.push(`${f.name} (over 5 MB)`);
+        continue;
+      }
       let previewUrl: string | null = null;
       if (kind === 'image') {
         previewUrl = URL.createObjectURL(blob);
@@ -385,7 +478,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
       );
       setErrors((e) => ({ ...e, studies: '' }));
     }
-    if (rejected.length) setFormError(`Not added (use an image, DICOM .dcm or PDF): ${rejected.join(', ')}`);
+    if (rejected.length) setFormError(`Not added (use an image, DICOM .dcm or PDF, attachments up to 5 MB): ${rejected.join(', ')}`);
     setPreparing(false);
   };
 
@@ -407,9 +500,17 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
   const validate = (): Record<string, string> => {
     const e: Record<string, string> = {};
     if (!fullName.trim()) e.fullName = 'Enter the patient name';
-    const n = Number(age);
-    if (age.trim() === '' || !Number.isFinite(n) || n < 0 || n > 150 || !Number.isInteger(n)) e.age = 'Enter age (0–150)';
+    const badInt = (v: string, max: number) => {
+      if (v.trim() === '') return false;
+      const n = Number(v);
+      return !Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n > max;
+    };
+    if (ageY.trim() === '' && ageM.trim() === '' && ageD.trim() === '') e.age = 'Enter age';
+    else if (badInt(ageY, 150)) e.age = 'Years must be 0–150';
+    else if (badInt(ageM, 11)) e.age = 'Months must be 0–11';
+    else if (badInt(ageD, 31)) e.age = 'Days must be 0–31';
     if (!gender) e.gender = 'Choose gender';
+    if (!isoToDDMMYYYY(studyDate)) e.studyDate = 'Choose the study date';
     if (!isEdit) {
       if (!centerId) e.center = 'Choose the centre';
       if (!modality) e.modality = 'Choose modality';
@@ -493,7 +594,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
         setUploadPct(total > 0 ? 100 : null);
         const res = await ApiClient.updateCaseDetails(initialReport.id, {
           fullName: fullName.trim(),
-          age: Number(age),
+          age: derivedAge,
           ageUnit,
           gender: gender as Gender,
           phone: phone.trim(),
@@ -501,6 +602,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
           clinicalNotes: notes,
           isUrgent,
           isPortable,
+          studyDate: isoToDDMMYYYY(studyDate) || undefined,
           addImages: scanPaths,
         });
         if (isPendingApproval(res)) {
@@ -573,10 +675,11 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
       await onSave({
         id: caseId,
         fullName: fullName.trim().toUpperCase(),
-        patientNumber,
+        patientNumber: patientNumber.trim(),
         gender: gender as Gender,
-        age: Number(age),
+        age: derivedAge,
         ageUnit,
+        ...ageParts,
         phone: phone.trim(),
         radiologyCenterId: centerId,
         radiologyCenterName: center ? center.centerName : 'RADIOLOGY CENTER',
@@ -596,7 +699,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
         status: 'Pending',
         isUrgent,
         isPortable,
-        studyDate: todayDDMMYYYY(),
+        studyDate: isoToDDMMYYYY(studyDate) || todayDDMMYYYY(),
         dicomSnapshots: Array.from(new Set([...scanPaths, ...slipPaths])),
         uploadedImages: scanPaths,
         clinicalHistoryImages: slipPaths,
@@ -666,6 +769,33 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
     ]),
   );
 
+  const genderOptions: { value: Gender; label: string }[] = [
+    { value: 'Male', label: 'M' },
+    { value: 'Female', label: 'F' },
+    { value: 'Other', label: 'Other' },
+  ];
+  const ageBox = (id: string, val: string, set: (v: string) => void, unit: string, max: number, testId?: string) => (
+    <div className="relative flex-1 min-w-0">
+      <input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        value={val}
+        onChange={(e) => {
+          set(e.target.value.replace(/[^\d]/g, '').slice(0, max > 99 ? 3 : 2));
+          if (errors.age) setErrors((x) => ({ ...x, age: '' }));
+        }}
+        placeholder="0"
+        aria-label={unit === 'Y' ? 'Age years' : unit === 'M' ? 'Age months' : 'Age days'}
+        style={{ ...(errors.age ? compactFieldError : compactField), paddingRight: 26 }}
+        data-testid={testId}
+      />
+      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">{unit}</span>
+    </div>
+  );
+  const showCenterPicker = !isEdit && centers.length !== 1;
+
   return (
     <div
       className="fixed inset-0 z-[400] flex items-end sm:items-center justify-center bg-slate-950/55 backdrop-blur-sm sm:p-3"
@@ -678,35 +808,47 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
         role="dialog"
         aria-modal="true"
         aria-labelledby="upload-dialog-title"
-        className="relative bg-white text-slate-900 w-full sm:max-w-xl md:max-w-2xl rounded-t-2xl sm:rounded-xl shadow-2xl flex flex-col overflow-hidden"
+        className="relative bg-white text-slate-900 w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl rounded-t-2xl sm:rounded-xl shadow-2xl flex flex-col overflow-hidden"
         style={{ maxHeight: 'min(96dvh, 920px)' }}
       >
-        <div className="flex items-center justify-between gap-2 px-3 sm:px-5 pt-3 pb-2.5 border-b border-slate-100 shrink-0">
-          <div className="min-w-0">
-            <h2 id="upload-dialog-title" className="text-[16px] sm:text-[17px] font-bold text-slate-900 leading-tight">
-              {isEdit ? 'Edit patient details' : 'Upload Image'}
-            </h2>
-            <p className="text-[11px] sm:text-[12px] text-slate-500 truncate">
-              {isEdit
-                ? `${initialReport?.fullName || ''} · ${initialReport?.radiologyCenterName || ''}`
-                : selectedCenter && centers.length === 1
-                ? selectedCenter.centerName
-                : 'Patient details + studies'}
-            </p>
-          </div>
+        <div className="flex items-center gap-2 px-2 sm:px-4 py-2 border-b border-slate-100 shrink-0">
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            aria-label="Close"
-            className="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 disabled:opacity-40 shrink-0"
+            aria-label="Back"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-slate-600 hover:bg-slate-100 disabled:opacity-40 shrink-0"
+            data-testid="upload-back"
           >
-            <X className="w-5 h-5" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
+          <div className="min-w-0 flex-1">
+            <h2 id="upload-dialog-title" className="text-[16px] sm:text-[17px] font-bold text-slate-900 leading-tight truncate">
+              {isEdit ? 'Edit patient details' : `Upload ${modality === 'X-Ray' ? 'X-Ray' : modality}`}
+            </h2>
+            {(isEdit || (selectedCenter && centers.length === 1)) && (
+              <p className="text-[11px] text-slate-500 truncate">
+                {isEdit
+                  ? `${initialReport?.fullName || ''} · ${initialReport?.radiologyCenterName || ''}`
+                  : selectedCenter?.centerName}
+              </p>
+            )}
+          </div>
+          {!isEdit && (
+            <button
+              type="button"
+              onClick={clearForm}
+              disabled={submitting}
+              className="h-8 px-3 rounded-lg border border-slate-200 text-[12px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 inline-flex items-center gap-1 shrink-0"
+              data-testid="upload-clear"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Clear
+            </button>
+          )}
         </div>
 
         <form id="upload-image-form" noValidate onSubmit={handleSubmit} className="flex-1 overflow-y-auto overscroll-contain">
-          <div className="px-3 sm:px-5 py-3 sm:py-4 space-y-3 sm:space-y-3.5">
+          <div className="px-3 sm:px-4 py-2.5 space-y-2.5">
             {formError && (
               <div
                 role="alert"
@@ -717,207 +859,26 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
               </div>
             )}
 
-            {/* Patient */}
-            <section className="space-y-2">
-              <div data-field="fullName">
-                <FieldLabel required htmlFor="up-name">
-                  Name
-                </FieldLabel>
-                <input
-                  id="up-name"
-                  type="text"
-                  autoComplete="off"
-                  value={fullName}
-                  onChange={(e) => {
-                    setFullName(e.target.value);
-                    if (errors.fullName) setErrors((x) => ({ ...x, fullName: '' }));
-                  }}
-                  placeholder="Patient full name"
-                  style={errors.fullName ? fieldErrorStyle : fieldStyle}
-                  data-testid="patient-name"
-                />
-                <FieldError msg={errors.fullName} />
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1.2fr)_96px_minmax(0,1fr)] gap-2 items-end">
-                <div data-field="age" className="col-span-1">
-                  <FieldLabel required htmlFor="up-age">
-                    Age
-                  </FieldLabel>
-                  <div
-                    className={`flex items-stretch rounded-lg border overflow-hidden bg-white h-10 ${
-                      errors.age ? 'border-rose-400' : 'border-slate-300'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => bumpAge(-1)}
-                      aria-label="Decrease age"
-                      className="w-10 shrink-0 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:bg-slate-100 border-r border-slate-200"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <input
-                      id="up-age"
-                      type="text"
-                      inputMode="numeric"
-                      value={age}
-                      onChange={(e) => {
-                        setAge(e.target.value.replace(/[^\d]/g, '').slice(0, 3));
-                        if (errors.age) setErrors((x) => ({ ...x, age: '' }));
-                      }}
-                      placeholder="0"
-                      className="flex-1 min-w-0 text-center text-[16px] font-semibold text-slate-900 outline-none h-full"
-                      data-testid="patient-age"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => bumpAge(1)}
-                      aria-label="Increase age"
-                      className="w-10 shrink-0 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:bg-slate-100 border-l border-slate-200"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <FieldError msg={errors.age} />
+            {isEdit && (
+              <div
+                className="rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-2 text-[12px] text-slate-700 space-y-1"
+                data-testid="edit-fixed-study"
+              >
+                <div className="flex items-center gap-1.5 font-semibold">
+                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="truncate">{initialReport?.radiologyCenterName}</span>
+                  <span className="text-slate-400">·</span>
+                  <span>{initialReport?.modality || 'X-Ray'}</span>
                 </div>
-                <div className="col-span-1">
-                  <FieldLabel htmlFor="up-age-unit">Unit</FieldLabel>
-                  <select
-                    id="up-age-unit"
-                    value={ageUnit}
-                    onChange={(e) => setAgeUnit(e.target.value as AgeUnit)}
-                    style={fieldStyle}
-                    data-testid="age-unit"
-                  >
-                    <option value="Years">Years</option>
-                    <option value="Months">Months</option>
-                    <option value="Days">Days</option>
-                  </select>
-                </div>
-                <div data-field="gender" className="col-span-2 sm:col-span-1">
-                  <FieldLabel required htmlFor="up-gender">
-                    Gender
-                  </FieldLabel>
-                  <select
-                    id="up-gender"
-                    value={gender}
-                    onChange={(e) => {
-                      setGender(e.target.value as Gender);
-                      setErrors((x) => ({ ...x, gender: '' }));
-                    }}
-                    style={errors.gender ? fieldErrorStyle : fieldStyle}
-                    data-testid="patient-gender"
-                  >
-                    <option value="">Select…</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
-                  <FieldError msg={errors.gender} />
+                <div className="flex flex-wrap gap-1">
+                  {(initialReport?.bodyParts || []).map((bp) => (
+                    <span key={bp} className="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-semibold">
+                      {bp}
+                    </span>
+                  ))}
                 </div>
               </div>
-            </section>
-
-            {/* Centre / modality / flags */}
-            <section className="space-y-2">
-              {isEdit ? (
-                <div
-                  className="rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-2 text-[12px] text-slate-700 space-y-1"
-                  data-testid="edit-fixed-study"
-                >
-                  <div className="flex items-center gap-1.5 font-semibold">
-                    <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="truncate">{initialReport?.radiologyCenterName}</span>
-                    <span className="text-slate-400">·</span>
-                    <span>{initialReport?.modality || 'X-Ray'}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {(initialReport?.bodyParts || []).map((bp) => (
-                      <span key={bp} className="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-semibold">
-                        {bp}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div data-field="center">
-                    <FieldLabel required htmlFor="up-center">
-                      Centre
-                    </FieldLabel>
-                    {centers.length === 1 ? (
-                      <div
-                        className="h-9 px-2.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center gap-2 text-[13px] font-semibold text-slate-800"
-                        data-testid="center-fixed"
-                      >
-                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                        <span className="truncate">{centers[0].centerName}</span>
-                      </div>
-                    ) : (
-                      <select
-                        id="up-center"
-                        value={centerId}
-                        onChange={(e) => {
-                          setCenterId(e.target.value);
-                          setErrors((x) => ({ ...x, center: '' }));
-                        }}
-                        style={errors.center ? fieldErrorStyle : fieldStyle}
-                        data-testid="center-select"
-                      >
-                        <option value="">Choose centre…</option>
-                        {centers.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.centerName}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <FieldError msg={errors.center} />
-                  </div>
-
-                  <div data-field="modality">
-                    <FieldLabel required htmlFor="up-modality">
-                      Modality
-                    </FieldLabel>
-                    <select
-                      id="up-modality"
-                      value={modality}
-                      onChange={(e) => setModality(e.target.value)}
-                      style={errors.modality ? fieldErrorStyle : fieldStyle}
-                      data-testid="modality"
-                    >
-                      {modalityChoices.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </>
-              )}
-
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-0.5">
-                <label className="inline-flex items-center gap-2.5 min-h-10 text-[14px] font-semibold text-slate-800 cursor-pointer" data-testid="urgent-toggle">
-                  <input
-                    type="checkbox"
-                    checked={isUrgent}
-                    onChange={(e) => setIsUrgent(e.target.checked)}
-                    className="w-5 h-5 accent-rose-500"
-                  />
-                  Urgent
-                </label>
-                <label className="inline-flex items-center gap-2.5 min-h-10 text-[14px] font-semibold text-slate-800 cursor-pointer" data-testid="portable-toggle">
-                  <input
-                    type="checkbox"
-                    checked={isPortable}
-                    onChange={(e) => setIsPortable(e.target.checked)}
-                    className="w-5 h-5 accent-[#009ef7]"
-                  />
-                  Portable
-                </label>
-              </div>
-            </section>
+            )}
 
             {/* Studies */}
             {!isEdit && (
@@ -1063,7 +1024,6 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                 />
               </section>
             )}
-
             {/* Edit: add more images */}
             {isEdit && (
               <section data-field="scans">
@@ -1109,60 +1069,161 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
               </section>
             )}
 
-            {/* More details — always visible */}
-            <section className="space-y-2 border-t border-slate-100 pt-3">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">More details</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div>
-                  <FieldLabel htmlFor="up-ref">Referring doctor</FieldLabel>
+            {/* Patient */}
+            <section className="space-y-2">
+              <div className="grid grid-cols-2 sm:grid-cols-[150px_minmax(0,1fr)_150px] gap-2">
+                <div data-field="patientNumber">
+                  <FieldLabel htmlFor="up-pid">Patient ID</FieldLabel>
                   <input
-                    id="up-ref"
+                    id="up-pid"
                     type="text"
-                    value={referringDoctor}
-                    onChange={(e) => setReferringDoctor(e.target.value)}
-                    placeholder="Dr. name"
-                    style={fieldStyle}
+                    autoComplete="off"
+                    value={isUUID(patientNumber) ? '' : patientNumber}
+                    onChange={(e) => setPatientNumber(e.target.value.slice(0, 40))}
+                    readOnly={isEdit}
+                    placeholder="Optional"
+                    style={isEdit ? { ...compactField, background: '#f8fafc', color: '#64748b' } : compactField}
+                    data-testid="patient-id"
                   />
                 </div>
-                <div>
-                  <FieldLabel htmlFor="up-phone">Patient mobile</FieldLabel>
+                <div data-field="fullName" className="col-span-2 sm:col-span-1 order-last sm:order-none">
+                  <FieldLabel required htmlFor="up-name">
+                    Patient Name
+                  </FieldLabel>
                   <input
-                    id="up-phone"
+                    id="up-name"
                     type="text"
-                    inputMode="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Mobile number"
-                    style={fieldStyle}
+                    autoComplete="off"
+                    value={fullName}
+                    onChange={(e) => {
+                      setFullName(e.target.value);
+                      if (errors.fullName) setErrors((x) => ({ ...x, fullName: '' }));
+                    }}
+                    placeholder="Patient full name"
+                    style={errors.fullName ? compactFieldError : compactField}
+                    data-testid="patient-name"
                   />
+                  <FieldError msg={errors.fullName} />
+                </div>
+                <div data-field="studyDate">
+                  <FieldLabel required htmlFor="up-study-date">
+                    Study Date
+                  </FieldLabel>
+                  <input
+                    id="up-study-date"
+                    type="date"
+                    value={studyDate}
+                    max={todayIso()}
+                    onChange={(e) => {
+                      setStudyDate(e.target.value);
+                      if (errors.studyDate) setErrors((x) => ({ ...x, studyDate: '' }));
+                    }}
+                    style={{ ...(errors.studyDate ? compactFieldError : compactField), padding: '0 6px' }}
+                    data-testid="study-date"
+                  />
+                  <FieldError msg={errors.studyDate} />
                 </div>
               </div>
-              <div>
-                <FieldLabel htmlFor="up-notes">Clinical notes</FieldLabel>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div data-field="age">
+                  <FieldLabel required htmlFor="up-age">
+                    Age
+                  </FieldLabel>
+                  <div className="flex gap-1.5">
+                    {ageBox('up-age', ageY, setAgeY, 'Y', 150, 'patient-age')}
+                    {ageBox('up-age-m', ageM, setAgeM, 'M', 11, 'patient-age-months')}
+                    {ageBox('up-age-d', ageD, setAgeD, 'D', 31, 'patient-age-days')}
+                  </div>
+                  <FieldError msg={errors.age} />
+                </div>
+                <div data-field="gender">
+                  <FieldLabel required>Gender</FieldLabel>
+                  <div
+                    role="radiogroup"
+                    aria-label="Gender"
+                    className={`flex rounded-lg border overflow-hidden ${errors.gender ? 'border-rose-400' : 'border-slate-300'}`}
+                    data-testid="patient-gender"
+                  >
+                    {genderOptions.map((g, i) => {
+                      const on = gender === g.value;
+                      return (
+                        <button
+                          key={g.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={on}
+                          onClick={() => {
+                            setGender(g.value);
+                            if (errors.gender) setErrors((x) => ({ ...x, gender: '' }));
+                          }}
+                          className={`flex-1 h-9 text-[13px] font-semibold transition-colors ${i > 0 ? 'border-l border-slate-300' : ''} ${
+                            on ? 'bg-[#009ef7] text-white' : 'bg-white text-slate-700 hover:bg-slate-50'
+                          }`}
+                          data-testid={`gender-${g.label.toLowerCase()}`}
+                        >
+                          {g.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <FieldError msg={errors.gender} />
+                </div>
+              </div>
+
+              <div data-field="attachments">
+                <div className="flex items-center justify-between gap-2">
+                  <FieldLabel htmlFor="up-notes">Patient History</FieldLabel>
+                  {!isEdit && (
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[10px] text-slate-400">max 5 MB</span>
+                      <button
+                        type="button"
+                        onClick={() => slipInputRef.current?.click()}
+                        disabled={submitting}
+                        className="h-6 px-2 rounded-md border border-[#009ef7] text-[#009ef7] text-[11px] font-semibold hover:bg-[#009ef7]/5 disabled:opacity-40 inline-flex items-center gap-1"
+                        data-testid="add-attachment"
+                      >
+                        <Paperclip className="w-3 h-3" /> Attach reports
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <textarea
                   id="up-notes"
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Symptoms, history, reason for scan"
-                  style={areaStyle}
+                  style={compactArea}
                 />
-              </div>
-              {!isEdit && (
-                <div>
-                  <FieldLabel>History slip / prescription</FieldLabel>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {slips.map((f) =>
-                      renderThumb(f, () => setSlips((prev) => prev.filter((p) => p.key !== f.key))),
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => slipInputRef.current?.click()}
-                      className="h-8 px-3 rounded-lg border border-dashed border-slate-300 text-slate-700 text-[12px] font-semibold hover:border-[#009ef7] hover:text-[#009ef7] inline-flex items-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Attach slip
-                    </button>
+                {!isEdit && slips.length > 0 && (
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    {slips.map((f) => (
+                      <span
+                        key={f.key}
+                        className="inline-flex items-center gap-1 h-7 max-w-[180px] pl-2 pr-1 rounded-md border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700"
+                        data-testid="attachment-chip"
+                      >
+                        <FileText className="w-3 h-3 shrink-0 text-slate-400" />
+                        <span className="truncate">{f.name}</span>
+                        {submitting ? (
+                          <span className="text-[10px] text-slate-400">{Math.round(f.progress * 100)}%</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setSlips((prev) => prev.filter((p) => p.key !== f.key))}
+                            aria-label={`Remove ${f.name}`}
+                            className="w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-rose-600"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </span>
+                    ))}
                   </div>
+                )}
+                {!isEdit && (
                   <input
                     ref={slipInputRef}
                     type="file"
@@ -1174,37 +1235,129 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                       e.target.value = '';
                     }}
                   />
+                )}
+              </div>
+
+              <div className="flex flex-col md:flex-row md:items-end gap-2 md:gap-4">
+                <div className={`w-full md:w-1/2 lg:max-w-sm ${isEdit ? 'grid grid-cols-1 sm:grid-cols-2 gap-2' : ''}`}>
+                  <div>
+                    <FieldLabel htmlFor="up-ref">Referring Physician</FieldLabel>
+                    <input
+                      id="up-ref"
+                      type="text"
+                      value={referringDoctor}
+                      onChange={(e) => setReferringDoctor(e.target.value)}
+                      placeholder="Dr. name"
+                      style={compactField}
+                    />
+                  </div>
+                  {isEdit && (
+                    <div>
+                      <FieldLabel htmlFor="up-phone">Patient mobile</FieldLabel>
+                      <input
+                        id="up-phone"
+                        type="text"
+                        inputMode="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="Mobile number"
+                        style={compactField}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
+                <div className="flex items-center gap-4 md:h-9">
+                  <label className="inline-flex items-center gap-2 h-7 text-[13px] font-semibold text-slate-800 cursor-pointer" data-testid="urgent-toggle">
+                    <input
+                      type="checkbox"
+                      checked={isUrgent}
+                      onChange={(e) => setIsUrgent(e.target.checked)}
+                      className="w-4 h-4 accent-rose-500"
+                    />
+                    Urgent
+                  </label>
+                  <label className="inline-flex items-center gap-2 h-7 text-[13px] font-semibold text-slate-800 cursor-pointer" data-testid="portable-toggle">
+                    <input
+                      type="checkbox"
+                      checked={isPortable}
+                      onChange={(e) => setIsPortable(e.target.checked)}
+                      className="w-4 h-4 accent-[#009ef7]"
+                    />
+                    Portable
+                  </label>
+                </div>
+              </div>
+
               {!isEdit && (
-                <div>
-                  <FieldLabel htmlFor="up-send">Send to</FieldLabel>
-                  <select
-                    id="up-send"
-                    value={sendTo}
-                    onChange={(e) => setSendTo(e.target.value)}
-                    style={fieldStyle}
-                    data-testid="send-to"
-                  >
-                    <option value="ALL">All radiologists</option>
-                    {doctors.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.fullName}
-                      </option>
-                    ))}
-                  </select>
+                <div className={`grid gap-2 ${showCenterPicker ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2'}`}>
+                  {showCenterPicker && (
+                    <div data-field="center">
+                      <FieldLabel required htmlFor="up-center">
+                        Centre
+                      </FieldLabel>
+                      <select
+                        id="up-center"
+                        value={centerId}
+                        onChange={(e) => {
+                          setCenterId(e.target.value);
+                          setErrors((x) => ({ ...x, center: '' }));
+                        }}
+                        style={errors.center ? compactFieldError : compactField}
+                        data-testid="center-select"
+                      >
+                        <option value="">Choose centre…</option>
+                        {centers.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.centerName}
+                          </option>
+                        ))}
+                      </select>
+                      <FieldError msg={errors.center} />
+                    </div>
+                  )}
+                  <div data-field="modality">
+                    <FieldLabel htmlFor="up-modality">Modality</FieldLabel>
+                    <select
+                      id="up-modality"
+                      value={modality}
+                      onChange={(e) => setModality(e.target.value)}
+                      style={errors.modality ? compactFieldError : compactField}
+                      data-testid="modality"
+                    >
+                      {modalityChoices.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <FieldLabel htmlFor="up-send">Send to</FieldLabel>
+                    <select
+                      id="up-send"
+                      value={sendTo}
+                      onChange={(e) => setSendTo(e.target.value)}
+                      style={compactField}
+                      data-testid="send-to"
+                    >
+                      <option value="ALL">All radiologists</option>
+                      {doctors.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
-              {patientNumber && !isUUID(patientNumber) && (
-                <p className="text-[10px] text-slate-400 font-mono break-all">Patient ID: {patientNumber}</p>
-              )}
+
             </section>
           </div>
         </form>
 
         <div
-          className="shrink-0 border-t border-slate-100 bg-white px-3 sm:px-5 py-2.5 sm:py-3"
-          style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
+          className="shrink-0 border-t border-slate-100 bg-white px-3 sm:px-4 py-2"
+          style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}
         >
           {submitting && uploadPct !== null && (
             <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden mb-2" data-testid="upload-progress">
@@ -1212,27 +1365,19 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
             </div>
           )}
           <div className="flex items-center gap-2">
-            <span className="text-[11px] sm:text-[12px] text-slate-500 flex-1 min-w-0 truncate" data-testid="upload-status">
-              {footerStatus}
-            </span>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className="h-10 sm:h-9 px-3.5 rounded-lg text-[14px] sm:text-[13px] font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
-            >
-              Cancel
-            </button>
             <button
               type="submit"
               form="upload-image-form"
               disabled={submitting || preparing}
-              className="h-10 sm:h-9 px-4 sm:px-5 rounded-lg bg-[#009ef7] hover:bg-[#008be0] disabled:opacity-60 text-white text-[14px] sm:text-[13px] font-semibold inline-flex items-center gap-1.5"
+              className="h-10 sm:h-9 px-4 sm:px-5 rounded-lg bg-[#009ef7] hover:bg-[#008be0] disabled:opacity-60 text-white text-[14px] sm:text-[13px] font-semibold inline-flex items-center gap-1.5 shrink-0"
               data-testid="upload-submit"
             >
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : isEdit ? <Check className="w-4 h-4" /> : <UploadCloud className="w-4 h-4" />}
-              {isEdit ? 'Save' : 'Upload'}
+              {isEdit ? 'Save' : 'Send for Reporting'}
             </button>
+            <span className="text-[11px] sm:text-[12px] text-slate-500 flex-1 min-w-0 truncate text-right" data-testid="upload-status">
+              {footerStatus}
+            </span>
           </div>
         </div>
       </div>

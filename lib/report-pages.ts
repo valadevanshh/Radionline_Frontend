@@ -271,7 +271,7 @@ export function rnPaginate(src: HTMLElement, out: HTMLElement): number {
     markFirst(contentOf(pages[p]));
     pages[p].setAttribute('data-page', String(p + 1));
     var nums = pages[p].querySelectorAll('[data-rn-pageno]');
-    for (var n = 0; n < nums.length; n++) nums[n].textContent = p + 1 + ' of ' + pages.length + ' pages';
+    for (var n = 0; n < nums.length; n++) nums[n].textContent = 'Page ' + (p + 1) + ' of ' + pages.length;
   }
   return pages.length;
 }

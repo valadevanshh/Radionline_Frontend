@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, FileSignature, ShieldCheck, Stethoscope, Printer, BookmarkPlus, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { XRayReport, Doctor, RadiologyStore, RadiologyCenter, formatDateDDMMYYYY } from '@/lib/radiology-store';
-import { printReportElement, type PrintReportPayload } from '@/lib/print-helper';
+import { printReportElement, type PrintReportPayload, formatReportAge, shortReportId } from '@/lib/print-helper';
 import { MODALITY_OPTIONS } from '@/lib/radiology-templates';
 import { ApiClient, apiErrorMessage, resolveMediaUrl } from '@/lib/api-client';
 import { canWriteTemplates, useSession } from '@/lib/access';
@@ -31,6 +31,10 @@ export default function ReviewSignReportModal({
 }: ReviewSignReportModalProps) {
   const [findings, setFindings] = useState('');
   const [impression, setImpression] = useState('');
+  const [reportDate, setReportDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
 
   // Save Template Modal State
   const [saveTemplateModalOpen, setSaveTemplateModalOpen] = useState(false);
@@ -130,6 +134,7 @@ export default function ReviewSignReportModal({
       impression,
       status: 'Completed' as const,
       assignedDoctorName: doctorName,
+      reportDate,
     };
 
 
@@ -232,6 +237,16 @@ export default function ReviewSignReportModal({
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
               <span>Digital Signature Verified ({doctorName})</span>
             </div>
+            <label className="flex items-center gap-1.5 text-[11px] font-semibold">
+              Report date
+              <input
+                type="date"
+                value={reportDate}
+                onChange={(e) => e.target.value && setReportDate(e.target.value)}
+                className="h-7 px-1 text-[11px] border border-emerald-300 rounded bg-white text-slate-800"
+                data-testid="review-report-date"
+              />
+            </label>
             <span className="text-[10px] font-mono uppercase bg-emerald-100 px-2 py-0.5 font-bold">
               Ready to Sign
             </span>
@@ -275,6 +290,8 @@ export default function ReviewSignReportModal({
                     patientName: report.fullName,
                     patientId: formatPatientDisplayId(report.patientNumber) || '—',
                     ageSex: `${report.age} ${report.ageUnit === 'Months' ? 'M' : report.ageUnit === 'Days' ? 'D' : 'Y'} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,
+                    gender: report.gender || '',
+                    age: formatReportAge(report.age, report.ageUnit, report),
                     studyDate: formatDateDDMMYYYY(report.studyDate),
                     referringDoctor: report.referringPhysicianName || '',
                     modality: report.bodyParts?.[0] || 'X-Ray',
@@ -290,6 +307,9 @@ export default function ReviewSignReportModal({
                     ],
                     doctorName: doctorName || report.assignedDoctorName || 'Reporting Radiologist',
                     reportedAt: formatDateDDMMYYYY(report.studyDate),
+                    reportDate,
+                    reportId: shortReportId(report.studies?.[0]?.id || report.id),
+                    isPortable: !!report.isPortable,
                     withHeader: true,
                   };
                   printReportElement(null, `Radiology Case Review - ${report.patientNumber}`, payload);

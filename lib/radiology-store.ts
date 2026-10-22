@@ -110,6 +110,8 @@ export interface StudyReportInfo {
   technique?: string | null;
   templateId?: string | null;
   signedAt?: string | null;
+  /** Reporting date YYYY-MM-DD (doctor-chosen, else the IST date it was signed) */
+  reportDate?: string | null;
   signedBy?: string | null;
   signedByName?: string | null;
   claimedBy?: string | null;
@@ -138,6 +140,10 @@ export interface XRayReport {
   fullName: string;
   age: number;
   ageUnit?: 'Years' | 'Months' | 'Days';
+  /** Optional compound age (e.g. 0 Y 3 M 5 D); age + ageUnit stay the source of truth. */
+  ageYears?: number | null;
+  ageMonths?: number | null;
+  ageDays?: number | null;
   gender: 'Male' | 'Female' | 'Other';
   phone: string;
   radiologyCenterId: string;
@@ -157,6 +163,8 @@ export interface XRayReport {
   claimStatus?: 'UNCLAIMED' | 'CLAIMED';
   status: 'Completed' | 'Pending' | 'In Review';
   studyDate: string;
+  /** Legacy whole-report sign: reporting date YYYY-MM-DD */
+  reportDate?: string | null;
   clinicalNotes?: string;
   findings?: string;
   impression?: string;

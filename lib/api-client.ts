@@ -90,6 +90,11 @@ export interface PublicReport {
     impression: string;
     clinicalHistory: string;
     signedAt?: string | null;
+    /** Reporting date YYYY-MM-DD */
+    reportDate?: string | null;
+    /** Short printed reference ("3F0AE1"), same as shortReportId() of the study id */
+    reportId?: string | null;
+    isPortable?: boolean;
   };
   signer: {
     name?: string | null;
@@ -323,6 +328,8 @@ export interface CaseDetailsUpdate {
   clinicalNotes?: string;
   isUrgent?: boolean;
   isPortable?: boolean;
+  /** Study date (DD-MM-YYYY or YYYY-MM-DD) */
+  studyDate?: string;
   /** stored file paths from uploadFile (or data: URLs) */
   addImages?: string[];
 }
@@ -461,6 +468,7 @@ export const ApiClient = {
     clinicalNotes?: string;
     docContent?: string;
     dicomSnapshots?: string[];
+    reportDate?: string;
   }) {
     return fetchJson<any>(`/reports/${caseId}/studies/${studyId}/draft`, {
       method: 'POST',
@@ -477,6 +485,8 @@ export const ApiClient = {
     docContent?: string;
     dicomSnapshots?: string[];
     title?: string;
+    /** YYYY-MM-DD; only when the doctor changed it (else the server stamps the signing date) */
+    reportDate?: string;
   }) {
     return fetchJson<{
       ok: boolean;

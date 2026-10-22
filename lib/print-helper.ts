@@ -24,7 +24,13 @@ export type PrintReportPayload = {
   patientName: string;
   patientId: string;
   ageSex: string;
+  /** Printed as "Gender" (defaults to the sex in ageSex) */
+  gender?: string;
+  /** Age as printed, e.g. "65 Y" (defaults to the age in ageSex) */
+  age?: string;
   studyDate: string;
+  /** Reporting date (YYYY-MM-DD or any date string); '\u2014' when not reported yet */
+  reportDate?: string;
   referringDoctor: string;
   modality: string;
   studyParts: string;
@@ -36,6 +42,10 @@ export type PrintReportPayload = {
   doctorRegNo?: string;
   doctorSignatureUrl?: string;
   reportedAt: string;
+  /** Short report reference printed under the signature ("Report ID: 3F0AE1"), see shortReportId */
+  reportId?: string;
+  /** Portable study: " (PORTABLE)" is added to the study heading */
+  isPortable?: boolean;
   /** Body text size/family chosen in the editor (defaults: 11pt Georgia) */
   bodyFontPt?: number;
   bodyFontFamily?: string;
@@ -66,9 +76,24 @@ export const REPORT_SHEET_CSS = `
 .rn-sheet table.demo td { border: 1px solid #000; padding: 7px 9px; vertical-align: top; width: 50%; }
 .rn-sheet table.demo .lbl { display: block; color: #444; font-size: 8.5pt; margin-bottom: 2px; }
 .rn-sheet table.demo .val { font-weight: 700; color: #000; text-transform: none; }
+.rn-sheet table.demo td.pt-l { text-align: left; }
+.rn-sheet table.demo td.pt-r { text-align: left; }
+.rn-sheet table.demo td.pt-l, .rn-sheet table.demo td.pt-r { white-space: normal; word-break: normal; overflow-wrap: anywhere; }
+.rn-sheet table.demo td.pt-l .lbl, .rn-sheet table.demo td.pt-r .lbl { display: inline; color: #000; font-size: inherit; margin: 0; }
+/* Last page: QR bottom-left of the content, level with the signature (right); then the footer:
+   one divider, page no. + End of report, NOTE full width */
+.rn-sheet .rn-foot-last .sig-row .sig-inner { margin-left: auto; }
+.rn-sheet .rn-bottom { margin-top: 12px; padding-top: 6px; border-top: 1px solid #999; font-family: system-ui, sans-serif; }
+.rn-sheet .rn-foot-last .rn-bottom .foot { display: flex; justify-content: space-between; align-items: baseline; margin: 0; font-size: 8pt; color: #555; }
+.rn-sheet .rn-foot-last .rn-bottom .foot .rn-pageno { font-size: 8pt; font-weight: 400; color: #555; text-align: left; }
+.rn-sheet .rn-qr { flex: none; width: 16mm; display: flex; flex-direction: column; align-items: center; color: #555; text-decoration: none; }
+.rn-sheet .rn-qr svg { display: block; width: 16mm; height: 16mm; }
+.rn-sheet .rn-qr-cap { margin-top: 2px; font-size: 6.5pt; line-height: 1.2; white-space: nowrap; }
+.rn-sheet .rn-note { margin-top: 4px; font-family: system-ui, sans-serif; font-size: 8pt; line-height: 1.4; color: #222; }
 .rn-sheet h2.study-title { font-family: system-ui, sans-serif; font-size: 12pt; line-height: 1.4; font-weight: 700; text-align: center; text-transform: uppercase; text-decoration: underline; margin: 18px 0 10px; }
 .rn-sheet h3.sec { font-family: system-ui, sans-serif; font-size: 10pt; line-height: 1.4; font-weight: 700; font-style: normal; text-decoration: none; text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 4px; border: none; }
 .rn-sheet p.body { margin: 0 0 8px; white-space: pre-wrap; word-wrap: break-word; }
+.rn-sheet p.study-intro { margin: 0 0 6px; }
 .rn-sheet p.findings, .rn-sheet p.impression { border: none !important; outline: none !important; background: transparent !important; padding: 0 !important; }
 .rn-sheet .study { margin-bottom: 8px; }
 .rn-sheet .clinical { margin-bottom: 12px; }
@@ -85,11 +110,98 @@ export const REPORT_SHEET_CSS = `
 .rn-sheet .foot { margin-top: 8px; display: flex; justify-content: space-between; font-family: system-ui, sans-serif; font-size: 8pt; color: #555; }
 `;
 
-/** "Reg. No. 1234" unless the stored value already says what it is (e.g. "MCI Reg. No. 1234"). */
+/** "Reg - 1234" unless the stored value already says what it is (e.g. "MCI Reg. No. 1234"). */
 export function formatRegNo(value?: string | null): string {
   const v = String(value || '').trim();
   if (!v) return '';
-  return /reg/i.test(v) ? v : `Reg. No. ${v}`;
+  return /reg/i.test(v) ? v : `Reg - ${v}`;
+}
+
+/** Medicolegal note printed at the very bottom of the report (client wording, verbatim). */
+export const REPORT_NOTE =
+  'NOTE: This is an online interpretation of medical imaging based on clinical data, wherever available. Not for Medicolegal purpose. In case of any discrepancy please reinvestigate the patient';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "Oct 19, 2026" from 2026-10-19, 19/10/2026, 19-10-2026 or any Date-parsable value (else as given). */
+export function formatReportDate(value?: string | null): string {
+  const v = String(value || '').trim();
+  if (!v || v === '-' || v === '\u2014') return v;
+  let y = 0, m = 0, d = 0;
+  let mt = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (mt) [y, m, d] = [Number(mt[1]), Number(mt[2]), Number(mt[3])];
+  else if ((mt = v.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/))) [d, m, y] = [Number(mt[1]), Number(mt[2]), Number(mt[3])];
+  else {
+    const t = Date.parse(v);
+    if (Number.isNaN(t)) return v;
+    const dt = new Date(t);
+    [y, m, d] = [dt.getFullYear(), dt.getMonth() + 1, dt.getDate()];
+  }
+  if (m < 1 || m > 12 || d < 1 || d > 31) return v;
+  return `${MONTHS[m - 1]} ${d}, ${y}`;
+}
+
+/** "65 Y", "1 Y 3 M" (15 months), "0 Y 0 M 5 D" (5 days) from the stored age + unit. */
+export function formatReportAge(
+  age?: number | string | null,
+  unit?: string | null,
+  parts?: { ageYears?: number | null; ageMonths?: number | null; ageDays?: number | null } | null,
+): string {
+  const n = Math.max(0, Math.floor(Number(age)));
+  if (age === null || age === undefined || age === '' || Number.isNaN(n)) return '';
+  const u = String(unit || 'Years').toLowerCase();
+  if (parts && (parts.ageYears != null || parts.ageMonths != null || parts.ageDays != null)) {
+    const y = Math.max(0, Math.floor(Number(parts.ageYears) || 0));
+    const m = Math.max(0, Math.floor(Number(parts.ageMonths) || 0));
+    const d = Math.max(0, Math.floor(Number(parts.ageDays) || 0));
+    // Only trust the parts when they still agree with the stored age + unit (largest non-zero unit).
+    const lead = y > 0 ? [y, 'y'] : m > 0 ? [m, 'm'] : d > 0 ? [d, 'd'] : [0, 'y'];
+    if (lead[0] === n && u.charAt(0) === lead[1]) {
+      if (m === 0 && d === 0) return `${y} Y`;
+      return d > 0 ? `${y} Y ${m} M ${d} D` : `${y} Y ${m} M`;
+    }
+  }
+  if (u.startsWith('m')) return `${Math.floor(n / 12)} Y ${n % 12} M`;
+  if (u.startsWith('d')) return `0 Y 0 M ${n} D`;
+  return `${n} Y`;
+}
+
+/** "Male" / "Female" / "Other" from a stored gender or a one-letter sex. */
+export function reportGenderLabel(value?: string | null): string {
+  const v = String(value || '').trim();
+  const c = v.charAt(0).toUpperCase();
+  if (c === 'M') return 'Male';
+  if (c === 'F') return 'Female';
+  if (c === 'O') return 'Other';
+  return v;
+}
+
+/**
+ * Six-character report reference ("3F0AE1") derived from the study (or case) id: FNV-1a 32-bit,
+ * last 6 hex digits, upper case. The public report API computes the same value (public_reports.py).
+ */
+export function shortReportId(id?: string | null): string {
+  const v = String(id || '').trim();
+  if (!v) return '';
+  const bytes = new TextEncoder().encode(v);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) {
+    h ^= bytes[i];
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).toUpperCase().padStart(8, '0').slice(-6);
+}
+
+/** Gender / age for the patient header: explicit fields, else read from "65 Y / M". */
+function patientGenderAge(payload: PrintReportPayload): { gender: string; age: string } {
+  const [rawAge = '', rawSex = ''] = String(payload.ageSex || '').split('/').map((s) => s.trim());
+  const gender = reportGenderLabel(payload.gender || rawSex);
+  let age = (payload.age || '').trim();
+  if (!age) {
+    const mt = rawAge.match(/^(\d+)\s*([a-z]*)/i);
+    age = mt ? formatReportAge(mt[1], mt[2] || 'Years') : rawAge;
+  }
+  return { gender: gender || '\u2014', age: age || '\u2014' };
 }
 
 /** A4 geometry shared by print (@page margins) and the on-screen page. */
@@ -223,31 +335,53 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
   const sigImg = payload.doctorSignatureUrl ? `<img class="sig-img" src="${esc(payload.doctorSignatureUrl)}" alt="Signature" />` : '';
   const footLast = `<div class="rn-foot rn-foot-last sig-block" data-rn="foot-last" data-testid="sheet-signature">
     <div class="sig-row">
-      ${qr ? `<${qrTag} class="sig-qr" data-rn-qr data-testid="sheet-qr"${qrHref}>${qr}<div class="sig-qr-cap">Scan to view this report</div></${qrTag}>` : ''}
+      ${qr ? `<${qrTag} class="rn-qr" data-rn-qr data-testid="sheet-qr"${qrHref}>${qr}<span class="rn-qr-cap">Scan to verify</span></${qrTag}>` : ''}
       <div class="sig-inner">
         ${sigImg}
         <div class="sig-name">${esc(payload.doctorName || 'Reporting Radiologist')}</div>
         ${payload.doctorDegree ? `<div class="sig-meta">${esc(payload.doctorDegree)}</div>` : ''}
         ${payload.doctorRegNo ? `<div class="sig-meta">${esc(formatRegNo(payload.doctorRegNo))}</div>` : ''}
         ${payload.reportedAt ? `<div class="sig-meta">Reported: ${esc(payload.reportedAt)}</div>` : ''}
+        ${payload.reportId ? `<div class="sig-meta" data-testid="sheet-report-id">Report ID: ${esc(payload.reportId)}</div>` : ''}
       </div>
     </div>
-    <div class="disclaimer">
-      This report is based on the images provided and should be correlated clinically. It is not a substitute for clinical judgment.
-    </div>
-    <div class="foot">
-      <span>${esc(payload.centerName)}</span>
-      <span class="rn-pageno" data-rn-pageno></span>
-      <span>End of report</span>
+    <div class="rn-bottom">
+      <div class="foot">
+        <span class="rn-pageno" data-rn-pageno></span>
+        <span>End of report</span>
+      </div>
+      <div class="rn-note" data-testid="sheet-note">${esc(REPORT_NOTE)}</div>
     </div>
   </div>`;
+
+  // Client style intro under the heading: "MRS X's Chest PA Radiograph shows:-"
+  const studyIntro = (title: string) => {
+    let part = String(title || '')
+      .replace(/\(PORTABLE\)/gi, '')
+      .replace(/^\s*(X-?RAY|RADIOGRAPH(\s+OF)?)\s+/i, '')
+      .replace(/\s+(VIEWS?|EXAMINATION|RADIOGRAPH)\s*$/i, '')
+      .trim();
+    if (!part) part = String(payload.studyParts || '').trim();
+    const small = new Set(['and', 'with', 'of', 'the', 'both', 'in', 'on']);
+    const words = part.split(/\s+/).filter(Boolean).map((w) => {
+      const lw = w.toLowerCase();
+      if (small.has(lw)) return lw;
+      if (w.split('/').every((x) => x.length <= 3)) return w.toUpperCase(); // PA, AP, LAT, AP/LAT
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    });
+    const studyText = words.join(' ');
+    const name = String(payload.patientName || '').trim().toUpperCase();
+    const line = `${name ? `${name}'s ` : ''}${studyText ? `${studyText} ` : ''}Radiograph shows:-`;
+    return `<p class="body study-intro" data-kwn>${esc(line)}</p>`;
+  };
 
   const studies = (payload.studies || [])
     .map(
       (st, i) => `
-    <h2 class="study-title" data-kwn data-b="title-${i}">${esc(st.title)}</h2>
-    <h3 class="sec" data-kwn>Technique</h3>
-    <p class="body" data-split data-b="technique-${i}">${text(st.technique, '\u2014')}</p>
+    <h2 class="study-title" data-kwn data-b="title-${i}">${esc(
+      payload.isPortable && !/portable/i.test(st.title || '') ? `${st.title} (PORTABLE)` : st.title
+    )}</h2>
+    ${studyIntro(st.title)}
     <h3 class="sec" data-kwn>Findings</h3>
     <p class="body findings" data-split data-b="findings-${i}" style="${esc(payload.findingsCss || '')}">${text(st.findings, '\u2014')}</p>
     <h3 class="sec" data-kwn>Impression</h3>
@@ -255,28 +389,18 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
     )
     .join('');
 
+  // Patient header: left column left-aligned, right column right-aligned, "Label : value"
+  const pga = patientGenderAge(payload);
+  const ptCell = (label: string, value: string, side: 'l' | 'r') =>
+    `<td class="pt-${side}"><span class="lbl">${esc(label)} : </span><span class="val">${esc(value || '\u2014')}</span></td>`;
   const flow = `<div data-rn="flow">
     <table class="demo">
       <tbody>
-        <tr>
-          <td><span class="lbl">Patient Name</span><span class="val">${esc(payload.patientName)}</span></td>
-          <td><span class="lbl">Patient ID</span><span class="val">${esc(payload.patientId)}</span></td>
-        </tr>
-        <tr>
-          <td><span class="lbl">Age / Sex</span><span class="val">${esc(payload.ageSex)}</span></td>
-          <td><span class="lbl">Date of Study</span><span class="val">${esc(payload.studyDate)}</span></td>
-        </tr>
-        <tr>
-          <td><span class="lbl">Referring Doctor</span><span class="val">${esc(payload.referringDoctor || '\u2014')}</span></td>
-          <td><span class="lbl">Modality</span><span class="val">${esc(payload.modality || '\u2014')}</span></td>
-        </tr>
-        <tr>
-          <td colspan="2"><span class="lbl">Study / Body Part</span><span class="val">${esc(payload.studyParts || '\u2014')}</span></td>
-        </tr>
+        <tr>${ptCell('Patient ID', payload.patientId, 'l')}${ptCell('Patient Name', payload.patientName, 'r')}</tr>
+        <tr>${ptCell('Age / Gender', [pga.age, pga.gender].map((x) => String(x || '').trim()).filter((x) => x && x !== '\u2014').join(' / '), 'l')}${ptCell('Referring Doctor', payload.referringDoctor, 'r')}</tr>
+        <tr>${ptCell('Study / Body Part', payload.studyParts, 'l')}${ptCell('Report Date', formatReportDate(payload.reportDate || ''), 'r')}</tr>
       </tbody>
     </table>
-    <h3 class="sec" data-kwn>Clinical History</h3>
-    <p class="body clinical-body" data-split data-b="clinical">${text(payload.clinicalHistory, 'Not provided.')}</p>
     ${studies}
   </div>`;
 
