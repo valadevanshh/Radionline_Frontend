@@ -20,11 +20,12 @@ import {
 import { RadiologyStore, XRayReport, Doctor, RadiologyCenter } from '@/lib/radiology-store';
 import { ApiClient, apiErrorMessage, isPendingApproval, resolveMediaUrl } from '@/lib/api-client';
 import { centerIdsWith } from '@/lib/access';
-import { generateUUID, isUUID } from '@/lib/uuid';
+import { generateUUID, isUUID, formatPatientDisplayId } from '@/lib/uuid';
+import AgeGenderField from '@/components/AgeGenderField';
 
 /** Payload handed to the page on create (same contract as before, plus the case id the files were stored under). */
 export type NewCasePayload = Omit<XRayReport, 'createdAt'> & {
-  studyUploads?: { bodyPart: string; images: string[] }[];
+  studyUploads?: { bodyPart: string; images: string[]; studyDate?: string }[];
 };
 
 interface NewXRayReportModalProps {
@@ -37,18 +38,48 @@ interface NewXRayReportModalProps {
 
 export const STUDY_MODALITY_OPTIONS = ['X-Ray', 'CT', 'MRI', 'Sonography', 'Blood Report'] as const;
 
-const BODY_PART_OPTIONS = [
-  'CHEST PA/AP',
-  'KNEE JOINT AP/LAT',
-  'LUMBAR SPINE AP/LAT',
-  'CERVICAL SPINE AP/LAT',
-  'PELVIS WITH BOTH HIPS',
-  'SKULL AP/LAT',
-  'SHOULDER JOINT AP',
-  'ABDOMEN ERECT/SUPINE',
-  'FOOT AP/OBLIQUE',
-  'HAND AP/OBLIQUE',
+const LR = (p: string) => [p, `${p} (LEFT)`, `${p} (RIGHT)`];
+const LRB = (p: string) => [...LR(p), `${p} (BOTH)`];
+
+/** Standard X-ray body parts / views, grouped for the picker. 'CHEST PA/AP' (old combined
+ * option) is now CHEST PA and CHEST AP; old cases keep their saved name (added under Other). */
+const BODY_PART_GROUPS: { label: string; parts: string[] }[] = [
+  { label: 'Chest', parts: ['CHEST PA', 'CHEST AP', 'CHEST LATERAL', 'CHEST SUPINE', 'CHEST PA & LATERAL', 'RIBS AP/OBLIQUE', 'STERNUM LATERAL'] },
+  {
+    label: 'Head & Neck',
+    parts: [
+      'SKULL AP/LAT', 'SKULL PA', 'PNS WATERS VIEW', 'PNS CALDWELL VIEW', 'NASAL BONE LATERAL', 'NASOPHARYNX LATERAL',
+      'SOFT TISSUE NECK AP/LAT', 'MANDIBLE PA/OBLIQUE', 'TMJ (OPEN/CLOSED MOUTH)', 'MASTOID VIEWS', 'ORBIT PA',
+    ],
+  },
+  {
+    label: 'Spine',
+    parts: [
+      'CERVICAL SPINE AP/LAT', 'CERVICAL SPINE FLEXION/EXTENSION', 'DORSAL SPINE AP/LAT', 'DORSO LUMBAR SPINE AP/LAT',
+      'LUMBAR SPINE AP/LAT', 'LS SPINE AP/LAT', 'LS SPINE FLEXION/EXTENSION', 'SACRUM AP/LAT', 'COCCYX AP/LAT',
+      'SACROCOCCYX AP/LAT', 'WHOLE SPINE AP/LAT',
+    ],
+  },
+  { label: 'Pelvis & Hip', parts: ['PELVIS AP', 'PELVIS WITH BOTH HIPS', 'BOTH HIPS AP', ...LR('HIP AP/LAT'), 'SI JOINTS AP'] },
+  {
+    label: 'Lower limb',
+    parts: [
+      ...LR('FEMUR AP/LAT'), 'KNEE JOINT AP/LAT', ...LRB('KNEE AP/LAT'), 'BOTH KNEES STANDING AP', ...LR('KNEE SKYLINE VIEW'),
+      ...LR('LEG AP/LAT'), ...LRB('ANKLE AP/LAT'), ...LR('FOOT AP/OBLIQUE'), 'FOOT AP/OBLIQUE (BOTH)',
+      ...LR('HEEL LATERAL/AXIAL'), ...LR('TOES AP/OBLIQUE'),
+    ],
+  },
+  {
+    label: 'Upper limb',
+    parts: [
+      ...LR('CLAVICLE AP'), 'SHOULDER JOINT AP', ...LR('SHOULDER AP'), ...LR('SHOULDER AP/AXIAL'), ...LR('HUMERUS AP/LAT'),
+      ...LR('ELBOW AP/LAT'), ...LR('FOREARM AP/LAT'), ...LRB('WRIST AP/LAT'), ...LR('HAND AP/OBLIQUE'),
+      'BOTH HANDS AP', ...LR('FINGER AP/LAT'), ...LR('THUMB AP/LAT'),
+    ],
+  },
+  { label: 'Abdomen', parts: ['KUB', 'ABDOMEN ERECT', 'ABDOMEN SUPINE', 'ABDOMEN ERECT/SUPINE'] },
 ];
+const BODY_PART_OPTIONS = BODY_PART_GROUPS.flatMap((g) => g.parts);
 
 const LAST_CENTER_KEY = 'radionline_last_upload_center';
 const LAST_MODALITIES_KEY = 'radionline_recent_modalities';
@@ -74,6 +105,8 @@ interface StudyDraft {
   bodyPart: string;
   customPart: string;
   views: PickedFile[];
+  /** YYYY-MM-DD, this study's own date */
+  studyDate: string;
 }
 
 const fieldStyle: React.CSSProperties = {
@@ -99,6 +132,7 @@ const areaStyle: React.CSSProperties = {
 function fileKind(file: File): PickedFile['kind'] | null {
   const n = file.name.toLowerCase();
   if (file.type.startsWith('image/')) return 'image';
+  if (!file.type && /\.(jpe?g|png|webp|gif|bmp)$/.test(n)) return 'image';
   if (n.endsWith('.dcm') || file.type === 'application/dicom') return 'dicom';
   if (file.type === 'application/pdf' || n.endsWith('.pdf')) return 'pdf';
   return null;
@@ -173,8 +207,14 @@ function isoToDDMMYYYY(iso: string): string {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
 }
 
-function newStudy(): StudyDraft {
-  return { key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, bodyPart: '', customPart: '', views: [] };
+function newStudy(date?: string): StudyDraft {
+  return {
+    key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    bodyPart: '',
+    customPart: '',
+    views: [],
+    studyDate: date || todayIso(),
+  };
 }
 
 function resolvedBodyPart(s: StudyDraft): string {
@@ -244,6 +284,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
   const [ageD, setAgeD] = useState<string>('');
   const [gender, setGender] = useState<Gender | ''>('');
   const [studyDate, setStudyDate] = useState<string>(todayIso());
+  const [editStudyDates, setEditStudyDates] = useState<Record<string, string>>({});
   const [centerId, setCenterId] = useState('');
   const [modality, setModality] = useState<string>('X-Ray');
   const [modalityChoices, setModalityChoices] = useState<string[]>([...STUDY_MODALITY_OPTIONS]);
@@ -257,6 +298,17 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
   const [extraScans, setExtraScans] = useState<PickedFile[]>([]);
   const [slips, setSlips] = useState<PickedFile[]>([]);
   const [preparing, setPreparing] = useState(false);
+  const pdfUrls = useRef(new Map<string, string>());
+  const pdfUrlFor = (f: PickedFile) => {
+    let u = pdfUrls.current.get(f.key);
+    if (!u) {
+      u = URL.createObjectURL(f.blob);
+      pdfUrls.current.set(f.key, u);
+      objectUrls.current.push(u);
+    }
+    return u;
+  };
+  const [lightbox, setLightbox] = useState<{ files: PickedFile[]; idx: number } | null>(null);
 
   const [centers, setCenters] = useState<RadiologyCenter[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -323,8 +375,17 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
               bodyPart: bp,
               customPart: '',
               views: [],
+              studyDate: toIsoDate(initialReport.studyDate) || todayIso(),
             }))
           : [newStudy()],
+      );
+      setEditStudyDates(
+        Object.fromEntries(
+          (initialReport.studies || []).map((st) => [
+            st.id,
+            toIsoDate(st.studyDate || initialReport.studyDate) || todayIso(),
+          ]),
+        ),
       );
       setIsUrgent(!!initialReport.isUrgent);
       setIsPortable(!!initialReport.isPortable);
@@ -403,6 +464,23 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
     [studies],
   );
   const reportCount = readyStudies.length;
+
+  // Lightbox keys (kept above the early return so the hook order never changes).
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setLightbox(null);
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        const d = e.key === 'ArrowRight' ? 1 : -1;
+        setLightbox((lb) => (lb ? { ...lb, idx: (lb.idx + d + lb.files.length) % lb.files.length } : lb));
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [lightbox]);
 
   if (!isOpen) return null;
 
@@ -510,7 +588,12 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
     else if (badInt(ageM, 11)) e.age = 'Months must be 0–11';
     else if (badInt(ageD, 31)) e.age = 'Days must be 0–31';
     if (!gender) e.gender = 'Choose gender';
-    if (!isoToDDMMYYYY(studyDate)) e.studyDate = 'Choose the study date';
+    if (isEdit) {
+      const dates = Object.values(editStudyDates).length ? Object.values(editStudyDates) : [studyDate];
+      if (dates.some((d) => !isoToDDMMYYYY(d) || d > todayIso())) e.studyDate = 'Choose a valid study date (not in the future)';
+    } else if (studies.some((s) => s.views.length > 0 && (!isoToDDMMYYYY(s.studyDate) || s.studyDate > todayIso()))) {
+      e.studies = 'Choose a study date (not in the future) for every study';
+    }
     if (!isEdit) {
       if (!centerId) e.center = 'Choose the centre';
       if (!modality) e.modality = 'Choose modality';
@@ -602,7 +685,15 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
           clinicalNotes: notes,
           isUrgent,
           isPortable,
-          studyDate: isoToDDMMYYYY(studyDate) || undefined,
+          studyDate:
+            isoToDDMMYYYY(
+              (initialReport.studies || []).length
+                ? editStudyDates[(initialReport.studies || [])[0].id] || studyDate
+                : studyDate,
+            ) || undefined,
+          studyDates: Object.keys(editStudyDates).length
+            ? Object.fromEntries(Object.entries(editStudyDates).map(([id, d]) => [id, isoToDDMMYYYY(d)]))
+            : undefined,
           addImages: scanPaths,
         });
         if (isPendingApproval(res)) {
@@ -623,7 +714,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
       const done = { n: 0 };
       if (total > 0) setUploadPct(0);
 
-      const studyUploads: { bodyPart: string; images: string[] }[] = [];
+      const studyUploads: { bodyPart: string; images: string[]; studyDate?: string }[] = [];
       for (const s of readyStudies) {
         const paths = await uploadAll(
           s.views,
@@ -645,7 +736,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
           done,
           total || 1,
         );
-        studyUploads.push({ bodyPart: resolvedBodyPart(s), images: paths });
+        studyUploads.push({ bodyPart: resolvedBodyPart(s), images: paths, studyDate: isoToDDMMYYYY(s.studyDate) });
       }
       const slipPaths = await uploadAll(
         slips,
@@ -675,7 +766,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
       await onSave({
         id: caseId,
         fullName: fullName.trim().toUpperCase(),
-        patientNumber: patientNumber.trim(),
+        patientNumber: '', // assigned by the server (random 7-digit Patient ID)
         gender: gender as Gender,
         age: derivedAge,
         ageUnit,
@@ -699,7 +790,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
         status: 'Pending',
         isUrgent,
         isPortable,
-        studyDate: isoToDDMMYYYY(studyDate) || todayDDMMYYYY(),
+        studyDate: studyUploads[0]?.studyDate || todayDDMMYYYY(),
         dicomSnapshots: Array.from(new Set([...scanPaths, ...slipPaths])),
         uploadedImages: scanPaths,
         clinicalHistoryImages: slipPaths,
@@ -714,21 +805,102 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
     }
   };
 
-  const renderThumb = (f: PickedFile, onRemove?: () => void) => (
+
+  const lbFile = lightbox ? lightbox.files[lightbox.idx] : null;
+  const lightboxEl = lightbox && lbFile ? (
+    <div
+      className="fixed inset-0 z-[450] flex flex-col bg-slate-950/90"
+      role="dialog"
+      aria-label="Image preview"
+      data-testid="upload-lightbox"
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        if (e.target === e.currentTarget) setLightbox(null);
+      }}
+    >
+      <div className="flex items-center gap-2 px-3 py-2 text-white text-[13px]">
+        <span className="truncate flex-1">
+          {lbFile.name}
+          {lightbox.files.length > 1 ? ` (${lightbox.idx + 1} / ${lightbox.files.length})` : ''}
+        </span>
+        <button
+          type="button"
+          onClick={() => setLightbox(null)}
+          aria-label="Close preview"
+          className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <div
+        className="relative flex-1 min-h-0 flex items-center justify-center px-2 pb-3"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) setLightbox(null);
+        }}
+      >
+        {lbFile.previewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={lbFile.previewUrl} alt={lbFile.name} className="max-w-full max-h-full object-contain select-none" />
+        ) : lbFile.kind === 'pdf' ? (
+          <iframe src={pdfUrlFor(lbFile)} title={lbFile.name} className="w-full max-w-4xl h-full bg-white rounded" />
+        ) : (
+          <div className="text-center text-slate-200 text-[13px] space-y-1">
+            <FileText className="w-10 h-10 mx-auto" />
+            <div className="font-semibold">DICOM file ({Math.round(lbFile.blob.size / 1024)} KB)</div>
+            <div className="text-slate-400">Preview is not available here. It opens in the viewer after upload.</div>
+          </div>
+        )}
+        {lightbox.files.length > 1 && (
+          <>
+            <button
+              type="button"
+              aria-label="Previous image"
+              onClick={() => setLightbox((lb) => (lb ? { ...lb, idx: (lb.idx - 1 + lb.files.length) % lb.files.length } : lb))}
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 hover:bg-white/25 text-white text-xl"
+            >
+              &#8249;
+            </button>
+            <button
+              type="button"
+              aria-label="Next image"
+              onClick={() => setLightbox((lb) => (lb ? { ...lb, idx: (lb.idx + 1) % lb.files.length } : lb))}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 hover:bg-white/25 text-white text-xl"
+            >
+              &#8250;
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  ) : null;
+
+  const renderThumb = (f: PickedFile, onRemove?: () => void, group?: PickedFile[]) => (
     <div
       key={f.key}
       className="relative rounded-lg border border-slate-200 bg-slate-50 overflow-hidden w-[4.5rem] h-[4.5rem] sm:w-16 sm:h-16 shrink-0"
       data-testid="upload-thumb"
     >
-      {f.previewUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={f.previewUrl} alt={f.name} className="w-full h-full object-cover" />
-      ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center gap-0.5 p-1 text-slate-500">
-          <FileText className="w-4 h-4" />
-          <span className="text-[9px] font-bold uppercase">{f.kind === 'dicom' ? 'DCM' : 'PDF'}</span>
-        </div>
-      )}
+      <button
+        type="button"
+        onClick={() => {
+          const list = group && group.length ? group : [f];
+          setLightbox({ files: list, idx: Math.max(0, list.findIndex((x) => x.key === f.key)) });
+        }}
+        aria-label={`Open ${f.name}`}
+        title="Click to view"
+        className="block w-full h-full cursor-zoom-in"
+        data-testid="upload-thumb-open"
+      >
+        {f.previewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={f.previewUrl} alt={f.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-0.5 p-1 text-slate-500">
+            <FileText className="w-4 h-4" />
+            <span className="text-[9px] font-bold uppercase">{f.kind === 'dicom' ? 'DCM' : 'PDF'}</span>
+          </div>
+        )}
+      </button>
       {!submitting && onRemove && (
         <button
           type="button"
@@ -769,31 +941,6 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
     ]),
   );
 
-  const genderOptions: { value: Gender; label: string }[] = [
-    { value: 'Male', label: 'M' },
-    { value: 'Female', label: 'F' },
-    { value: 'Other', label: 'Other' },
-  ];
-  const ageBox = (id: string, val: string, set: (v: string) => void, unit: string, max: number, testId?: string) => (
-    <div className="relative flex-1 min-w-0">
-      <input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        autoComplete="off"
-        value={val}
-        onChange={(e) => {
-          set(e.target.value.replace(/[^\d]/g, '').slice(0, max > 99 ? 3 : 2));
-          if (errors.age) setErrors((x) => ({ ...x, age: '' }));
-        }}
-        placeholder="0"
-        aria-label={unit === 'Y' ? 'Age years' : unit === 'M' ? 'Age months' : 'Age days'}
-        style={{ ...(errors.age ? compactFieldError : compactField), paddingRight: 26 }}
-        data-testid={testId}
-      />
-      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">{unit}</span>
-    </div>
-  );
   const showCenterPicker = !isEdit && centers.length !== 1;
 
   return (
@@ -870,13 +1017,48 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                   <span className="text-slate-400">·</span>
                   <span>{initialReport?.modality || 'X-Ray'}</span>
                 </div>
-                <div className="flex flex-wrap gap-1">
-                  {(initialReport?.bodyParts || []).map((bp) => (
-                    <span key={bp} className="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-semibold">
-                      {bp}
-                    </span>
-                  ))}
+                {formatPatientDisplayId(patientNumber) && (
+                  <div className="text-[11px] text-slate-500" data-testid="patient-id">
+                    Patient ID <b className="font-mono text-slate-800">{patientNumber}</b>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-1.5">
+                  {(initialReport?.studies || []).length
+                    ? (initialReport?.studies || []).map((st) => (
+                        <span
+                          key={st.id}
+                          className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-semibold"
+                        >
+                          {st.bodyPart}
+                          <input
+                            type="date"
+                            value={editStudyDates[st.id] || ''}
+                            max={todayIso()}
+                            onChange={(e) => setEditStudyDates((m) => ({ ...m, [st.id]: e.target.value }))}
+                            aria-label={`Study date ${st.bodyPart}`}
+                            className="h-6 px-1 border border-slate-200 rounded text-[11px] font-normal"
+                            data-testid="edit-study-date"
+                          />
+                        </span>
+                      ))
+                    : (initialReport?.bodyParts || []).map((bp) => (
+                        <span key={bp} className="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-semibold">
+                          {bp}
+                        </span>
+                      ))}
+                  {!(initialReport?.studies || []).length && (
+                    <input
+                      type="date"
+                      value={studyDate}
+                      max={todayIso()}
+                      onChange={(e) => setStudyDate(e.target.value)}
+                      aria-label="Study date"
+                      className="h-6 px-1 border border-slate-200 rounded text-[11px]"
+                      data-testid="edit-study-date"
+                    />
+                  )}
                 </div>
+                <FieldError msg={errors.studyDate} />
               </div>
             )}
 
@@ -916,7 +1098,9 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
 
                       <div className="flex flex-col sm:flex-row gap-2 sm:gap-2.5 sm:items-start">
                         {/* Body part — full width on phone, side column on tablet+ */}
-                        <div className="w-full sm:w-[42%] sm:max-w-[220px] sm:order-2 shrink-0 space-y-1.5">
+                        <div className="w-full sm:w-[48%] sm:max-w-[340px] sm:order-2 shrink-0 space-y-1.5">
+                          <div className="flex gap-1.5">
+                          <div className="flex-1 min-w-0">
                           <select
                             value={bpValue}
                             onChange={(e) =>
@@ -930,13 +1114,41 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                             disabled={submitting}
                           >
                             <option value="">Body part…</option>
-                            {bodyPartOptions.map((p) => (
-                              <option key={p} value={p}>
-                                {p}
-                              </option>
+                            {BODY_PART_GROUPS.map((g) => (
+                              <optgroup key={g.label} label={g.label}>
+                                {g.parts.map((p) => (
+                                  <option key={p} value={p}>
+                                    {p}
+                                  </option>
+                                ))}
+                              </optgroup>
                             ))}
+                            {bodyPartOptions.some((p) => !BODY_PART_OPTIONS.includes(p)) && (
+                              <optgroup label="Other">
+                                {bodyPartOptions
+                                  .filter((p) => !BODY_PART_OPTIONS.includes(p))
+                                  .map((p) => (
+                                    <option key={p} value={p}>
+                                      {p}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            )}
                             <option value={CUSTOM_PART}>+ Add body part…</option>
                           </select>
+                          </div>
+                          <input
+                            type="date"
+                            value={study.studyDate}
+                            max={todayIso()}
+                            onChange={(e) => updateStudy(study.key, { studyDate: e.target.value })}
+                            aria-label="Study date"
+                            title="Study date"
+                            style={{ ...fieldStyle, width: 136, flex: '0 0 136px', padding: '0 6px', fontSize: 14 }}
+                            data-testid="study-date"
+                            disabled={submitting}
+                          />
+                          </div>
                           {bpValue === CUSTOM_PART && (
                             <input
                               type="text"
@@ -951,7 +1163,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
 
                         {/* Views */}
                         <div className="flex flex-wrap gap-1.5 min-w-0 flex-1 sm:order-1">
-                          {study.views.map((f) => renderThumb(f, () => removeView(study.key, f.key)))}
+                          {study.views.map((f) => renderThumb(f, () => removeView(study.key, f.key), study.views))}
                           <button
                             type="button"
                             disabled={submitting}
@@ -1003,7 +1215,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                 <button
                   type="button"
                   disabled={submitting}
-                  onClick={() => setStudies((prev) => [...prev, newStudy()])}
+                  onClick={() => setStudies((prev) => [...prev, newStudy(prev[prev.length - 1]?.studyDate)])}
                   className="w-full h-10 sm:h-9 rounded-lg border border-dashed border-slate-300 hover:border-[#009ef7] active:border-[#009ef7] text-[13px] sm:text-[12px] font-bold text-slate-700 hover:text-[#009ef7] inline-flex items-center justify-center gap-1.5 bg-white"
                   data-testid="add-study"
                 >
@@ -1044,7 +1256,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                 )}
                 <div className="flex flex-wrap gap-1.5">
                   {extraScans.map((f) =>
-                    renderThumb(f, () => setExtraScans((prev) => prev.filter((p) => p.key !== f.key))),
+                    renderThumb(f, () => setExtraScans((prev) => prev.filter((p) => p.key !== f.key)), extraScans),
                   )}
                   <button
                     type="button"
@@ -1071,22 +1283,13 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
 
             {/* Patient */}
             <section className="space-y-2">
-              <div className="grid grid-cols-2 sm:grid-cols-[150px_minmax(0,1fr)_150px] gap-2">
-                <div data-field="patientNumber">
-                  <FieldLabel htmlFor="up-pid">Patient ID</FieldLabel>
-                  <input
-                    id="up-pid"
-                    type="text"
-                    autoComplete="off"
-                    value={isUUID(patientNumber) ? '' : patientNumber}
-                    onChange={(e) => setPatientNumber(e.target.value.slice(0, 40))}
-                    readOnly={isEdit}
-                    placeholder="Optional"
-                    style={isEdit ? { ...compactField, background: '#f8fafc', color: '#64748b' } : compactField}
-                    data-testid="patient-id"
-                  />
-                </div>
-                <div data-field="fullName" className="col-span-2 sm:col-span-1 order-last sm:order-none">
+              <div
+                className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_200px_156px] gap-2"
+              >
+                <div
+                  data-field="fullName"
+                  className="col-span-2 sm:col-span-1"
+                >
                   <FieldLabel required htmlFor="up-name">
                     Patient Name
                   </FieldLabel>
@@ -1105,69 +1308,22 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                   />
                   <FieldError msg={errors.fullName} />
                 </div>
-                <div data-field="studyDate">
-                  <FieldLabel required htmlFor="up-study-date">
-                    Study Date
-                  </FieldLabel>
-                  <input
-                    id="up-study-date"
-                    type="date"
-                    value={studyDate}
-                    max={todayIso()}
-                    onChange={(e) => {
-                      setStudyDate(e.target.value);
-                      if (errors.studyDate) setErrors((x) => ({ ...x, studyDate: '' }));
-                    }}
-                    style={{ ...(errors.studyDate ? compactFieldError : compactField), padding: '0 6px' }}
-                    data-testid="study-date"
+                <div className="col-span-2">
+                  <AgeGenderField
+                    ageY={ageY}
+                    ageM={ageM}
+                    ageD={ageD}
+                    setAgeY={setAgeY}
+                    setAgeM={setAgeM}
+                    setAgeD={setAgeD}
+                    gender={gender}
+                    setGender={setGender}
+                    ageError={errors.age}
+                    genderError={errors.gender}
+                    clearAgeError={() => setErrors((x) => ({ ...x, age: '' }))}
+                    clearGenderError={() => setErrors((x) => ({ ...x, gender: '' }))}
+                    disabled={submitting}
                   />
-                  <FieldError msg={errors.studyDate} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div data-field="age">
-                  <FieldLabel required htmlFor="up-age">
-                    Age
-                  </FieldLabel>
-                  <div className="flex gap-1.5">
-                    {ageBox('up-age', ageY, setAgeY, 'Y', 150, 'patient-age')}
-                    {ageBox('up-age-m', ageM, setAgeM, 'M', 11, 'patient-age-months')}
-                    {ageBox('up-age-d', ageD, setAgeD, 'D', 31, 'patient-age-days')}
-                  </div>
-                  <FieldError msg={errors.age} />
-                </div>
-                <div data-field="gender">
-                  <FieldLabel required>Gender</FieldLabel>
-                  <div
-                    role="radiogroup"
-                    aria-label="Gender"
-                    className={`flex rounded-lg border overflow-hidden ${errors.gender ? 'border-rose-400' : 'border-slate-300'}`}
-                    data-testid="patient-gender"
-                  >
-                    {genderOptions.map((g, i) => {
-                      const on = gender === g.value;
-                      return (
-                        <button
-                          key={g.value}
-                          type="button"
-                          role="radio"
-                          aria-checked={on}
-                          onClick={() => {
-                            setGender(g.value);
-                            if (errors.gender) setErrors((x) => ({ ...x, gender: '' }));
-                          }}
-                          className={`flex-1 h-9 text-[13px] font-semibold transition-colors ${i > 0 ? 'border-l border-slate-300' : ''} ${
-                            on ? 'bg-[#009ef7] text-white' : 'bg-white text-slate-700 hover:bg-slate-50'
-                          }`}
-                          data-testid={`gender-${g.label.toLowerCase()}`}
-                        >
-                          {g.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <FieldError msg={errors.gender} />
                 </div>
               </div>
 
@@ -1381,6 +1537,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
           </div>
         </div>
       </div>
+      {lightboxEl}
     </div>
   );
 }

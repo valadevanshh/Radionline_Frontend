@@ -196,7 +196,12 @@ function AllPatientReportsContent() {
 
   const filteredReports = useMemo(() => {
     const list = reports.filter((r) => {
-      if (filterName && !r.fullName.toLowerCase().includes(filterName.toLowerCase())) return false;
+      if (
+        filterName &&
+        !r.fullName.toLowerCase().includes(filterName.toLowerCase()) &&
+        !(r.patientNumber || '').toLowerCase().includes(filterName.trim().toLowerCase())
+      )
+        return false;
       if (filterGender !== 'ALL' && r.gender !== filterGender) return false;
       if (filterCenterId !== 'ALL' && r.radiologyCenterId !== filterCenterId) return false;
       if (filterPatientNo && !r.patientNumber.toLowerCase().includes(filterPatientNo.toLowerCase())) return false;
@@ -417,7 +422,7 @@ function AllPatientReportsContent() {
             <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Patient name..."
+              placeholder="Name or Patient ID..."
               value={filterName}
               onChange={(e) => setFilterName(e.target.value)}
               className="rn-input-iconpad w-36 pl-8 pr-2.5 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:bg-white focus:border-[#009ef7] focus:outline-none"

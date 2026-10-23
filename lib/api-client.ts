@@ -330,6 +330,8 @@ export interface CaseDetailsUpdate {
   isPortable?: boolean;
   /** Study date (DD-MM-YYYY or YYYY-MM-DD) */
   studyDate?: string;
+  /** per-study dates {studyId: DD-MM-YYYY} */
+  studyDates?: Record<string, string>;
   /** stored file paths from uploadFile (or data: URLs) */
   addImages?: string[];
 }
@@ -512,7 +514,7 @@ export const ApiClient = {
 
   async saveReport(
     report: Partial<XRayReport> & {
-      studyUploads?: { bodyPart: string; images: string[] }[];
+      studyUploads?: { bodyPart: string; images: string[]; studyDate?: string }[];
     },
   ) {
     return fetchJson<XRayReport & Partial<PendingApprovalResult>>('/reports', {

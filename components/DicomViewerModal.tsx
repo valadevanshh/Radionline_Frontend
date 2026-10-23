@@ -1527,7 +1527,8 @@ export default function DicomViewerModal({
   const patientAge = report?.age ? `${report.age} Yrs` : '—';
   const patientGender = report?.gender || '—';
   const patientId = formatPatientDisplayId(report?.patientNumber) || '—';
-  const studyDate = report?.studyDate || '—';
+  const activeStudyRow = (report?.studies || []).find((st) => st.bodyPart === report?.bodyParts?.[activeBodyPartIdx]);
+  const studyDate = activeStudyRow?.studyDate || report?.studyDate || '—';
   const reportDate = report?.createdAt
     ? new Date(report.createdAt).toLocaleString()
     : (report?.studyDate || new Date().toLocaleDateString());

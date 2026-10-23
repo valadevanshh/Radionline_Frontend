@@ -100,6 +100,8 @@ export interface RadiologyCenter {
 }
 
 export interface StudyReportInfo {
+  /** this study's own date (DD-MM-YYYY); falls back to the case studyDate */
+  studyDate?: string | null;
   id: string;
   bodyPart: string;
   modality?: string;

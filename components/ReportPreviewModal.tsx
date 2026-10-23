@@ -117,7 +117,7 @@ export default function ReportPreviewModal({
     ageSex: `${report.age} ${report.ageUnit === 'Months' ? 'M' : report.ageUnit === 'Days' ? 'D' : 'Y'} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,
     gender: report.gender || '',
     age: formatReportAge(report.age, report.ageUnit, report),
-    studyDate: formatDateDDMMYYYY(report.studyDate),
+    studyDate: formatDateDDMMYYYY(activeStudy?.studyDate || report.studyDate),
     reportDate: activeStudy?.reportDate || activeStudy?.signedAt || report.reportDate || '',
     referringDoctor: report.referringPhysicianName || '',
     modality: activeStudy?.modality || 'X-Ray',
