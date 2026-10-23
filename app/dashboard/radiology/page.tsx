@@ -11,7 +11,9 @@ import {
   MapPin,
   Trash2,
   IndianRupee,
+  KeyRound,
 } from 'lucide-react';
+import ResetPasswordModal, { ResetTarget } from '@/components/ResetPasswordModal';
 import { RadiologyStore, RadiologyCenter } from '@/lib/radiology-store';
 import AddRadiologyCenterModal from '@/components/AddRadiologyCenterModal';
 import { ApiClient, CenterPricing, RateCard, apiErrorMessage, isPendingApproval } from '@/lib/api-client';
@@ -31,6 +33,7 @@ export default function RadiologyCentersPage() {
   const [pricingById, setPricingById] = useState<Record<string, CenterPricing>>({});
   const [defaultRates, setDefaultRates] = useState<RateCard | null>(null);
   const [editPricing, setEditPricing] = useState<CenterPricing | null>(null);
+  const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
 
   const { widths, startResizing } = useResizableColumns({
     centerName: 200,
@@ -240,6 +243,17 @@ export default function RadiologyCentersPage() {
                               <span>Edit pricing</span>
                             </button>
                           )}
+                          {isSuperAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => setResetTarget({ ref: `center:${c.id}`, name: c.centerName, detail: c.email })}
+                              className="px-3 py-1.5 text-slate-700 hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold inline-flex items-center gap-1"
+                              data-testid={`reset-password-center-card-${c.id}`}
+                            >
+                              <KeyRound className="w-3.5 h-3.5" />
+                              <span>Reset password</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleDeleteCenter(c.id)}
@@ -382,6 +396,18 @@ export default function RadiologyCentersPage() {
                             <IndianRupee className="w-4 h-4" />
                           </button>
                         )}
+                        {isSuperAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => setResetTarget({ ref: `center:${c.id}`, name: c.centerName, detail: c.email })}
+                            className="p-1.5 text-slate-400 hover:text-[#009ef7] transition-colors cursor-pointer rounded hover:bg-sky-50"
+                            title="Reset password"
+                            aria-label={`Reset password of ${c.centerName}`}
+                            data-testid={`reset-password-center-${c.id}`}
+                          >
+                            <KeyRound className="w-4 h-4" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleDeleteCenter(c.id)}
@@ -440,6 +466,7 @@ export default function RadiologyCentersPage() {
         onClose={() => setIsAddModalOpen(false)}
         onSave={handleAddCenter}
       />
+      <ResetPasswordModal target={resetTarget} onClose={() => setResetTarget(null)} />
     </div>
   );
 }

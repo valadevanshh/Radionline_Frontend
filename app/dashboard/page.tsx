@@ -1,5 +1,6 @@
 'use client';
 
+import { formatAgeShort } from '@/lib/age-format';
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -370,7 +371,7 @@ export default function DashboardOverviewPage() {
                 key={r.id}
                 tone={r.isUrgent ? 'urgent' : 'default'}
                 title={<span className={r.isUrgent ? 'text-red-600' : undefined}>{r.fullName}</span>}
-                subtitle={<span className="font-mono">{formatPatientDisplayId(r.patientNumber) ? `${r.patientNumber} \u2022 ` : ''}{r.gender}/{r.age}y</span>}
+                subtitle={<span className="font-mono">{formatPatientDisplayId(r.patientNumber) ? `${r.patientNumber} \u2022 ` : ''}{r.gender}/{formatAgeShort(r)}</span>}
                 aside={
                   <StatusBadge
                     status={r.status}
@@ -461,7 +462,7 @@ export default function DashboardOverviewPage() {
                       {r.isPortable && <PortableBadge />}
                     </div>
                     <div className="font-mono text-[10px] text-slate-500">
-                      {formatPatientDisplayId(r.patientNumber) ? `${r.patientNumber} • ` : ''}{r.gender}/{r.age}y
+                      {formatPatientDisplayId(r.patientNumber) ? `${r.patientNumber} • ` : ''}{r.gender}/{formatAgeShort(r)}
                     </div>
                     {showCenter && <div className={`${RT_TABLET_ONLY} mt-0.5 text-[11px] text-slate-600`}>{r.radiologyCenterName}</div>}
                   </td>

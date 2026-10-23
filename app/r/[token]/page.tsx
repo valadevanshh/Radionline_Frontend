@@ -1,5 +1,6 @@
 'use client';
 
+import { formatAgeShort } from '@/lib/age-format';
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Printer, ShieldCheck } from 'lucide-react';
@@ -52,7 +53,7 @@ export default function PublicReportPage() {
   }
 
   const { center, patient, study, signer } = data;
-  const ageSex = `${patient.age != null ? `${patient.age} ${patient.ageUnit && patient.ageUnit !== 'Years' ? patient.ageUnit : 'Yrs'}` : DASH} / ${
+  const ageSex = `${formatAgeShort(patient) || DASH} / ${
     patient.gender ? patient.gender.charAt(0).toUpperCase() : DASH
   }`;
   const signedAt = signer.signedAt || study.signedAt;

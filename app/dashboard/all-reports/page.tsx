@@ -1,5 +1,6 @@
 'use client';
 
+import { formatAgeShort } from '@/lib/age-format';
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -514,7 +515,7 @@ function AllPatientReportsContent() {
                 <span className="inline-flex items-center gap-1.5 flex-wrap">
                   <span className={report.isUrgent ? 'text-red-500' : undefined}>{report.fullName}</span>
                   <span className="text-xs font-semibold text-slate-500 font-mono">
-                    ({report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'}/{report.age}y)
+                    ({report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'}/{formatAgeShort(report)})
                   </span>
                   {report.isPartial ? <span className="text-[10px] text-amber-600 font-semibold">{report.signedStudyCount}/{report.studyCount || report.bodyParts?.length} reported</span> : null}
                 </span>
@@ -655,11 +656,11 @@ function AllPatientReportsContent() {
                         <div className="font-mono text-[10px] text-slate-500 font-bold">{report.patientNumber}</div>
                       )}
                       <div className={`${RT_TABLET_ONLY} mt-0.5 text-[11px] text-slate-600`}>
-                        {showCenter ? <>{report.radiologyCenterName} {'\u00b7'} </> : null}{report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'}/{report.age}y {'\u00b7'} <span className="font-mono whitespace-nowrap">{formatDateDDMMYYYY(report.studyDate)}</span>
+                        {showCenter ? <>{report.radiologyCenterName} {'\u00b7'} </> : null}{report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'}/{formatAgeShort(report)} {'\u00b7'} <span className="font-mono whitespace-nowrap">{formatDateDDMMYYYY(report.studyDate)}</span>
                       </div>
                     </td>
-                    <td title={`${report.gender} / ${report.age}y`} className={`p-3 text-slate-800 font-medium ${RT_TABLET_HIDE}`}>
-                      {report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'} / {report.age}y
+                    <td title={`${report.gender} / ${formatAgeShort(report)}`} className={`p-3 text-slate-800 font-medium ${RT_TABLET_HIDE}`}>
+                      {report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'} / {formatAgeShort(report)}
                     </td>
                     <td title={report.bodyParts.join(', ')} className="p-3">
                       <div className="flex flex-wrap gap-1">

@@ -1,5 +1,6 @@
 'use client';
 
+import { formatAgeShort } from '@/lib/age-format';
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -182,7 +183,7 @@ function VerifyReportContent() {
             </div>
             <div>
               <span className="text-[10px] uppercase font-bold text-slate-500 block font-mono">Age / Gender</span>
-              <strong className="text-slate-900">{report.age} {report.ageUnit || 'Years'} / {report.gender}</strong>
+              <strong className="text-slate-900">{formatAgeShort(report)} / {report.gender}</strong>
             </div>
             <div>
               <span className="text-[10px] uppercase font-bold text-slate-500 block font-mono">Referring Doctor</span>

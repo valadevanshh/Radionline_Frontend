@@ -1,5 +1,6 @@
 'use client';
 
+import { formatAgeShort } from '@/lib/age-format';
 import React, { useState, useEffect } from 'react';
 import { X, Check, FileSignature, ShieldCheck, Stethoscope, Printer, BookmarkPlus, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { XRayReport, Doctor, RadiologyStore, RadiologyCenter, formatDateDDMMYYYY } from '@/lib/radiology-store';
@@ -194,7 +195,7 @@ export default function ReviewSignReportModal({
             </div>
             <div>
               <span className="text-slate-500 font-semibold uppercase block text-[9px]">Age / Gender</span>
-              <span className="font-bold text-slate-800">{report.age} Yrs / {report.gender}</span>
+              <span className="font-bold text-slate-800">{formatAgeShort(report)} / {report.gender}</span>
             </div>
             <div>
               <span className="text-slate-500 font-semibold uppercase block text-[9px]">Investigations</span>
@@ -289,7 +290,7 @@ export default function ReviewSignReportModal({
                     letterheadMode: centerRec?.letterheadMode || 'full-page',
                     patientName: report.fullName,
                     patientId: formatPatientDisplayId(report.patientNumber) || '—',
-                    ageSex: `${report.age} ${report.ageUnit === 'Months' ? 'M' : report.ageUnit === 'Days' ? 'D' : 'Y'} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,
+                    ageSex: `${formatAgeShort(report)} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,
                     gender: report.gender || '',
                     age: formatReportAge(report.age, report.ageUnit, report),
                     studyDate: formatDateDDMMYYYY(report.studyDate),

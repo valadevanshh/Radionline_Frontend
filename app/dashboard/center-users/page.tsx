@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { UserCog, Plus, Pencil, Unlink, ShieldCheck, RefreshCw, AlertTriangle, Building } from 'lucide-react';
+import { UserCog, Plus, Pencil, Unlink, ShieldCheck, RefreshCw, AlertTriangle, Building, KeyRound } from 'lucide-react';
+import ResetPasswordModal, { ResetTarget } from '@/components/ResetPasswordModal';
 import {
   ApiClient,
   apiErrorMessage,
@@ -64,6 +65,7 @@ export default function CenterUsersPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const [unlinkTarget, setUnlinkTarget] = useState<{ user: CenterUserRow; link: CenterAccessLink } | null>(null);
+  const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -277,6 +279,19 @@ export default function CenterUsersPage() {
                       <div className="text-[11px] text-amber-700 mt-0.5">Also used by {u.otherCenterCount} other centre{u.otherCenterCount > 1 ? 's' : ''}</div>
                     )}
                   </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                  {isSA && (
+                    <button
+                      type="button"
+                      onClick={() => setResetTarget({ ref: String(u.id), name: u.name, detail: u.email })}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-300 text-slate-600 hover:border-[#009ef7] hover:text-[#009ef7]"
+                      title="Reset password"
+                      aria-label={`Reset password of ${u.name}`}
+                      data-testid="center-user-reset-password"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => openEdit(u)}
@@ -285,6 +300,7 @@ export default function CenterUsersPage() {
                   >
                     <Pencil className="w-3.5 h-3.5" /> Edit
                   </button>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   {u.centers.map((l) => (
@@ -460,6 +476,7 @@ export default function CenterUsersPage() {
         onConfirm={confirmUnlink}
         onCancel={() => setUnlinkTarget(null)}
       />
+      <ResetPasswordModal target={resetTarget} onClose={() => setResetTarget(null)} />
     </div>
   );
 }

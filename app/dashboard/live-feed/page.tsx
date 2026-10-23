@@ -1,5 +1,6 @@
 'use client';
 
+import { formatAgeShort } from '@/lib/age-format';
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -303,7 +304,7 @@ export default function LiveDashboardPage() {
                         </div>
                         <div className="text-[11px] text-slate-500 mt-0.5">
                           {formatPatientDisplayId(r.patientNumber) ? <span className="font-mono font-bold text-[#009ef7] mr-1">{r.patientNumber}</span> : null}
-                          {r.modality || 'Study'} · {r.gender?.charAt(0)} · {r.age} yrs
+                          {r.modality || 'Study'} · {r.gender?.charAt(0)} · {formatAgeShort(r)}
                         </div>
                       </div>
                       <span className="text-[10px] font-mono text-slate-500 shrink-0">{r.studyDate}</span>
@@ -354,7 +355,7 @@ export default function LiveDashboardPage() {
                             </div>
                             <div className="text-[11px] text-slate-500 mt-0.5 whitespace-nowrap">
                               {formatPatientDisplayId(r.patientNumber) ? <span className="font-mono font-bold text-[#009ef7] mr-1">{r.patientNumber}</span> : null}
-                              {r.gender?.charAt(0)} · {r.age} yrs
+                              {r.gender?.charAt(0)} · {formatAgeShort(r)}
                             </div>
                             <div className="text-[11px] text-slate-500 lg:hidden truncate max-w-[180px]">{r.radiologyCenterName}</div>
                           </td>

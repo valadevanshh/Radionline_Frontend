@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Search, Plus, Trash2, UserPlus, Briefcase, AlertTriangle, RefreshCw, SearchX } from 'lucide-react';
+import { Users, Search, Plus, Trash2, UserPlus, Briefcase, AlertTriangle, RefreshCw, SearchX, KeyRound } from 'lucide-react';
+import ResetPasswordModal, { ResetTarget } from '@/components/ResetPasswordModal';
 import { RadiologyStore, Doctor, UserAccount } from '@/lib/radiology-store';
 import AddDoctorModal from '@/components/AddDoctorModal';
 import { ApiClient, apiErrorMessage, isPendingApproval } from '@/lib/api-client';
@@ -30,6 +31,8 @@ export default function DoctorsPage() {
   const [viewDoctor, setViewDoctor] = useState<Doctor | null>(null);
   // Super Admin: edit a doctor's profile + report signature details
   const [editDoctor, setEditDoctor] = useState<Doctor | null>(null);
+  // Super Admin: reset a doctor's login password
+  const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
 
   useEffect(() => {
     const checkAuth = () => {
@@ -342,6 +345,21 @@ export default function DoctorsPage() {
                             <span>{experienceLabel(doc.yearsOfExperience)}</span>
                           </div>
                         </div>
+                        {canEditSignature && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setResetTarget({ ref: `doctor:${doc.id}`, name: doc.fullName, detail: doc.email });
+                            }}
+                            className="p-1.5 -mt-1.5 text-slate-400 hover:text-[#009ef7] transition-colors cursor-pointer rounded hover:bg-sky-50 shrink-0"
+                            title="Reset password"
+                            aria-label={`Reset password of ${doc.fullName}`}
+                            data-testid={`reset-password-doctor-${doc.id}`}
+                          >
+                            <KeyRound className="w-4 h-4" />
+                          </button>
+                        )}
                         {canManageDoctors && (
                           <button
                             type="button"
@@ -438,6 +456,7 @@ export default function DoctorsPage() {
         onClose={() => setIsAddModalOpen(false)}
         onSave={handleAddDoctor}
       />
+      <ResetPasswordModal target={resetTarget} onClose={() => setResetTarget(null)} />
     </div>
   );
 }

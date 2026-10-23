@@ -1,5 +1,6 @@
 'use client';
 
+import { formatAgeShort } from '@/lib/age-format';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   XCircle,
@@ -1524,7 +1525,7 @@ export default function DicomViewerModal({
   };
 
   const patientName = report?.fullName || 'No Patient Selected';
-  const patientAge = report?.age ? `${report.age} Yrs` : '—';
+  const patientAge = formatAgeShort(report) || '-';
   const patientGender = report?.gender || '—';
   const patientId = formatPatientDisplayId(report?.patientNumber) || '—';
   const activeStudyRow = (report?.studies || []).find((st) => st.bodyPart === report?.bodyParts?.[activeBodyPartIdx]);
@@ -1746,7 +1747,7 @@ export default function DicomViewerModal({
             )}
           </div>
           <div className={`text-[12px] sm:text-[13px] truncate leading-snug ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-            <span>{patientAge !== '—' && patientAge !== '-' ? patientAge.replace(/ Yrs/i, 'y') : '—'} / {patientGender ? (String(patientGender).trim().toUpperCase().startsWith('F') ? 'F' : String(patientGender).trim().toUpperCase().startsWith('O') ? 'O' : 'M') : '—'}</span>
+            <span>{patientAge !== '—' && patientAge !== '-' ? patientAge : '—'} / {patientGender ? (String(patientGender).trim().toUpperCase().startsWith('F') ? 'F' : String(patientGender).trim().toUpperCase().startsWith('O') ? 'O' : 'M') : '—'}</span>
             <span className="mx-1.5 opacity-50">·</span>
             <span className="font-mono">{patientId}</span>
             <span className="mx-1.5 opacity-50 hidden sm:inline">·</span>

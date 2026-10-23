@@ -582,6 +582,14 @@ export const ApiClient = {
     });
   },
 
+  /** Super Admin only. userRef: user id, email, "doctor:<id>" or "center:<id>". Never returns the password. */
+  async adminResetPassword(userRef: string, newPassword: string) {
+    return fetchJson<{ ok: boolean; userId: number; email: string; name: string; role: string; sessionsEnded: boolean }>(
+      `/admin/users/${encodeURIComponent(userRef)}/reset-password`,
+      { method: 'POST', body: JSON.stringify({ newPassword }) },
+    );
+  },
+
   async updateCenterUser(userId: number, body: { name?: string; password?: string; centers: CenterAccessLink[] }) {
     return fetchJson<{ user: CenterUserRow }>(`/center-users/${userId}`, {
       method: 'PUT',
