@@ -113,8 +113,8 @@ export default function Sidebar({
         ];
       case 'DOCTOR':
         return [
+          { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
           { href: '/dashboard/live-feed', label: 'Live Dashboard', icon: Radio, isLive: true },
-          { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
           { href: '/dashboard/my-work', label: 'My Work', icon: Briefcase },
           { href: '/dashboard/all-reports', label: 'All Reports', icon: FileText },
           { href: '/dashboard/doctor-earnings', label: 'Earnings', icon: Wallet },
@@ -125,7 +125,7 @@ export default function Sidebar({
         // Pages follow the login's per-centre permissions (best level over its centres)
         const items: Array<{ href: string; label: string; icon: typeof FileText; isLive?: boolean }> = [];
         if (hasCenterLevel(session, 'reports', 'read')) {
-          // Overview is merged into All Reports for centres
+          items.push({ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard });
           items.push({ href: '/dashboard/all-reports', label: 'All Reports', icon: FileText });
         }
         items.push({ href: '/dashboard/doctors', label: 'Doctors', icon: Users });

@@ -24,11 +24,8 @@ export default function LoginPage() {
     try {
       const result = await ApiClient.login({ email: email.trim(), password });
       RadiologyStore.setSession(result.user);
-      if (result.user.role === 'SUPER_ADMIN') {
-        router.push('/dashboard/approvals');
-      } else {
-        router.push('/dashboard/all-reports');
-      }
+      // Every login lands on the Dashboard (statistics)
+      router.push('/dashboard');
     } catch {
       // Ensure no mock/local session or JWT remains after a failed API login
       ApiClient.logout();

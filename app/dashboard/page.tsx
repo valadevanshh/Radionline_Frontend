@@ -28,7 +28,6 @@ import { canEditCase, canUploadCase, showCenterColumn } from '@/lib/access';
 import CaseActivityPanel from '@/components/CaseActivityPanel';
 import { RowChatButton, RowEditButton } from '@/components/CaseRowButtons';
 import { toast } from '@/components/ui/Toast';
-import DataTape, { Metric } from '@/components/DataTape';
 import NewXRayReportModal, { NewCasePayload } from '@/components/NewXRayReportModal';
 import { formatPatientDisplayId } from '@/lib/uuid';
 import { useResizableColumns } from '@/lib/use-resizable-columns';
@@ -53,11 +52,6 @@ export default function DashboardOverviewPage() {
   const [previewWithHeader, setPreviewWithHeader] = useState(true);
   const [previewBodyPart, setPreviewBodyPart] = useState<string | undefined>(undefined);
   const router = useRouter();
-
-  // Centre logins: Overview is merged into All Reports (one page, one nav item)
-  useEffect(() => {
-    if (session?.role === 'CENTER') router.replace('/dashboard/all-reports');
-  }, [session, router]);
 
   const openWorkspace = (report: XRayReport) => {
     router.push(`/dashboard/workspace/${report.id}`);
@@ -162,14 +156,8 @@ export default function DashboardOverviewPage() {
   const completedCount = visibleReports.filter((r: XRayReport) => r.status === 'Completed').length;
   const pendingCount = visibleReports.filter((r: XRayReport) => r.status !== 'Completed').length;
   const urgentCount = visibleReports.filter((r: XRayReport) => r.isUrgent && r.status !== 'Completed').length;
-
-  const metrics: Metric[] = [
-    { label: 'TOTAL CASES', value: String(visibleReports.length), delta: 'Live', trend: 'up', color: 'navy' },
-    { label: 'COMPLETED', value: String(completedCount), delta: 'Live', trend: 'up', color: 'teal' },
-    { label: 'PENDING REVIEW', value: String(pendingCount), delta: 'Live', trend: 'down', color: 'amber' },
-    { label: 'STAT URGENT', value: String(urgentCount), delta: 'STAT', trend: 'neutral', color: 'red' },
-    { label: 'RADIOLOGISTS', value: String(doctorCount), delta: 'Online', trend: 'up', color: 'blue' },
-  ];
+  const todayDmy = (() => { const d = new Date(); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; })();
+  const todayCount = visibleReports.filter((r: XRayReport) => formatDateDDMMYYYY(r.studyDate) === todayDmy).length;
 
   // Upload Image: errors go back to the dialog (it stays open); a Manager's upload waits for approval.
   const handleSaveNewReport = async (reportData: NewCasePayload) => {
@@ -207,10 +195,6 @@ export default function DashboardOverviewPage() {
     setIsPreviewOpen(true);
   };
 
-  const pendingReports = visibleReports
-    .filter((r: XRayReport) => r.status === 'Pending')
-    .sort((a: XRayReport, b: XRayReport) => (a.isUrgent === b.isUrgent ? 0 : a.isUrgent ? -1 : 1));
-
   const sortedReports = [...visibleReports].sort((a: XRayReport, b: XRayReport) => (a.isUrgent === b.isUrgent ? 0 : a.isUrgent ? -1 : 1));
 
   return (
@@ -223,29 +207,8 @@ export default function DashboardOverviewPage() {
               <Activity className="w-4 h-4" />
             </div>
             <h1 className="text-xs sm:text-sm font-extrabold text-slate-900 font-mono uppercase tracking-tight truncate">
-              Radiology Portal Overview
+              Dashboard
             </h1>
-          </div>
-
-          {/* Desktop Metric Chips */}
-          <div className="hidden md:flex items-center gap-1.5 flex-wrap font-mono text-[11px]">
-            <span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-bold rounded border border-slate-200">
-              TOTAL: <strong className="text-slate-900">{visibleReports.length}</strong>
-            </span>
-            <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold rounded border border-emerald-200">
-              COMPLETED: <strong>{completedCount}</strong>
-            </span>
-            <span className="px-2 py-0.5 bg-amber-50 text-amber-800 font-bold rounded border border-amber-200">
-              PENDING: <strong>{pendingCount}</strong>
-            </span>
-            {pendingCount > 0 && (
-              <span className="px-2 py-0.5 bg-rose-600 text-white font-bold rounded animate-pulse">
-                STAT URGENT: <strong>{pendingCount}</strong>
-              </span>
-            )}
-            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded border border-indigo-200">
-              RADIOLOGISTS: <strong>{doctorCount}</strong>
-            </span>
           </div>
 
           {/* Mobile Top Upload Image Button */}
@@ -287,277 +250,312 @@ export default function DashboardOverviewPage() {
           )}
         </div>
 
-        {/* Mobile Metric Cards Row */}
-        <div className="flex md:hidden items-center justify-between gap-2 pt-1 border-t border-slate-100 font-mono text-[10px]">
-          <div className="flex-1 bg-slate-100/80 p-1.5 rounded-lg text-center border border-slate-200/60">
-            <div className="text-slate-500 font-semibold text-[9px] uppercase">Total</div>
-            <div className="font-extrabold text-slate-900 text-xs">{visibleReports.length}</div>
-          </div>
-          <div className="flex-1 bg-emerald-50/80 p-1.5 rounded-lg text-center border border-emerald-200/60">
-            <div className="text-emerald-700 font-semibold text-[9px] uppercase">Completed</div>
-            <div className="font-extrabold text-emerald-800 text-xs">{completedCount}</div>
-          </div>
-          <div className="flex-1 bg-amber-50/80 p-1.5 rounded-lg text-center border border-amber-200/60">
-            <div className="text-amber-700 font-semibold text-[9px] uppercase">Pending</div>
-            <div className="font-extrabold text-amber-800 text-xs">{pendingCount}</div>
-          </div>
-        </div>
       </div>
 
-      {/* Priority 7: Super Admin monthly revenue */}
-      {session?.role === 'SUPER_ADMIN' && (
-        <div className="bg-white border-b border-slate-200 px-3 sm:px-4 py-2 shrink-0">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <Wallet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span className="text-[11px] font-extrabold font-mono uppercase tracking-tight text-slate-800">
-                Monthly Revenue
-              </span>
-              <span className="text-[10px] font-mono text-slate-400">
-                ({revenue?.currentPeriod || '-'})
-              </span>
-            </div>
-            <Link
-              href="/dashboard/invoices"
-              className="text-[10px] font-bold font-mono text-[#009ef7] hover:underline inline-flex items-center gap-1"
-            >
-              Invoices <ArrowRight className="w-3 h-3" />
-            </Link>
+      {/* Stats-only overview: fills the viewport under the app shell (no page scroll on laptop/tablet) */}
+      {(() => {
+        const tally = (keys: string[]) => {
+          const m = new Map<string, number>();
+          keys.forEach((k) => { if (k) m.set(k, (m.get(k) || 0) + 1); });
+          return [...m.entries()].sort((x, y) => y[1] - x[1]);
+        };
+        const total = visibleReports.length;
+        const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+        const statusRows: [string, number, string, string][] = [
+          ['Pending', visibleReports.filter((r) => r.status === 'Pending').length, 'from-amber-400 to-orange-400', '#fbbf24'],
+          ['In Review', visibleReports.filter((r) => r.status === 'In Review').length, 'from-sky-400 to-blue-500', '#38bdf8'],
+          ['Signed', completedCount, 'from-emerald-400 to-teal-500', '#10b981'],
+        ];
+        const allCentres = tally(visibleReports.map((r) => r.radiologyCenterName || ''));
+        const partRows = tally(visibleReports.flatMap((r) => r.bodyParts || [])).slice(0, 5);
+        const days = Array.from({ length: 7 }, (_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - (6 - i));
+          const key = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+          return { key, label: d.toLocaleDateString('en-GB', { weekday: 'short' }), n: visibleReports.filter((r) => formatDateDDMMYYYY(r.studyDate) === key).length };
+        });
+        const dayMax = Math.max(1, ...days.map((d) => d.n));
+        const weekTotal = days.reduce((a, d) => a + d.n, 0);
+        const cards = [
+          { label: 'Total Cases', value: total, hint: 'All time', icon: FileText, tone: 'from-slate-700 to-slate-900', ring: 'text-slate-700 bg-slate-100' },
+          { label: 'Pending', value: pendingCount, hint: `${pct(pendingCount)}% of cases`, icon: Clock, tone: 'from-amber-400 to-orange-500', ring: 'text-amber-600 bg-amber-50' },
+          { label: 'Signed', value: completedCount, hint: `${pct(completedCount)}% of cases`, icon: CheckCircle2, tone: 'from-emerald-400 to-teal-500', ring: 'text-emerald-600 bg-emerald-50' },
+          { label: 'Urgent', value: urgentCount, hint: 'Awaiting report', icon: AlertTriangle, tone: 'from-rose-500 to-pink-500', ring: 'text-rose-600 bg-rose-50' },
+          { label: 'Today', value: todayCount, hint: 'Studies today', icon: Activity, tone: 'from-sky-400 to-[#009ef7]', ring: 'text-sky-600 bg-sky-50' },
+          isDoctor
+            ? { label: 'Completion', value: `${pct(completedCount)}%`, hint: 'Signed / total', icon: CheckCircle2, tone: 'from-indigo-400 to-violet-500', ring: 'text-indigo-600 bg-indigo-50' }
+            : { label: 'Radiologists', value: doctorCount, hint: 'On the panel', icon: Users, tone: 'from-indigo-400 to-violet-500', ring: 'text-indigo-600 bg-indigo-50' },
+        ];
+        const panelCls = 'bg-white rounded-2xl border border-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_16px_rgba(15,23,42,0.04)] p-3 sm:p-4 flex flex-col min-h-0 overflow-hidden';
+        const panelHead = (title: string, right?: React.ReactNode) => (
+          <div className="flex items-center justify-between gap-2 mb-2 shrink-0">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{title}</h2>
+            {right}
           </div>
-          {revenue && (
-            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap font-mono text-[10px] sm:text-[11px]">
-              <span className="px-2 py-0.5 bg-sky-50 text-sky-800 font-bold rounded border border-sky-200">
-                BILLING: <strong>₹{revenue.currentMonth.centerBilling}</strong>
-              </span>
-              <span className="px-2 py-0.5 bg-violet-50 text-violet-800 font-bold rounded border border-violet-200">
-                PAYOUTS: <strong>₹{revenue.currentMonth.doctorPayouts}</strong>
-              </span>
-              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 font-bold rounded border border-emerald-200">
-                NET: <strong>₹{revenue.currentMonth.net}</strong>
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* STAT Urgent Review Banner (Compact 1-line Strip if Urgent cases exist) */}
-      {pendingReports.length > 0 && (
-        <div className="bg-rose-50 border-b border-rose-200 px-4 py-2 flex items-center justify-between gap-3 text-xs shrink-0">
-          <div className="flex items-center gap-2 font-mono overflow-hidden">
-            <span className="px-1.5 py-0.5 bg-rose-600 text-white font-bold text-[9px] rounded uppercase animate-pulse shrink-0">
-              STAT URGENT ({pendingReports.length})
-            </span>
-            <span className="font-bold text-rose-900 truncate">
-              {pendingReports[0].fullName}{formatPatientDisplayId(pendingReports[0].patientNumber) ? ` (${pendingReports[0].patientNumber})` : ''}{showCenter ? ` — ${pendingReports[0].radiologyCenterName}` : ''}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <ReportOptionsPopover
-              report={pendingReports[0]}
-              onSelectOption={handleSelectReportOption}
-            />
-            {isDoctor && (
-              <button
-                type="button"
-                onClick={() => openWorkspace(pendingReports[0])}
-                className="inline-flex items-center justify-center p-2 rounded-lg border border-[#009ef7]/40 bg-white text-[#009ef7] hover:bg-[#009ef7] hover:text-white transition-all shrink-0 cursor-pointer shadow-2xs"
-                title="Open PACS DICOM Viewer"
-                aria-label="PACS Viewer"
-              >
-                <Eye className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Main Full-Height Clinical Patient Studies Data Table (Zero Bloated Cards) */}
-      <div className={`flex-1 data-table-container ${RT_CONTAINER} overflow-y-auto bg-slate-50 md:bg-white pb-3 md:pb-6`}>
-        {reports.length > 0 ? (
-          <>
-          {/* Phones: compact case cards (shared RowCard pattern) */}
-          <RowCardList testId="overview-cards">
-            {sortedReports.map((r) => (
-              <RowCard
-                key={r.id}
-                tone={r.isUrgent ? 'urgent' : 'default'}
-                title={<span className={r.isUrgent ? 'text-red-600' : undefined}>{r.fullName}</span>}
-                subtitle={<span className="font-mono">{formatPatientDisplayId(r.patientNumber) ? `${r.patientNumber} \u2022 ` : ''}{r.gender}/{formatAgeShort(r)}</span>}
-                aside={
-                  <StatusBadge
-                    status={r.status}
-                    isPartial={
-                      r.isPartial ||
-                      ((r.signedStudyCount ?? 0) > 0 &&
-                        (r.signedStudyCount ?? 0) < (r.studyCount ?? r.bodyParts?.length ?? 0))
-                    }
-                  />
-                }
-                tags={
-                  <>
-                    {r.isUrgent && <UrgentBadge />}
-                    {r.isPortable && <PortableBadge />}
-                    {r.bodyParts.map((bp: string, i: number) => (
-                      <span key={i} className="px-1.5 py-0.5 bg-slate-100 text-slate-700 font-mono text-[10px] font-bold rounded border border-slate-200">
-                        {bp}
-                      </span>
-                    ))}
-                  </>
-                }
-                fields={[
-                  ...(showCenter ? [{ label: 'Center', value: r.radiologyCenterName }] : []),
-                  { label: 'Study Date', value: <span className="font-mono">{formatDateDDMMYYYY(r.studyDate)}</span> },
-                ]}
-                actions={
-                  <>
-                    <ReportOptionsPopover
-                      report={r}
-                      onSelectOption={handleSelectReportOption}
-                    />
-                    {isDoctor && (
-                      <button
-                        type="button"
-                        onClick={() => openWorkspace(r)}
-                        className="inline-flex items-center justify-center p-2 rounded-lg border border-[#009ef7]/40 bg-white text-[#009ef7] hover:bg-[#009ef7] hover:text-white transition-all shrink-0 cursor-pointer shadow-2xs"
-                        title="Open PACS DICOM Viewer"
-                        aria-label="PACS Viewer"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                    )}
-                    <RowChatButton onClick={() => setChatTarget(r)} />
-                    {canEditCase(session, r) && <RowEditButton onClick={() => setEditTarget(r)} />}
-                  </>
-                }
-              />
-            ))}
-          </RowCardList>
-          <table className="data-table hidden md:table">
-            <thead>
-              <tr>
-                <th title="Patient Information" style={{ width: widths.patient, position: 'relative' }}>
-                  <span>Patient Information</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('patient', e.clientX, widths.patient)} />
-                </th>
-                {showCenter && (
-                  <th title="Diagnostic Center" className={RT_TABLET_HIDE} style={{ width: widths.center, position: 'relative' }}>
-                    <span>Diagnostic Center</span>
-                    <div className="col-resizer" onMouseDown={(e) => startResizing('center', e.clientX, widths.center)} />
-                  </th>
-                )}
-                <th title="Modality / Body Parts" style={{ width: widths.bodyParts, position: 'relative' }}>
-                  <span>Modality / Body Parts</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('bodyParts', e.clientX, widths.bodyParts)} />
-                </th>
-                <th title="Status" style={{ width: widths.status, position: 'relative' }}>
-                  <span>Status</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('status', e.clientX, widths.status)} />
-                </th>
-                <th title="Study Date" style={{ width: widths.studyDate, position: 'relative' }}>
-                  <span>Study Date</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('studyDate', e.clientX, widths.studyDate)} />
-                </th>
-                <th title="Actions" style={{ width: widths.actions, textAlign: 'right', position: 'relative' }}>
-                  <span>Actions</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('actions', e.clientX, widths.actions)} />
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {sortedReports.map((r) => (
-                <tr key={r.id} className={`hover:bg-slate-50/80 transition-colors ${r.isUrgent ? 'bg-rose-50/20' : ''}`}>
-                  <td title={formatPatientDisplayId(r.patientNumber) ? `${r.fullName} (${r.patientNumber})` : r.fullName} className="p-3">
-                    <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
-                      <span>{r.fullName}</span>
-                      {r.isUrgent && <UrgentBadge />}
-                      {r.isPortable && <PortableBadge />}
-                    </div>
-                    <div className="font-mono text-[10px] text-slate-500">
-                      {formatPatientDisplayId(r.patientNumber) ? `${r.patientNumber} • ` : ''}{r.gender}/{formatAgeShort(r)}
-                    </div>
-                    {showCenter && <div className={`${RT_TABLET_ONLY} mt-0.5 text-[11px] text-slate-600`}>{r.radiologyCenterName}</div>}
-                  </td>
-                  {showCenter && (
-                    <td title={r.radiologyCenterName} className={`p-3 text-slate-600 font-medium ${RT_TABLET_HIDE}`}>
-                      {r.radiologyCenterName}
-                    </td>
-                  )}
-                  <td title={r.bodyParts.join(', ')} className="p-3">
-                    <span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-mono text-[10px] font-bold rounded border border-slate-200">
-                      {r.bodyParts.join(', ')}
-                    </span>
-                  </td>
-                  <td title={r.status} className="p-3">
-                    <StatusBadge
-                      status={r.status}
-                      isPartial={
-                        r.isPartial ||
-                        ((r.signedStudyCount ?? 0) > 0 &&
-                          (r.signedStudyCount ?? 0) < (r.studyCount ?? r.bodyParts?.length ?? 0))
-                      }
-                    />
-                  </td>
-                  <td title={formatDateDDMMYYYY(r.studyDate)} className="p-3 font-mono text-slate-500 text-[11px]">
-                    {formatDateDDMMYYYY(r.studyDate)}
-                  </td>
-                  <td className="p-3 text-right">
-                    <div className={`inline-flex items-center gap-1.5 ${RT_ACTIONS}`}>
-                      <ReportOptionsPopover
-                        report={r}
-                        onSelectOption={handleSelectReportOption}
-                      />
-                      {isDoctor && (
-                        <button
-                          type="button"
-                          onClick={() => openWorkspace(r)}
-                          className="inline-flex items-center justify-center p-2 rounded-lg border border-[#009ef7]/40 bg-white text-[#009ef7] hover:bg-[#009ef7] hover:text-white transition-all shrink-0 cursor-pointer shadow-2xs"
-                          title="Open PACS DICOM Viewer"
-                          aria-label="PACS Viewer"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                      )}
-                      <RowChatButton compact onClick={() => setChatTarget(r)} />
-                      {canEditCase(session, r) && <RowEditButton compact onClick={() => setEditTarget(r)} />}
-                    </div>
-                  </td>
-                </tr>
+        );
+        const bars = (rows: [string, number, string?][], grad: string) =>
+          rows.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-xs text-slate-400">No data yet</div>
+          ) : (
+            <div className="flex-1 min-h-0 flex flex-col justify-start gap-3 pt-1 overflow-hidden">
+              {rows.map(([k, n, g]) => (
+                <div key={k}>
+                  <div className="flex items-baseline justify-between gap-2 text-xs">
+                    <span className="truncate text-slate-700 font-medium">{k}</span>
+                    <span className="tabular-nums font-semibold text-slate-900">{n}<span className="ml-1 text-[10px] font-normal text-slate-400">{pct(n)}%</span></span>
+                  </div>
+                  <div className="h-2 bg-slate-100 rounded-full mt-1 overflow-hidden">
+                    <div className={`h-full rounded-full bg-gradient-to-r ${g || grad}`} style={{ width: `${pct(n)}%` }} />
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-          </>
-        ) : (
-          <div className="p-5 sm:p-10 text-center flex flex-col items-center justify-center my-4 sm:my-8 mx-3 sm:mx-auto max-w-md bg-gradient-to-b from-white via-sky-50/40 to-slate-50 border border-slate-200/80 rounded-2xl shadow-[0_8px_30px_rgba(0,158,247,0.06)] relative overflow-hidden transition-all duration-300">
-            {/* Ambient Animated Gradient Orbs */}
-            <div className="absolute -top-12 -left-12 w-36 h-36 bg-sky-400/15 rounded-full blur-2xl animate-pulse-ring pointer-events-none" />
-            <div className="absolute -bottom-12 -right-12 w-36 h-36 bg-cyan-400/15 rounded-full blur-2xl animate-pulse-ring pointer-events-none" style={{ animationDelay: '1.4s' }} />
-
-            {/* Floating Icon with Double Pulsing Glow Rings */}
-            <div className="relative mb-4 flex items-center justify-center">
-              <div className="absolute inset-0 rounded-full bg-[#009ef7]/20 blur-md animate-pulse-ring" />
-              <div className="w-16 h-16 bg-gradient-to-tr from-[#009ef7] to-cyan-400 rounded-2xl flex items-center justify-center text-white shadow-[0_8px_25px_rgba(0,158,247,0.35)] relative z-10 animate-float-icon">
-                <FolderOpen className="w-8 h-8 text-white drop-shadow-md" />
+            </div>
+          );
+        const empty = <div className="flex-1 flex items-center justify-center text-xs text-slate-400">No data yet</div>;
+        const urgentAll = visibleReports.filter((r) => r.isUrgent).length;
+        const portableCount = visibleReports.filter((r) => r.isPortable).length;
+        const centreCols = allCentres.slice(0, 5).map(([name]) => {
+          const rs = visibleReports.filter((r) => r.radiologyCenterName === name);
+          return { name, p: rs.filter((r) => r.status !== 'Completed').length, s: rs.filter((r) => r.status === 'Completed').length };
+        });
+        const donut = (segs: { k: string; n: number; hex: string }[], unit: string) => {
+          const sum = segs.reduce((a, x) => a + x.n, 0);
+          const R = 40, C = 2 * Math.PI * R;
+          let off = 0;
+          return (
+            <div className="flex-1 min-h-0 flex items-center justify-center gap-4 sm:gap-6">
+              <div className="relative h-full max-h-[150px] aspect-square min-h-[96px]">
+                <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                  <circle cx="50" cy="50" r={R} fill="none" stroke="#f1f5f9" strokeWidth="12" />
+                  {sum > 0 && segs.filter((x) => x.n > 0).map((x) => {
+                    const len = (x.n / sum) * C;
+                    const el = <circle key={x.k} cx="50" cy="50" r={R} fill="none" stroke={x.hex} strokeWidth="12" strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-off}><title>{`${x.k}: ${x.n}`}</title></circle>;
+                    off += len;
+                    return el;
+                  })}
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-xl font-bold tabular-nums text-slate-900 leading-none">{sum}</span>
+                  <span className="text-[10px] text-slate-400">{unit}</span>
+                </div>
               </div>
+              <ul className="space-y-1.5 text-xs min-w-0">
+                {segs.map((x) => (
+                  <li key={x.k} className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: x.hex }} />
+                    <span className="text-slate-600 truncate">{x.k}</span>
+                    <span className="ml-auto pl-2 tabular-nums font-semibold text-slate-900">{x.n}</span>
+                    <span className="tabular-nums text-[10px] text-slate-400 w-8 text-right">{sum ? Math.round((x.n / sum) * 100) : 0}%</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        };
+        const showCentres = session?.role !== 'CENTER';
+        return (
+          <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden bg-gradient-to-br from-slate-50 via-white to-sky-50/60 p-3 sm:p-4 flex flex-col gap-3" data-testid="dashboard-overview">
+            {/* KPI cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 sm:gap-3 shrink-0" data-testid="dashboard-stats">
+              {cards.map((c) => {
+                const Icon = c.icon;
+                return (
+                  <div key={c.label} className="relative overflow-hidden bg-white rounded-2xl border border-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_16px_rgba(15,23,42,0.04)] px-3 py-2.5 sm:px-4 sm:py-3" data-testid={`stat-${c.label.toLowerCase().replace(/\s+/g, '-')}`}>
+                    <div className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${c.tone}`} />
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-medium text-slate-500 truncate">{c.label}</div>
+                        <div className="text-2xl sm:text-[26px] font-bold tracking-tight text-slate-900 tabular-nums leading-tight">{c.value}</div>
+                      </div>
+                      <div className={`p-1.5 sm:p-2 rounded-xl shrink-0 ${c.ring}`}><Icon className="w-4 h-4" /></div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5 truncate">{c.hint}</div>
+                  </div>
+                );
+              })}
             </div>
 
-            <h3 className="text-base font-extrabold text-slate-900 tracking-tight font-mono uppercase bg-gradient-to-r from-slate-900 via-sky-950 to-slate-800 bg-clip-text text-transparent">
-              No Patient Studies Recorded Yet
-            </h3>
-
-            {canUpload && (
-            <button
-              type="button"
-              onClick={() => setIsNewReportModalOpen(true)}
-              className="mt-4 group inline-flex items-center gap-2 px-5 py-2.5 bg-transparent text-[#009ef7] border-2 border-[#009ef7] hover:bg-[#009ef7] hover:text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all duration-200 shadow-[0_2px_12px_rgba(0,158,247,0.15)] hover:shadow-[0_4px_20px_rgba(0,158,247,0.35)] hover:scale-105 active:scale-95 cursor-pointer font-mono"
-            >
-              <Plus className="w-4 h-4 transition-transform duration-300 group-hover:rotate-90" />
-              <span>Upload First Image</span>
-            </button>
+            {/* Super Admin monthly revenue */}
+            {session?.role === 'SUPER_ADMIN' && (
+              <div className="shrink-0 rounded-2xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50 via-white to-sky-50 shadow-[0_1px_2px_rgba(15,23,42,0.04)] px-3 sm:px-4 py-2.5 flex items-center gap-x-4 gap-y-2 flex-wrap" data-testid="dashboard-revenue">
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700"><Wallet className="w-4 h-4" /></div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-800 leading-tight">Monthly Revenue</div>
+                    <div className="text-[10px] text-slate-400">{revenue?.currentPeriod || '-'}</div>
+                  </div>
+                </div>
+                {revenue ? (
+                  <div className="flex items-center gap-x-5 gap-y-1 flex-wrap">
+                    {[
+                      ['Billing', revenue.currentMonth.centerBilling, 'text-sky-700'],
+                      ['Payouts', revenue.currentMonth.doctorPayouts, 'text-violet-700'],
+                      ['Net', revenue.currentMonth.net, 'text-emerald-700'],
+                    ].map(([k, v, c]) => (
+                      <div key={String(k)} className="leading-tight">
+                        <div className="text-[10px] uppercase tracking-wider text-slate-400">{k}</div>
+                        <div className={`text-sm font-bold tabular-nums ${c}`}>{'\u20B9'}{Number(v).toLocaleString('en-IN')}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : revenueError ? (
+                  <span className="text-xs text-rose-600 truncate">{revenueError}</span>
+                ) : null}
+                <Link href="/dashboard/invoices" className="ml-auto text-xs font-semibold text-[#009ef7] hover:underline inline-flex items-center gap-1 shrink-0">
+                  Invoices <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
             )}
+
+            {/* Charts and breakdowns fill the remaining height */}
+            <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 md:grid-rows-3 xl:grid-rows-2 gap-2.5 sm:gap-3">
+              <div className={`${panelCls} min-h-[170px] md:col-span-2 xl:col-span-2`} data-testid="panel-7days">
+                {panelHead('Cases \u00B7 last 7 days', (
+                  <span className="text-[11px] text-slate-500">
+                    <span className="font-semibold text-slate-900 tabular-nums">{weekTotal}</span> total
+                  </span>
+                ))}
+                {(() => {
+                  const top = Math.max(2, Math.ceil(dayMax / 2) * 2);
+                  const ticks = [top, top / 2, 0];
+                  return (
+                    <div className="flex-1 min-h-[90px] flex flex-col">
+                      <div className="flex-1 min-h-0 flex gap-2">
+                        {/* Y axis */}
+                        <div className="flex flex-col justify-between text-[10px] tabular-nums text-slate-400 text-right w-5 shrink-0 -my-1.5">
+                          {ticks.map((t) => <span key={t}>{t}</span>)}
+                        </div>
+                        {/* Plot area with gridlines and baseline */}
+                        <div className="relative flex-1 min-w-0">
+                          <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                            <div className="border-t border-dashed border-slate-200" />
+                            <div className="border-t border-dashed border-slate-200" />
+                            <div className="border-t border-slate-300" />
+                          </div>
+                          <div className="absolute inset-0 flex items-end justify-around gap-1.5 sm:gap-3 px-1">
+                            {days.map((d, i) => {
+                              const isToday = i === days.length - 1;
+                              return (
+                                <div key={d.key} className="relative flex-1 max-w-[44px] h-full flex items-end justify-center" title={`${d.key}: ${d.n} case${d.n === 1 ? '' : 's'}`}>
+                                  {d.n > 0 ? (
+                                    <div
+                                      className={`relative w-full rounded-t-md ${isToday ? 'bg-gradient-to-t from-[#0086d1] to-[#33b5ff] shadow-[0_4px_12px_rgba(0,158,247,0.35)]' : 'bg-gradient-to-t from-sky-500/80 to-sky-300/80'}`}
+                                      style={{ height: `${(d.n / top) * 100}%` }}
+                                    >
+                                      <span className={`absolute -top-4 inset-x-0 text-center text-[10px] font-semibold tabular-nums ${isToday ? 'text-[#009ef7]' : 'text-slate-600'}`}>{d.n}</span>
+                                    </div>
+                                  ) : (
+                                    <div className={`w-full h-[3px] rounded-full ${isToday ? 'bg-[#009ef7]/40' : 'bg-slate-200'}`} />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                      {/* X axis labels */}
+                      <div className="flex gap-2 mt-1.5">
+                        <div className="w-5 shrink-0" />
+                        <div className="flex-1 flex justify-around gap-1.5 sm:gap-3 px-1">
+                          {days.map((d, i) => {
+                            const isToday = i === days.length - 1;
+                            return (
+                              <div key={d.key} className="flex-1 max-w-[44px] text-center leading-tight">
+                                <div className={`text-[10px] ${isToday ? 'font-bold text-[#009ef7]' : 'text-slate-500'}`}>{isToday ? 'Today' : d.label}</div>
+                                <div className="text-[9px] tabular-nums text-slate-400">{d.key.slice(0, 5).replace('-', '/')}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+              {/* Status donut */}
+              <div className={`${panelCls} min-h-[180px]`} data-testid="panel-status">
+                {panelHead('Status mix', <span className="text-[11px] text-slate-500">{pct(completedCount)}% signed</span>)}
+                {donut(statusRows.map(([k, n, , hex]) => ({ k, n, hex })), 'cases')}
+              </div>
+              {/* Centre comparison (grouped columns) or priority mix for centre users */}
+              {showCentres ? (
+                <div className={`${panelCls} min-h-[180px]`} data-testid="panel-centres">
+                  {panelHead('Centre comparison', (
+                    <span className="flex items-center gap-2 text-[10px] text-slate-500">
+                      <span className="inline-flex items-center gap-1"><i className="w-2 h-2 rounded-sm bg-amber-400" />Pending</span>
+                      <span className="inline-flex items-center gap-1"><i className="w-2 h-2 rounded-sm bg-emerald-500" />Signed</span>
+                    </span>
+                  ))}
+                  {centreCols.length === 0 ? empty : (() => {
+                    const cmax = Math.max(1, ...centreCols.map((c) => Math.max(c.p, c.s)));
+                    return (
+                      <div className="flex-1 min-h-[110px] flex flex-col">
+                        <div className="relative flex-1 min-h-0 border-b border-slate-300">
+                          <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                            <div className="border-t border-dashed border-slate-200" /><div className="border-t border-dashed border-slate-200" /><div />
+                          </div>
+                          <div className="absolute inset-0 flex items-end justify-around gap-3 px-2">
+                            {centreCols.map((c) => (
+                              <div key={c.name} className="h-full flex-1 max-w-[90px] flex items-end justify-center gap-1" title={`${c.name}: ${c.p} pending, ${c.s} signed`}>
+                                {[[c.p, 'from-amber-400 to-orange-400'], [c.s, 'from-emerald-400 to-teal-500']].map(([n, g], j) => (
+                                  <div key={j} className="relative flex-1 max-w-[26px] h-full flex items-end">
+                                    <div className={`w-full rounded-t-md bg-gradient-to-t ${g}`} style={{ height: `${(Number(n) / cmax) * 88}%`, minHeight: Number(n) ? 4 : 2, opacity: Number(n) ? 1 : 0.3 }}>
+                                      <span className="block -mt-4 text-center text-[10px] font-semibold tabular-nums text-slate-600">{n}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex justify-around gap-3 px-2 mt-1.5">
+                          {centreCols.map((c) => (
+                            <div key={c.name} className="flex-1 max-w-[90px] text-center text-[10px] text-slate-600 truncate" title={c.name}>{c.name}</div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : null}
+              {/* Body part horizontal bars */}
+              <div className={`${panelCls} min-h-[160px]`} data-testid="panel-parts">
+                {panelHead('Top body parts', <Link href="/dashboard/all-reports" className="text-[11px] font-semibold text-[#009ef7] hover:underline inline-flex items-center gap-0.5">All Reports <ArrowRight className="w-3 h-3" /></Link>)}
+                {partRows.length === 0 ? empty : (() => {
+                  const pmax = Math.max(1, ...partRows.map(([, n]) => n));
+                  return (
+                    <div className="flex-1 min-h-0 flex flex-col justify-start gap-2.5 pt-1 overflow-hidden">
+                      {partRows.map(([k, n], i) => (
+                        <div key={k} className="grid grid-cols-[minmax(0,7rem)_1fr_auto] items-center gap-2 text-xs">
+                          <span className="truncate text-slate-700 font-medium" title={k}>{k}</span>
+                          <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-cyan-500" style={{ width: `${(n / pmax) * 100}%`, opacity: 1 - i * 0.12 }} />
+                          </div>
+                          <span className="tabular-nums font-semibold text-slate-900 w-6 text-right">{n}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+              {/* Priority donut */}
+              <div className={`${panelCls} min-h-[180px]`} data-testid="panel-priority">
+                {panelHead('Priority mix', <span className="text-[11px] text-slate-500">{portableCount} portable</span>)}
+                {donut([
+                  { k: 'Urgent', n: urgentAll, hex: '#f43f5e' },
+                  { k: 'Routine', n: total - urgentAll, hex: '#38bdf8' },
+                ], 'cases')}
+              </div>
+              {!showCentres && (
+                <div className={`${panelCls} min-h-[160px]`} data-testid="panel-workload">
+                  {panelHead('Workload')}
+                  {bars([['Pending', pendingCount, 'from-amber-400 to-orange-400'], ['Signed', completedCount, 'from-emerald-400 to-teal-500'], ['Urgent open', urgentCount, 'from-rose-500 to-pink-500']], 'from-slate-300 to-slate-400')}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        );
+      })()}
 
       {/* New X-Ray Patient Report Modal */}
       {isNewReportModalOpen && (
