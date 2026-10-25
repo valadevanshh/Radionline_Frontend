@@ -73,16 +73,16 @@ function AllPatientReportsContent() {
   const [filterDoctorId, setFilterDoctorId] = useState('ALL');
 
   const { widths, startResizing } = useResizableColumns({
-    idx: 76,
-    center: 190,
-    patientId: 100,
-    patient: 170,
-    genderAge: 95,
-    bodyParts: 140,
-    radiologist: 160,
-    status: 125,
-    studyDate: 100,
-    actions: 240,
+    idx: 64,
+    center: 150,
+    patientId: 96,
+    patient: 150,
+    genderAge: 72,
+    bodyParts: 130,
+    radiologist: 140,
+    status: 92,
+    studyDate: 90,
+    actions: 180,
   });
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -671,7 +671,7 @@ function AllPatientReportsContent() {
                   <div className="col-resizer" onMouseDown={(e) => startResizing('patientId', e.clientX, widths.patientId)} />
                 </th>
                 <th title="Gender / Age" className={RT_TABLET_HIDE} style={{ width: widths.genderAge, position: 'relative' }}>
-                  <span>Gender / Age</span>
+                  <span>Sex / Age</span>
                   <div className="col-resizer" onMouseDown={(e) => startResizing('genderAge', e.clientX, widths.genderAge)} />
                 </th>
                 <th title="Body Parts" style={{ width: widths.bodyParts, position: 'relative' }}>
@@ -679,7 +679,7 @@ function AllPatientReportsContent() {
                   <div className="col-resizer" onMouseDown={(e) => startResizing('bodyParts', e.clientX, widths.bodyParts)} />
                 </th>
                 <th title="Assigned Radiologist" style={{ width: widths.radiologist, position: 'relative' }}>
-                  <span>Assigned Radiologist</span>
+                  <span>Radiologist</span>
                   <div className="col-resizer" onMouseDown={(e) => startResizing('radiologist', e.clientX, widths.radiologist)} />
                 </th>
                 <th title="Status" style={{ width: widths.status, position: 'relative' }}>
@@ -690,7 +690,7 @@ function AllPatientReportsContent() {
                   <span>Study Date</span>
                   <div className="col-resizer" onMouseDown={(e) => startResizing('studyDate', e.clientX, widths.studyDate)} />
                 </th>
-                <th title="Actions" style={{ width: widths.actions, minWidth: 200, textAlign: 'right', position: 'sticky', right: 0 }} className="bg-slate-50 shadow-2xs z-10">
+                <th title="Actions" style={{ width: widths.actions, minWidth: 180, textAlign: 'right', position: 'sticky', right: 0 }} className="bg-slate-50 shadow-2xs z-10">
                   <span>Actions</span>
                   <div className="col-resizer" onMouseDown={(e) => startResizing('actions', e.clientX, widths.actions)} />
                 </th>
@@ -707,7 +707,7 @@ function AllPatientReportsContent() {
                 filteredReports.map((report, idx) => (
                   <React.Fragment key={report.id}>
                   <tr className={`hover:bg-slate-50/80 transition-colors ${report.isUrgent ? 'bg-rose-50/20' : ''} ${selectedIds.has(report.id) ? 'bg-sky-50/60' : ''}`}>
-                    <td title={String(idx + 1)} className="p-3">
+                    <td title={String(idx + 1)} className="p-2">
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
@@ -732,12 +732,12 @@ function AllPatientReportsContent() {
                       </div>
                     </td>
                     {showCenter && (
-                      <td title={report.radiologyCenterName} className={`p-3 font-bold text-slate-900 leading-snug ${RT_TABLET_HIDE}`}>
+                      <td title={report.radiologyCenterName} className={`p-2 font-bold text-slate-900 leading-snug whitespace-normal break-words ${RT_TABLET_HIDE}`}>
                         {report.radiologyCenterName}
                       </td>
                     )}
-                    <td title={formatPatientDisplayId(report.patientNumber) ? `${report.fullName} (${report.patientNumber})` : report.fullName} className="p-3">
-                      <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap">
+                    <td title={formatPatientDisplayId(report.patientNumber) ? `${report.fullName} (${report.patientNumber})` : report.fullName} className="p-2">
+                      <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap whitespace-normal">
                         <span className={report.isUrgent ? "text-red-500 font-bold" : undefined}>{report.fullName}</span>
                         {report.isUrgent && <UrgentBadge />}
                         {report.isPortable && <PortableBadge />}
@@ -752,13 +752,13 @@ function AllPatientReportsContent() {
                         {showCenter ? <>{report.radiologyCenterName} {'\u00b7'} </> : null}{report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'}/{formatAgeShort(report)} {'\u00b7'} <span className="font-mono whitespace-nowrap">{formatDateDDMMYYYY(report.studyDate)}</span>
                       </div>
                     </td>
-                    <td title={report.patientNumber} className="p-3 font-mono text-[11px] font-bold text-slate-700" data-testid="cell-patient-id">
+                    <td title={report.patientNumber} className="p-2 font-mono text-[11px] font-bold text-slate-700" data-testid="cell-patient-id">
                       {formatPatientDisplayId(report.patientNumber) ? report.patientNumber : '-'}
                     </td>
-                    <td title={`${report.gender} / ${formatAgeShort(report)}`} className={`p-3 text-slate-800 font-medium ${RT_TABLET_HIDE}`}>
+                    <td title={`${report.gender} / ${formatAgeShort(report)}`} className={`p-2 text-slate-800 font-medium ${RT_TABLET_HIDE}`}>
                       {report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'} / {formatAgeShort(report)}
                     </td>
-                    <td title={report.bodyParts.join(', ')} className="p-3">
+                    <td title={report.bodyParts.join(', ')} className="p-2">
                       <div className="flex flex-wrap gap-1">
                         {report.bodyParts.map((bp, i) => (
                           <span key={i} className="font-mono text-[10px] bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded border border-slate-200">
@@ -767,11 +767,11 @@ function AllPatientReportsContent() {
                         ))}
                       </div>
                     </td>
-                    <td title={`Dr. ${report.assignedDoctorName || 'Unassigned'} | Ref: ${report.referringPhysicianName}`} className="p-3">
-                      <div className="font-bold text-slate-900">{report.assignedDoctorName}</div>
-                      <div className="text-[10px] text-slate-500">Ref: {report.referringPhysicianName}</div>
+                    <td title={`Dr. ${report.assignedDoctorName || 'Unassigned'} | Ref: ${report.referringPhysicianName}`} className="p-2">
+                      <div className="font-bold text-slate-900 truncate">{report.assignedDoctorName}</div>
+                      <div className="text-[10px] text-slate-500 truncate">Ref: {report.referringPhysicianName}</div>
                     </td>
-                    <td title={report.status} className="p-3">
+                    <td title={report.status} className="p-2">
                       <StatusBadge
                         status={report.status}
                         isPartial={
@@ -781,10 +781,10 @@ function AllPatientReportsContent() {
                         }
                       />
                     </td>
-                    <td title={formatDateDDMMYYYY(report.studyDate)} className={`p-3 font-mono text-slate-500 text-[11px] ${RT_TABLET_HIDE}`}>
+                    <td title={formatDateDDMMYYYY(report.studyDate)} className={`p-2 font-mono text-slate-500 text-[11px] ${RT_TABLET_HIDE}`}>
                       {formatDateDDMMYYYY(report.studyDate)}
                     </td>
-                    <td style={{ width: widths.actions, minWidth: 200 }} className="p-3 text-right sticky right-0 bg-white shadow-2xs z-10">
+                    <td style={{ width: widths.actions, minWidth: 180 }} className="p-2 text-right sticky right-0 bg-white shadow-2xs z-10">
                       <div className={`flex flex-wrap items-center gap-1.5 justify-end ${RT_ACTIONS}`}>
                         <ReportOptionsPopover
                           report={report}
