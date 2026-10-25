@@ -2,6 +2,7 @@
 
 import { formatAgeShort } from '@/lib/age-format';
 import React, { useState, useEffect, useMemo } from 'react';
+import { isReportReady } from '@/lib/report-status';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -52,6 +53,11 @@ export default function DashboardOverviewPage() {
   const [previewWithHeader, setPreviewWithHeader] = useState(true);
   const [previewBodyPart, setPreviewBodyPart] = useState<string | undefined>(undefined);
   const router = useRouter();
+
+  // Centre logins: Overview is merged into All Reports (one page, one nav item)
+  useEffect(() => {
+    if (session?.role === 'CENTER') router.replace('/dashboard/all-reports');
+  }, [session, router]);
 
   const openWorkspace = (report: XRayReport) => {
     router.push(`/dashboard/workspace/${report.id}`);
@@ -172,7 +178,9 @@ export default function DashboardOverviewPage() {
       toast.info(saved.message || 'Sent to the Super Admin for approval.');
     } else {
       RadiologyStore.saveReport(saved);
-      toast.success(`Case uploaded: ${reportData.fullName}`);
+      toast.success(
+        saved?.patientNumber ? `Case uploaded: ${reportData.fullName} · Patient ID ${saved.patientNumber}` : `Case uploaded: ${reportData.fullName}`,
+      );
     }
     setIsNewReportModalOpen(false);
     loadDashboardData();
@@ -189,6 +197,10 @@ export default function DashboardOverviewPage() {
   const isDoctor = session?.role === 'DOCTOR';
 
   const handleSelectReportOption = (report: XRayReport, withHeader: boolean, bodyPart?: string) => {
+    if (!isReportReady(report, bodyPart)) {
+      toast.info('This report is still pending.');
+      return;
+    }
     setSelectedReport(report);
     setPreviewWithHeader(withHeader);
     setPreviewBodyPart(bodyPart);

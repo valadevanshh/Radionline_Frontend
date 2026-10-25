@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Flag, MessageSquare, RefreshCw, Send, X, AlertTriangle } from 'lucide-react';
-import { ApiClient, ReportComment, getAccessToken, WS_BASE_URL } from '@/lib/api-client';
+import { Flag, MessageSquare, RefreshCw, Send, X, AlertTriangle, Paperclip, FileText, Loader2 } from 'lucide-react';
+import { ApiClient, ReportComment, getAccessToken, WS_BASE_URL, apiErrorMessage } from '@/lib/api-client';
 import { Doctor, RadiologyStore, UserAccount, XRayReport } from '@/lib/radiology-store';
 import { hasCenterLevel } from '@/lib/access';
 import { formatPatientDisplayId } from '@/lib/uuid';
@@ -34,7 +34,11 @@ function kindLabel(kind: string) {
     case 'RECHECK':
       return 'Recheck';
     case 'COMMENT':
-      return 'Comment';
+      return 'Message';
+    case 'RECHECK_REQ':
+      return 'Recheck request';
+    case 'OTHER':
+      return 'Other';
     case 'EDIT':
       return 'Edited';
     default:
@@ -49,7 +53,10 @@ function kindBadgeClass(kind: string) {
     case 'REASSIGN':
       return 'bg-violet-100 text-violet-800 border-violet-300';
     case 'RECHECK':
+    case 'RECHECK_REQ':
       return 'bg-rose-100 text-rose-800 border-rose-300';
+    case 'OTHER':
+      return 'bg-indigo-100 text-indigo-800 border-indigo-300';
     case 'EDIT':
       return 'bg-sky-100 text-sky-800 border-sky-300';
     default:
@@ -74,6 +81,9 @@ export default function CaseActivityPanel({
   const [toDoctorId, setToDoctorId] = useState('');
   const [recheckReason, setRecheckReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const [chatKind, setChatKind] = useState<'COMMENT' | 'RECHECK_REQ' | 'OTHER'>('COMMENT');
+  const [files, setFiles] = useState<File[]>([]);
+  const fileRef = React.useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setSession(RadiologyStore.getSession());
@@ -155,19 +165,35 @@ export default function CaseActivityPanel({
     role === 'SUPER_ADMIN' ||
     role === 'DOCTOR';
 
+  const needsText = chatKind !== 'COMMENT' || files.length === 0;
   const handleAddComment = async () => {
-    if (!commentBody.trim() || busy) return;
+    if (busy || (needsText && !commentBody.trim())) return;
     setBusy(true);
     setError(null);
     try {
-      await ApiClient.addReportComment(report.id, commentBody.trim());
+      const attachments: { path: string; name: string; size: number }[] = [];
+      for (const f of files) {
+        const res = await ApiClient.uploadFileWithProgress(f, f.name, { category: 'cases', entityId: report.id, subfolder: 'chat' });
+        attachments.push({ path: res.path, name: f.name, size: f.size });
+      }
+      await ApiClient.addReportComment(report.id, commentBody.trim(), chatKind, attachments);
       setCommentBody('');
+      setFiles([]);
+      setChatKind('COMMENT');
       await load();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to add comment');
+      setError(apiErrorMessage(err, 'Failed to send'));
     } finally {
       setBusy(false);
     }
+  };
+
+  const addFiles = (list: FileList | null) => {
+    const picked = Array.from(list || []);
+    const big = picked.filter((f) => f.size > 5 * 1024 * 1024);
+    const ok = picked.filter((f) => f.size <= 5 * 1024 * 1024);
+    if (big.length) setError(`File must be 5 MB or smaller: ${big.map((f) => f.name).join(', ')}`);
+    setFiles((prev) => [...prev, ...ok].slice(0, 5));
   };
 
   const handleFlagReassign = async () => {
@@ -281,7 +307,33 @@ export default function CaseActivityPanel({
                 {c.authorName}{' '}
                 <span className="font-normal text-slate-400">({c.authorRole})</span>
               </div>
-              <p className="text-xs text-slate-700 mt-1 whitespace-pre-wrap break-words">{c.body}</p>
+              {c.body && <p className="text-xs text-slate-700 mt-1 whitespace-pre-wrap break-words">{c.body}</p>}
+              {!!c.attachments?.length && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5" data-testid="chat-attachments">
+                  {c.attachments.map((a, i) => {
+                    const url = a.url || a.path;
+                    const isImg = /\.(jpe?g|png|webp|gif|bmp)$/i.test(a.name || a.path);
+                    return (
+                      <a
+                        key={i}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 max-w-[180px] rounded border border-slate-200 bg-slate-50 hover:border-[#009ef7] text-[11px] text-slate-700 overflow-hidden"
+                        title={a.name}
+                      >
+                        {isImg ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={url} alt="" className="w-10 h-10 object-cover" />
+                        ) : (
+                          <FileText className="w-3.5 h-3.5 ml-1.5 shrink-0 text-slate-400" />
+                        )}
+                        <span className="truncate pr-1.5">{a.name}</span>
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
               {(c.fromDoctorId || c.toDoctorId) && (
                 <div className="text-[10px] text-slate-500 mt-1 font-mono">
                   {c.fromDoctorId ? `from ${c.fromDoctorId}` : ''}
@@ -296,28 +348,94 @@ export default function CaseActivityPanel({
 
       <div className="border-t border-slate-200 p-3 space-y-3 bg-white shrink-0 max-h-[45%] overflow-y-auto">
         {canComment && (
-          <div className="space-y-1.5">
-            <div className="text-[11px] font-bold text-slate-800 uppercase tracking-tight">
-              Add Comment
+          <div className="space-y-1.5" data-testid="chat-composer">
+            <div className="flex items-center gap-1" role="radiogroup" aria-label="Message type">
+              {([
+                ['COMMENT', 'Message'],
+                ['RECHECK_REQ', 'Recheck'],
+                ['OTHER', 'Other'],
+              ] as const).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="radio"
+                  aria-checked={chatKind === k}
+                  onClick={() => setChatKind(k)}
+                  className={`h-6 px-2.5 rounded-full border text-[11px] font-semibold ${
+                    chatKind === k
+                      ? k === 'RECHECK_REQ'
+                        ? 'bg-rose-600 border-rose-600 text-white'
+                        : k === 'OTHER'
+                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                        : 'bg-[#009ef7] border-[#009ef7] text-white'
+                      : 'bg-white border-slate-300 text-slate-600 hover:border-slate-400'
+                  }`}
+                  data-testid={`chat-kind-${k.toLowerCase()}`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
             <div className="flex gap-1.5">
               <textarea
                 value={commentBody}
                 onChange={(e) => setCommentBody(e.target.value)}
-                placeholder="Follow-up note..."
+                placeholder={chatKind === 'RECHECK_REQ' ? 'Reason for recheck (required)…' : chatKind === 'OTHER' ? 'Describe the request…' : 'Message…'}
                 rows={2}
                 className="flex-1 text-xs border border-slate-200 rounded-md p-2 focus:outline-none focus:border-[#009ef7] resize-none"
+                data-testid="chat-input"
               />
-              <button
-                type="button"
-                disabled={busy || !commentBody.trim()}
-                onClick={handleAddComment}
-                className="px-3 rounded bg-[#009ef7] hover:bg-[#008be0] disabled:opacity-50 text-white"
-                title="Send comment"
-              >
-                <Send size={14} />
-              </button>
+              <div className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={busy}
+                  className="flex-1 px-2.5 rounded border border-slate-300 text-slate-600 hover:border-[#009ef7] hover:text-[#009ef7]"
+                  title="Attach file (max 5 MB)"
+                  aria-label="Attach file"
+                  data-testid="chat-attach"
+                >
+                  <Paperclip size={14} />
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || (needsText && !commentBody.trim())}
+                  onClick={handleAddComment}
+                  className="flex-1 px-2.5 rounded bg-[#009ef7] hover:bg-[#008be0] disabled:opacity-50 text-white"
+                  title="Send"
+                  aria-label="Send"
+                  data-testid="chat-send"
+                >
+                  {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                </button>
+              </div>
             </div>
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              accept="image/*,application/pdf,.dcm"
+              className="hidden"
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            {files.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {files.map((f, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 h-6 max-w-[170px] pl-2 pr-1 rounded border border-slate-200 bg-slate-50 text-[11px]" data-testid="chat-file-chip">
+                    <span className="truncate">{f.name}</span>
+                    <button type="button" onClick={() => setFiles((p) => p.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`} className="text-slate-400 hover:text-rose-600">
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {chatKind === 'RECHECK_REQ' && (
+              <p className="text-[10px] text-slate-500">Asks the reporting doctor to recheck. A reason is required.</p>
+            )}
           </div>
         )}
         {canFlag && (

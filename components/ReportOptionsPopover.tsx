@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { FileText, ChevronDown, Printer, Eye } from 'lucide-react';
 import { XRayReport } from '@/lib/radiology-store';
 import { formatPatientDisplayId } from '@/lib/uuid';
+import { isReportReady } from '@/lib/report-status';
 
 interface ReportOptionsPopoverProps {
   report: XRayReport;
@@ -87,7 +88,9 @@ export default function ReportOptionsPopover({ report, onSelectOption }: ReportO
           </div>
 
           <div className="py-1 max-h-64 overflow-y-auto">
-            {report.bodyParts.map((part, idx) => (
+            {report.bodyParts.map((part, idx) => {
+              const ready = isReportReady(report, part);
+              return (
               <div key={idx} className="px-2 py-1 border-b border-slate-100 last:border-0">
                 <p className="text-[10px] font-bold text-[#009ef7] px-2 py-0.5 uppercase tracking-wide flex items-center justify-between">
                   <span>Report #{idx + 1}: {part}</span>
@@ -95,6 +98,13 @@ export default function ReportOptionsPopover({ report, onSelectOption }: ReportO
                     <span className="text-[9px] text-slate-400 font-mono">Part {idx + 1}/{report.bodyParts.length}</span>
                   )}
                 </p>
+                {!ready ? (
+                  <p className="flex items-center gap-2 px-2 py-1.5 text-xs text-amber-700" data-testid="report-pending">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span className="font-medium">Report pending</span>
+                  </p>
+                ) : (
+                <>
                 <button
                   type="button"
                   onClick={() => {
@@ -118,8 +128,11 @@ export default function ReportOptionsPopover({ report, onSelectOption }: ReportO
                   <FileText className="w-3.5 h-3.5 text-slate-500" />
                   <span className="font-medium">View Report (Without Header)</span>
                 </button>
+                </>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>,
         document.body

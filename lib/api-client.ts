@@ -284,6 +284,7 @@ export interface ReportComment {
   authorName: string;
   kind: ReportCommentKind | string;
   body: string;
+  attachments?: { path: string; url?: string | null; name: string; size?: number | null }[];
   fromDoctorId?: string | null;
   toDoctorId?: string | null;
   createdAt: string;
@@ -942,10 +943,15 @@ export const ApiClient = {
     return fetchJson<{ ok: boolean; updated: number }>('/notifications/read-all', { method: 'POST' });
   },
 
-  async addReportComment(reportId: string, body: string) {
+  async addReportComment(
+    reportId: string,
+    body: string,
+    kind: 'COMMENT' | 'RECHECK_REQ' | 'OTHER' = 'COMMENT',
+    attachments: { path: string; name: string; size?: number }[] = [],
+  ) {
     return fetchJson<ReportComment>('/reports/' + reportId + '/comments', {
       method: 'POST',
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, kind, attachments }),
     });
   },
 

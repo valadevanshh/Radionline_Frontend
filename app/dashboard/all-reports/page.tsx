@@ -20,6 +20,8 @@ import {
   AlertTriangle,
   Building,
   UploadCloud,
+  Tag,
+  ChevronRight,
 } from 'lucide-react';
 import {
   RadiologyStore,
@@ -46,6 +48,9 @@ import { useResizableColumns } from '@/lib/use-resizable-columns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { UrgentBadge, PortableBadge } from '@/components/ui/CaseFlags';
+import StudyThumbsRow from '@/components/StudyThumbsRow';
+import { isReportReady } from '@/lib/report-status';
+import { printLabels } from '@/lib/print-label';
 
 function AllPatientReportsContent() {
   const searchParams = useSearchParams();
@@ -68,8 +73,9 @@ function AllPatientReportsContent() {
   const [filterDoctorId, setFilterDoctorId] = useState('ALL');
 
   const { widths, startResizing } = useResizableColumns({
-    idx: 40,
+    idx: 76,
     center: 190,
+    patientId: 100,
     patient: 170,
     genderAge: 95,
     bodyParts: 140,
@@ -88,6 +94,16 @@ function AllPatientReportsContent() {
   // Row actions: Edit (patient details) and Chat (case activity thread)
   const [editTarget, setEditTarget] = useState<XRayReport | null>(null);
   const [chatTarget, setChatTarget] = useState<XRayReport | null>(null);
+  // Row selection (Print Label) and expanded rows (studies + thumbnails)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const toggleIn = (setter: React.Dispatch<React.SetStateAction<Set<string>>>, id: string) =>
+    setter((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const router = useRouter();
 
@@ -187,7 +203,8 @@ function AllPatientReportsContent() {
     }
     if (reportIdParam && reports.length > 0) {
       const matched = reports.find((r) => r.id === reportIdParam || r.patientNumber === reportIdParam);
-      if (matched) {
+      // Pending reports have nothing to preview yet
+      if (matched && isReportReady(matched)) {
         setSelectedReport(matched);
         setIsPreviewOpen(true);
       }
@@ -259,6 +276,10 @@ function AllPatientReportsContent() {
   };
 
   const handleSelectReportOption = (report: XRayReport, withHeader: boolean, bodyPart?: string) => {
+    if (!isReportReady(report, bodyPart)) {
+      toast.info('This report is still pending.');
+      return;
+    }
     setSelectedReport(report);
     setPreviewWithHeader(withHeader);
     setPreviewBodyPart(bodyPart);
@@ -280,7 +301,9 @@ function AllPatientReportsContent() {
     }
     RadiologyStore.saveReport(saved);
     loadStoreData();
-    toast.success(`Case uploaded: ${newRep.fullName}`);
+    toast.success(
+      saved?.patientNumber ? `Case uploaded: ${newRep.fullName} · Patient ID ${saved.patientNumber}` : `Case uploaded: ${newRep.fullName}`,
+    );
   };
 
   const handleCaseEdited = (result: { pending: boolean; message: string; report?: XRayReport }) => {
@@ -342,6 +365,18 @@ function AllPatientReportsContent() {
 
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
+  // Summary (merged from the old Overview page)
+  const totals = useMemo(() => {
+    const completed = filteredReports.filter((r) => r.status === 'Completed').length;
+    return { total: filteredReports.length, completed, pending: filteredReports.length - completed };
+  }, [filteredReports]);
+  const selectedReports = filteredReports.filter((r) => selectedIds.has(r.id));
+  const allSelected = filteredReports.length > 0 && selectedReports.length === filteredReports.length;
+  const handlePrintLabels = () => {
+    if (!selectedReports.length) return;
+    if (!printLabels(selectedReports)) toast.error('Could not open the print dialog.');
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 text-slate-900">
       {/* Top Section Header Bar */}
@@ -355,14 +390,31 @@ function AllPatientReportsContent() {
               <h1 className="text-sm sm:text-base font-extrabold text-slate-900 font-mono tracking-tight uppercase">
                 Patient X-Ray Reports
               </h1>
-              <span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-mono font-bold text-[10px] rounded border border-slate-200">
-                {filteredReports.length} {filteredReports.length === 1 ? 'REPORT' : 'REPORTS'}
+              <span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-mono font-bold text-[10px] rounded border border-slate-200" data-testid="sum-total">
+                {totals.total} {totals.total === 1 ? 'REPORT' : 'REPORTS'}
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 font-mono font-bold text-[10px] rounded border border-emerald-200" data-testid="sum-completed">
+                <CheckCircle2 className="w-3 h-3" /> {totals.completed} COMPLETED
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 font-mono font-bold text-[10px] rounded border border-amber-200" data-testid="sum-pending">
+                <Clock className="w-3 h-3" /> {totals.pending} PENDING
               </span>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handlePrintLabels}
+            disabled={!selectedReports.length}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold font-mono rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={selectedReports.length ? `Print ${selectedReports.length} label(s)` : 'Tick rows to print labels'}
+            data-testid="print-label-btn"
+          >
+            <Tag className="w-3.5 h-3.5 text-[#009ef7]" />
+            <span className="hidden sm:inline">Print Label{selectedReports.length ? ` (${selectedReports.length})` : ''}</span>
+          </button>
           {canWriteTemplates(session) && (
             <button
               type="button"
@@ -535,6 +587,9 @@ function AllPatientReportsContent() {
                 <>
                   {report.isUrgent && <UrgentBadge />}
                   {report.isPortable && <PortableBadge />}
+                  {report.pendingEdit && (
+                    <span className="px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-700 text-[9px] font-bold uppercase">Edit In Review</span>
+                  )}
                   {report.bodyParts.map((bp, i) => (
                     <span key={i} className="px-1.5 py-0.5 bg-slate-100 text-slate-700 font-mono font-bold text-[10px] rounded border border-slate-200">
                       {bp}
@@ -589,8 +644,16 @@ function AllPatientReportsContent() {
           <table className="data-table">
             <thead>
               <tr>
-                <th title="#" className={RT_TABLET_HIDE} style={{ width: widths.idx, position: 'relative' }}>
-                  <span>#</span>
+                <th title="Select" style={{ width: widths.idx, position: 'relative' }}>
+                  <span className="inline-block w-5 -ml-1 mr-1 align-middle" aria-hidden="true" />
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={() => setSelectedIds(allSelected ? new Set() : new Set(filteredReports.map((r) => r.id)))}
+                    aria-label="Select all rows"
+                    className="w-3.5 h-3.5 accent-[#009ef7] align-middle"
+                    data-testid="select-all"
+                  />
                   <div className="col-resizer" onMouseDown={(e) => startResizing('idx', e.clientX, widths.idx)} />
                 </th>
                 {showCenter && (
@@ -602,6 +665,10 @@ function AllPatientReportsContent() {
                 <th title="Patient Information" style={{ width: widths.patient, position: 'relative' }}>
                   <span>Patient Information</span>
                   <div className="col-resizer" onMouseDown={(e) => startResizing('patient', e.clientX, widths.patient)} />
+                </th>
+                <th title="Patient ID" style={{ width: widths.patientId, position: 'relative' }}>
+                  <span>Patient ID</span>
+                  <div className="col-resizer" onMouseDown={(e) => startResizing('patientId', e.clientX, widths.patientId)} />
                 </th>
                 <th title="Gender / Age" className={RT_TABLET_HIDE} style={{ width: widths.genderAge, position: 'relative' }}>
                   <span>Gender / Age</span>
@@ -632,14 +699,38 @@ function AllPatientReportsContent() {
             <tbody className="divide-y divide-slate-100">
               {filteredReports.length === 0 ? (
                 <tr>
-                  <td colSpan={showCenter ? 9 : 8} className="text-center p-8 text-slate-500 italic font-sans">
+                  <td colSpan={showCenter ? 10 : 9} className="text-center p-8 text-slate-500 italic font-sans">
                     No matching radiology reports found.
                   </td>
                 </tr>
               ) : (
                 filteredReports.map((report, idx) => (
-                  <tr key={report.id} className={`hover:bg-slate-50/80 transition-colors ${report.isUrgent ? 'bg-rose-50/20' : ''}`}>
-                    <td title={String(idx + 1)} className={`p-3 font-mono text-slate-400 font-bold ${RT_TABLET_HIDE}`}>{idx + 1}</td>
+                  <React.Fragment key={report.id}>
+                  <tr className={`hover:bg-slate-50/80 transition-colors ${report.isUrgent ? 'bg-rose-50/20' : ''} ${selectedIds.has(report.id) ? 'bg-sky-50/60' : ''}`}>
+                    <td title={String(idx + 1)} className="p-3">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => toggleIn(setExpandedIds, report.id)}
+                          aria-expanded={expandedIds.has(report.id)}
+                          aria-label={expandedIds.has(report.id) ? 'Hide studies' : 'Show studies'}
+                          title={expandedIds.has(report.id) ? 'Hide studies' : 'Show studies and images'}
+                          className="w-5 h-5 -ml-1 rounded flex items-center justify-center text-slate-500 hover:text-[#009ef7] hover:bg-slate-100"
+                          data-testid="row-expand"
+                        >
+                          <ChevronRight className={`w-4 h-4 transition-transform ${expandedIds.has(report.id) ? 'rotate-90 text-[#009ef7]' : ''}`} />
+                        </button>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(report.id)}
+                          onChange={() => toggleIn(setSelectedIds, report.id)}
+                          aria-label={`Select ${report.fullName}`}
+                          className="w-3.5 h-3.5 accent-[#009ef7]"
+                          data-testid="row-select"
+                        />
+                        <span className={`font-mono text-slate-400 font-bold text-[10px] ${RT_TABLET_HIDE}`}>{idx + 1}</span>
+                      </div>
+                    </td>
                     {showCenter && (
                       <td title={report.radiologyCenterName} className={`p-3 font-bold text-slate-900 leading-snug ${RT_TABLET_HIDE}`}>
                         {report.radiologyCenterName}
@@ -650,14 +741,19 @@ function AllPatientReportsContent() {
                         <span className={report.isUrgent ? "text-red-500 font-bold" : undefined}>{report.fullName}</span>
                         {report.isUrgent && <UrgentBadge />}
                         {report.isPortable && <PortableBadge />}
+                        {report.pendingEdit && (
+                          <span className="px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-700 text-[9px] font-bold uppercase" title="Edit waiting for Super Admin approval" data-testid="edit-in-review">
+                            Edit In Review
+                          </span>
+                        )}
                         {report.isPartial ? <span className="ml-1 text-[10px] text-amber-600 font-semibold">{report.signedStudyCount}/{report.studyCount || report.bodyParts?.length} reported</span> : null}
                       </div>
-                      {formatPatientDisplayId(report.patientNumber) && (
-                        <div className="font-mono text-[10px] text-slate-500 font-bold">{report.patientNumber}</div>
-                      )}
                       <div className={`${RT_TABLET_ONLY} mt-0.5 text-[11px] text-slate-600`}>
                         {showCenter ? <>{report.radiologyCenterName} {'\u00b7'} </> : null}{report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'}/{formatAgeShort(report)} {'\u00b7'} <span className="font-mono whitespace-nowrap">{formatDateDDMMYYYY(report.studyDate)}</span>
                       </div>
+                    </td>
+                    <td title={report.patientNumber} className="p-3 font-mono text-[11px] font-bold text-slate-700" data-testid="cell-patient-id">
+                      {formatPatientDisplayId(report.patientNumber) ? report.patientNumber : '-'}
                     </td>
                     <td title={`${report.gender} / ${formatAgeShort(report)}`} className={`p-3 text-slate-800 font-medium ${RT_TABLET_HIDE}`}>
                       {report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'} / {formatAgeShort(report)}
@@ -723,6 +819,14 @@ function AllPatientReportsContent() {
                       </div>
                     </td>
                   </tr>
+                  {expandedIds.has(report.id) && (
+                    <tr>
+                      <td colSpan={showCenter ? 10 : 9} className="p-0">
+                        <StudyThumbsRow report={report} />
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 ))
               )}
             </tbody>

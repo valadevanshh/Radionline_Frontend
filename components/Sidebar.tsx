@@ -125,7 +125,7 @@ export default function Sidebar({
         // Pages follow the login's per-centre permissions (best level over its centres)
         const items: Array<{ href: string; label: string; icon: typeof FileText; isLive?: boolean }> = [];
         if (hasCenterLevel(session, 'reports', 'read')) {
-          items.push({ href: '/dashboard', label: 'Overview', icon: LayoutDashboard });
+          // Overview is merged into All Reports for centres
           items.push({ href: '/dashboard/all-reports', label: 'All Reports', icon: FileText });
         }
         items.push({ href: '/dashboard/doctors', label: 'Doctors', icon: Users });

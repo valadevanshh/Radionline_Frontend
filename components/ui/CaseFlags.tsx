@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { Siren, Bed } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 export interface UrgentBadgeProps {
@@ -9,18 +8,16 @@ export interface UrgentBadgeProps {
   iconClassName?: string;
 }
 
-export function UrgentBadge({ className, iconClassName }: UrgentBadgeProps) {
+export function UrgentBadge({ className }: UrgentBadgeProps) {
+  // Compact red dot (Portable is no longer shown in lists; it appears on the report)
   return (
     <span
-      className={cn(
-        'inline-flex items-center justify-center w-[20px] h-[20px] bg-rose-600 text-white rounded shadow-2xs shrink-0 cursor-default select-none',
-        className
-      )}
-      title="STAT Urgent"
-      aria-label="STAT Urgent"
-    >
-      <Siren className={cn('w-3.5 h-3.5', iconClassName)} />
-    </span>
+      className={cn('inline-block w-2.5 h-2.5 rounded-full bg-rose-600 ring-2 ring-rose-100 shrink-0 cursor-default select-none', className)}
+      title="Urgent"
+      aria-label="Urgent"
+      role="img"
+      data-testid="urgent-dot"
+    />
   );
 }
 
@@ -29,19 +26,10 @@ export interface PortableBadgeProps {
   iconClassName?: string;
 }
 
-export function PortableBadge({ className, iconClassName }: PortableBadgeProps) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center justify-center w-[20px] h-[20px] bg-amber-100 text-amber-800 border border-amber-300 rounded shrink-0 cursor-default select-none',
-        className
-      )}
-      title="Portable (Bedside)"
-      aria-label="Portable (Bedside)"
-    >
-      <Bed className={cn('w-3.5 h-3.5', iconClassName)} />
-    </span>
-  );
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function PortableBadge(_props: PortableBadgeProps) {
+  // Portable is not surfaced in lists / cards; it is printed on the report.
+  return null;
 }
 
 export interface CaseFlagsProps {

@@ -106,6 +106,8 @@ export interface StudyReportInfo {
   bodyPart: string;
   modality?: string;
   reportStatus: 'PENDING' | 'DRAFT' | 'SIGNED' | string;
+  /** this study's image URLs */
+  images?: string[] | null;
   status?: string;
   findings?: string | null;
   impression?: string | null;
@@ -184,6 +186,8 @@ export interface XRayReport {
   signatureApplied?: boolean;
   isUrgent?: boolean;
   isPartial?: boolean;
+  /** a patient-details edit is waiting for Super Admin review */
+  pendingEdit?: boolean;
   studyCount?: number;
   signedStudyCount?: number;
   pendingStudyCount?: number;
