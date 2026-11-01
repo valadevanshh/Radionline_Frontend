@@ -76,7 +76,10 @@ export default function ReportPreviewModal({
 
   const centerHeaderUrl = resolveMediaUrl(center.headerTemplateUrl || '');
   const centerLogoUrl = resolveMediaUrl(center.logoUrl || '');
-  const letterheadMode = initialWithHeader ? (center.letterheadMode || 'full-page') : 'preprinted';
+  // Without an uploaded letterhead image, "with header" falls back to a broken placeholder — never use it.
+  const hasHeaderImage = Boolean((center.headerTemplateUrl || '').trim());
+  const useHeader = Boolean(initialWithHeader && hasHeaderImage);
+  const letterheadMode = useHeader ? (center.letterheadMode || 'full-page') : 'preprinted';
 
   // Signed study: doctor details frozen at signing; otherwise the doctor's current profile
   const activeStudy =

@@ -598,21 +598,21 @@ export default function Sidebar({
             data-testid="user-notif"
             data-kind={n.kind}
             onClick={() => openUserNotif(n)}
-            className={`w-full text-left border ${
+            className={`w-full text-left border transition-all ${
               mobile ? 'p-3 rounded-xl' : 'p-2.5 rounded-lg text-xs'
             } ${n.readAt ? 'bg-white border-slate-200' : 'bg-sky-50 border-[#009ef7]/40'} hover:bg-sky-100/60 active:bg-sky-100/60`}
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className={`min-w-0 font-bold text-slate-900 ${mobile ? 'text-[13px] leading-snug' : ''}`}>
-                {!n.readAt && <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#009ef7] mr-1.5 align-middle" />}
+            <div className="flex items-start justify-between gap-2.5">
+              <div className={`min-w-0 flex-1 font-bold text-slate-900 leading-snug break-words whitespace-normal ${mobile ? 'text-[13px]' : ''}`}>
+                {!n.readAt && <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#009ef7] mr-1.5 align-middle shrink-0" />}
                 {n.title}
               </div>
-              <span className={mobile ? 'font-mono text-[10px] text-slate-400 font-bold shrink-0' : 'font-mono text-[9px] text-slate-400 font-bold shrink-0'}>
+              <span className={`font-mono text-slate-400 font-bold shrink-0 pt-0.5 ${mobile ? 'text-[10px]' : 'text-[9px]'}`}>
                 {formatNotifTime(n.createdAt)}
               </span>
             </div>
             {n.body && (
-              <div className={mobile ? 'text-[12px] text-slate-600 mt-0.5 break-words' : 'text-[11px] text-slate-600 mt-0.5 break-words'}>
+              <div className={`text-slate-600 mt-1 leading-normal break-words whitespace-normal ${mobile ? 'text-[12px]' : 'text-[11px]'}`}>
                 {n.body}
               </div>
             )}
@@ -646,58 +646,94 @@ export default function Sidebar({
         </div>
       ))
     ) : (
-      pendingNotifications.map((rep) => (
-        <div
-          key={rep.id}
-          className={
-            mobile
-              ? 'p-3 bg-white border border-slate-200 rounded-xl space-y-2'
-              : 'p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5 text-xs'
-          }
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className={mobile ? 'min-w-0' : undefined}>
-              <div className={mobile ? 'font-bold text-slate-900 text-[13px] leading-snug' : 'font-bold text-slate-900'}>
-                {session?.role === 'CENTER' ? `Report Signed: ${rep.fullName}` : rep.radiologyCenterName}
-              </div>
-              <div className={mobile ? 'text-[12px] text-slate-500 font-medium mt-0.5' : 'text-[11px] text-slate-500 font-medium'}>
-                {rep.fullName}{formatPatientDisplayId(rep.patientNumber) ? ` (${rep.patientNumber})` : ''}
-              </div>
-            </div>
-            <span className={mobile ? 'font-mono text-[10px] text-slate-400 font-bold shrink-0' : 'font-mono text-[9px] text-slate-400 font-bold'}>
-              {rep.studyDate}
+      <>
+        {userNotifs.length > 0 && (
+          <div className="flex items-center justify-between px-0.5 pt-1.5">
+            <span className={mobile ? 'text-[11px] font-bold uppercase tracking-wide text-slate-500' : 'text-[10px] font-bold uppercase tracking-wide text-slate-500'}>
+              {session?.role === 'DOCTOR' ? 'Cases to Review' : session?.role === 'CENTER' ? 'Signed Reports' : 'Recent Cases'}
+            </span>
+            <span className="font-mono text-[10px] text-slate-400 font-bold">
+              {pendingNotifications.length}
             </span>
           </div>
+        )}
+        {pendingNotifications.map((rep) => {
+          const isDoc = session?.role === 'DOCTOR';
+          return (
+            <div
+              key={rep.id}
+              onClick={
+                !isDoc
+                  ? () => {
+                      setNotificationsOpen(false);
+                      setMobileNotifOpen(false);
+                      router.push(`/dashboard/workspace/${rep.id}`);
+                    }
+                  : undefined
+              }
+              className={`border transition-all ${
+                mobile
+                  ? 'p-3 bg-white border-slate-200 rounded-xl space-y-2'
+                  : 'p-2.5 bg-slate-50 border-slate-200 rounded-lg space-y-1.5 text-xs'
+              } ${!isDoc ? 'cursor-pointer hover:bg-slate-100 hover:border-slate-300' : ''}`}
+            >
+              <div className="flex items-start justify-between gap-2.5">
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={`font-bold text-slate-900 truncate leading-snug ${mobile ? 'text-[13px]' : ''}`}
+                    title={session?.role === 'CENTER' ? `Report Signed: ${rep.fullName}` : rep.radiologyCenterName}
+                  >
+                    {session?.role === 'CENTER' ? `Report Signed: ${rep.fullName}` : rep.radiologyCenterName}
+                  </div>
+                  <div
+                    className={`text-slate-500 font-medium truncate mt-0.5 ${mobile ? 'text-[12px]' : 'text-[11px]'}`}
+                    title={`${rep.fullName}${formatPatientDisplayId(rep.patientNumber) ? ` (${rep.patientNumber})` : ''}`}
+                  >
+                    {rep.fullName}{formatPatientDisplayId(rep.patientNumber) ? ` (${rep.patientNumber})` : ''}
+                  </div>
+                </div>
+                <span className={`font-mono text-slate-400 font-bold shrink-0 pt-0.5 ${mobile ? 'text-[10px]' : 'text-[9px]'}`}>
+                  {rep.studyDate}
+                </span>
+              </div>
 
-          {session?.role === 'DOCTOR' && (
-            <div className={mobile ? 'flex items-center gap-2 pt-0.5' : 'flex items-center gap-1.5 pt-1'}>
-              <button
-                type="button"
-                onClick={() => handleAcceptReport(rep)}
-                className={
-                  mobile
-                    ? 'flex-1 py-2 px-3 bg-[#009ef7] hover:bg-[#008be0] active:bg-[#008be0] text-white text-[12px] font-bold rounded-lg flex items-center justify-center gap-1.5'
-                    : 'flex-1 py-1 px-2 bg-[#009ef7] hover:bg-[#008be0] text-white text-[10px] font-bold rounded flex items-center justify-center gap-1'
-                }
-              >
-                <Check size={mobile ? 14 : 12} />
-                <span>Accept</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleRejectReport(rep)}
-                className={
-                  mobile
-                    ? 'py-2 px-4 bg-slate-100 hover:bg-slate-200 active:bg-slate-200 text-slate-700 text-[12px] font-bold rounded-lg'
-                    : 'py-1 px-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold rounded'
-                }
-              >
-                Dismiss
-              </button>
+              {isDoc && (
+                <div className={mobile ? 'flex items-center gap-2 pt-0.5' : 'flex items-center gap-1.5 pt-1'}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAcceptReport(rep);
+                    }}
+                    className={
+                      mobile
+                        ? 'flex-1 py-2 px-3 bg-[#009ef7] hover:bg-[#008be0] active:bg-[#008be0] text-white text-[12px] font-bold rounded-lg flex items-center justify-center gap-1.5'
+                        : 'flex-1 py-1 px-2 bg-[#009ef7] hover:bg-[#008be0] text-white text-[10px] font-bold rounded flex items-center justify-center gap-1'
+                    }
+                  >
+                    <Check size={mobile ? 14 : 12} />
+                    <span>Accept</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRejectReport(rep);
+                    }}
+                    className={
+                      mobile
+                        ? 'py-2 px-4 bg-slate-100 hover:bg-slate-200 active:bg-slate-200 text-slate-700 text-[12px] font-bold rounded-lg'
+                        : 'py-1 px-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold rounded'
+                    }
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      ))
+          );
+        })}
+      </>
     );
 
   const SidebarContent = (
@@ -882,22 +918,23 @@ export default function Sidebar({
           {/* Notifications Popover */}
           {notificationsOpen && (
             <div
-              className="absolute left-full bottom-0 ml-2 w-72 sm:w-80 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
+              className="absolute left-full bottom-0 ml-2 w-80 sm:w-96 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150 select-text whitespace-normal"
+              style={{ whiteSpace: 'normal', userSelect: 'text' }}
             >
-              <div className="px-3 py-2 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div className="px-3.5 py-2.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
                 <span className="font-mono text-xs font-bold uppercase text-slate-900">
                   Notifications ({bellCount})
                 </span>
                 <button
                   type="button"
                   onClick={() => setNotificationsOpen(false)}
-                  className="text-slate-400 hover:text-slate-600 p-0.5"
+                  className="text-slate-400 hover:text-slate-600 p-0.5 rounded transition-colors"
                 >
                   <X size={14} />
                 </button>
               </div>
 
-              <div className="max-h-80 overflow-y-auto p-2 space-y-2">
+              <div className="max-h-80 overflow-y-auto overflow-x-hidden p-2.5 space-y-2">
                 {renderNotificationList(false)}
               </div>
             </div>
@@ -1240,7 +1277,7 @@ export default function Sidebar({
             role="dialog"
             aria-modal="true"
             aria-labelledby="rn-notif-title"
-            className="rn-notif-panel bg-slate-50"
+            className="rn-notif-panel bg-slate-50 select-text whitespace-normal"
             style={{
               position: 'absolute',
               top: 0,
@@ -1254,6 +1291,8 @@ export default function Sidebar({
               boxShadow: '0 16px 32px -8px rgba(15, 23, 42, 0.3)',
               paddingTop: 'env(safe-area-inset-top, 0px)',
               overflow: 'hidden',
+              whiteSpace: 'normal',
+              userSelect: 'text',
             }}
           >
             <div className="flex items-center justify-between pl-4 pr-2 bg-white border-b border-slate-200 shrink-0" style={{ height: 52 }}>

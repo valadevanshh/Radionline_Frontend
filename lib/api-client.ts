@@ -401,6 +401,22 @@ export interface CenterUserRow {
   centers: CenterAccessLink[];
   otherCenterCount: number;
   canEditLogin: boolean;
+  frozenAt?: string | null;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  at: string;
+  actorUserId?: number | null;
+  actorName?: string | null;
+  actorRole?: string | null;
+  entityType: string;
+  entityId: string;
+  action: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  approvalId?: string | null;
+  note?: string | null;
 }
 
 export interface CenterUsersResponse {
@@ -602,10 +618,10 @@ export const ApiClient = {
   },
 
   async createCenterUser(body: { name?: string; email: string; password?: string; centers: CenterAccessLink[] }) {
-    return fetchJson<{ linkedExisting: boolean; user: CenterUserRow }>('/center-users', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
+    return fetchJson<({ linkedExisting: boolean; user: CenterUserRow } & Partial<PendingApprovalResult>) | PendingApprovalResult>(
+      '/center-users',
+      { method: 'POST', body: JSON.stringify(body) },
+    );
   },
 
   /** Super Admin only. userRef: user id, email, "doctor:<id>" or "center:<id>". Never returns the password. */
@@ -617,16 +633,41 @@ export const ApiClient = {
   },
 
   async updateCenterUser(userId: number, body: { name?: string; password?: string; centers: CenterAccessLink[] }) {
-    return fetchJson<{ user: CenterUserRow }>(`/center-users/${userId}`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    });
+    return fetchJson<({ user: CenterUserRow } & Partial<PendingApprovalResult>) | PendingApprovalResult>(
+      `/center-users/${userId}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+    );
   },
 
   async unlinkCenterUser(userId: number, centerId: string) {
-    return fetchJson<{ ok: boolean }>(`/center-users/${userId}/centers/${encodeURIComponent(centerId)}`, {
-      method: 'DELETE',
-    });
+    return fetchJson<({ ok: boolean } & Partial<PendingApprovalResult>) | PendingApprovalResult>(
+      `/center-users/${userId}/centers/${encodeURIComponent(centerId)}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  async setCenterUserFrozen(userId: number, frozen: boolean) {
+    return fetchJson<({ user: CenterUserRow } & Partial<PendingApprovalResult>) | PendingApprovalResult>(
+      `/center-users/${userId}/freeze`,
+      { method: 'PUT', body: JSON.stringify({ frozen }) },
+    );
+  },
+
+  async deleteCenterUser(userId: number) {
+    return fetchJson<({ ok: boolean } & Partial<PendingApprovalResult>) | PendingApprovalResult>(
+      `/center-users/${userId}`,
+      { method: 'DELETE' },
+    );
+  },
+
+  async getAuditLog(params?: { entityType?: string; entityId?: string; action?: string; limit?: number }) {
+    const q = new URLSearchParams();
+    if (params?.entityType) q.set('entityType', params.entityType);
+    if (params?.entityId) q.set('entityId', params.entityId);
+    if (params?.action) q.set('action', params.action);
+    if (params?.limit) q.set('limit', String(params.limit));
+    const qs = q.toString();
+    return fetchJson<AuditLogEntry[]>(`/audit-log${qs ? `?${qs}` : ''}`);
   },
 
   /** Centre details / letterhead (Super Admin, or Center Info = write for that centre). */
@@ -690,6 +731,14 @@ export const ApiClient = {
     });
   },
 
+  /** Freeze/unfreeze doctor. Manager: PendingApprovalResult (202). */
+  async setDoctorFrozen(id: string, frozen: boolean) {
+    return fetchJson<(Doctor & { frozenAt?: string | null }) & Partial<PendingApprovalResult>>(
+      `/doctors/${encodeURIComponent(id)}/freeze`,
+      { method: 'PUT', body: JSON.stringify({ frozen }) },
+    );
+  },
+
   // Centers
   async getCenters() {
     return fetchJson<RadiologyCenter[]>('/centers');
@@ -707,6 +756,14 @@ export const ApiClient = {
     return fetchJson<PendingApprovalResult | Record<string, never>>(`/centers/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
+  },
+
+  /** Freeze/unfreeze centre. Manager: PendingApprovalResult (202). */
+  async setCenterFrozen(id: string, frozen: boolean) {
+    return fetchJson<(RadiologyCenter & { frozenAt?: string | null }) & Partial<PendingApprovalResult>>(
+      `/centers/${encodeURIComponent(id)}/freeze`,
+      { method: 'PUT', body: JSON.stringify({ frozen }) },
+    );
   },
 
   /** Upload binary to KV2/disk; returns relative path + public URL. */

@@ -492,47 +492,45 @@ export default function ReportTemplateModal({
                 </header>
               ) : null}
 
-            {/* 2. Demographic Box */}
-            <table className="w-full border-collapse mb-5 font-sans text-xs border border-black">
-              <tbody>
-                <tr>
-                  <td className="border border-black p-2 w-1/2 align-top">
-                    <span className="block text-[10px] text-slate-600 uppercase font-semibold">Patient Name</span>
-                    <span className="font-bold text-sm text-black uppercase">PATIENT PREVIEW (SAMPLE)</span>
-                  </td>
-                  <td className="border border-black p-2 w-1/2 align-top">
-                    <span className="block text-[10px] text-slate-600 uppercase font-semibold">Patient ID</span>
-                    <span className="font-bold text-xs text-black font-mono">PID-SAMPLE-TEMPLATE</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="border border-black p-2 align-top">
-                    <span className="block text-[10px] text-slate-600 uppercase font-semibold">Age / Sex</span>
-                    <span className="font-bold text-xs text-black">45 Yrs / Male</span>
-                  </td>
-                  <td className="border border-black p-2 align-top">
-                    <span className="block text-[10px] text-slate-600 uppercase font-semibold">Date of Study</span>
-                    <span className="font-bold text-xs text-black font-mono">{new Date().toLocaleDateString('en-GB')}</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="border border-black p-2 align-top">
-                    <span className="block text-[10px] text-slate-600 uppercase font-semibold">Referring Doctor</span>
-                    <span className="font-bold text-xs text-black">Dr. Attending Physician</span>
-                  </td>
-                  <td className="border border-black p-2 align-top">
-                    <span className="block text-[10px] text-slate-600 uppercase font-semibold">Modality</span>
-                    <span className="font-bold text-xs text-black uppercase">{modality}</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td colSpan={2} className="border border-black p-2 align-top bg-slate-50/50">
-                    <span className="block text-[10px] text-slate-600 uppercase font-semibold">Study / Body Part</span>
-                    <span className="font-extrabold text-xs text-black uppercase font-mono">{bodyPart || modality}</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            {/* 2. Demographic Box — matches printed report patient header */}
+            <div className="mb-5 font-sans border-y-[1.5px] border-slate-900">
+              <div className="flex items-center gap-1.5 px-0.5 py-1.5">
+                <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-slate-700 text-[10px] font-bold leading-none text-slate-800">
+                  +
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-800">
+                  Patient Information
+                </span>
+              </div>
+              <div className="border-t border-slate-900 text-xs">
+                <div className="flex">
+                  <div className="min-w-0 flex-1 border-r border-slate-300 px-2.5 py-2">
+                    <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Patient ID</span>
+                    <span className="block text-sm font-bold text-black font-mono">PID-SAMPLE-TEMPLATE</span>
+                  </div>
+                  <div className="min-w-0 flex-1 px-2.5 py-2">
+                    <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Patient Name</span>
+                    <span className="block text-sm font-bold uppercase text-black">PATIENT PREVIEW (SAMPLE)</span>
+                  </div>
+                </div>
+                <div className="flex border-t border-slate-300">
+                  <div className="min-w-0 flex-1 border-r border-slate-300 px-2.5 py-2">
+                    <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Age / Gender</span>
+                    <span className="block text-sm font-bold text-black">45 Yrs / Male</span>
+                  </div>
+                  <div className="min-w-0 flex-1 border-r border-slate-300 px-2.5 py-2">
+                    <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Referring Doctor</span>
+                    <span className="block text-sm font-bold text-black">Dr. Attending Physician</span>
+                  </div>
+                  <div className="min-w-0 flex-1 px-2.5 py-2">
+                    <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Report Date</span>
+                    <span className="block text-sm font-bold text-black font-mono">
+                      {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* 3. Study Header Title */}
             <div className="text-center my-4 font-sans">

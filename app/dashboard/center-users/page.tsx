@@ -1,17 +1,19 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { UserCog, Plus, Pencil, Unlink, ShieldCheck, RefreshCw, AlertTriangle, Building, KeyRound } from 'lucide-react';
+import { UserCog, Plus, Pencil, Unlink, ShieldCheck, RefreshCw, AlertTriangle, Building, KeyRound, Snowflake, Sun } from 'lucide-react';
 import ResetPasswordModal, { ResetTarget } from '@/components/ResetPasswordModal';
 import {
   ApiClient,
   apiErrorMessage,
+  isPendingApproval,
   type CenterAccessLink,
   type CenterPage,
   type CenterUserRow,
   type CenterUsersResponse,
   type PageLevel,
 } from '@/lib/api-client';
+import { useConfirm } from '@/components/ui';
 import { refreshSession, useSession } from '@/lib/access';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -49,6 +51,7 @@ function levelTone(level: PageLevel) {
 
 export default function CenterUsersPage() {
   const session = useSession();
+  const confirm = useConfirm();
   const [data, setData] = useState<CenterUsersResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState<string | null>(null);
@@ -149,11 +152,16 @@ export default function CenterUsersPage() {
     setSaving(true);
     try {
       if (editing) {
-        await ApiClient.updateCenterUser(editing.id, {
+        const res = await ApiClient.updateCenterUser(editing.id, {
           name: editing.canEditLogin ? name.trim() || undefined : undefined,
           password: editing.canEditLogin && password ? password : undefined,
           centers: links,
         });
+        if (isPendingApproval(res)) {
+          toast.info(res.message || 'Edit sent to the Super Admin for approval.');
+          setEditorOpen(false);
+          return;
+        }
         toast.success(`Saved ${name || editing.email}`);
       } else {
         const res = await ApiClient.createCenterUser({
@@ -162,7 +170,16 @@ export default function CenterUsersPage() {
           password: password || undefined,
           centers: links,
         });
-        toast.success(res.linkedExisting ? `Existing login ${res.user.email} linked` : `Login created for ${res.user.email}`);
+        if (isPendingApproval(res)) {
+          toast.info(res.message || 'New user sent to the Super Admin for approval.');
+          setEditorOpen(false);
+          return;
+        }
+        toast.success(
+          'linkedExisting' in res && res.linkedExisting
+            ? `Existing login ${res.user.email} linked`
+            : `Login created for ${'user' in res ? res.user.email : email}`,
+        );
       }
       setEditorOpen(false);
       await load();
@@ -174,12 +191,40 @@ export default function CenterUsersPage() {
     }
   };
 
+  const handleFreezeUser = async (u: CenterUserRow) => {
+    const freeze = !u.frozenAt;
+    const ok = await confirm({
+      title: freeze ? 'Freeze centre user' : 'Unfreeze centre user',
+      message: freeze
+        ? `${u.name || u.email} will not be able to sign in until unfrozen. Non–Super Admin requests wait for approval.`
+        : `${u.name || u.email} will be able to sign in again.`,
+      confirmLabel: freeze ? 'Freeze' : 'Unfreeze',
+      variant: freeze ? 'danger' : 'primary',
+    });
+    if (!ok) return;
+    try {
+      const res = await ApiClient.setCenterUserFrozen(u.id, freeze);
+      if (isPendingApproval(res)) {
+        toast.info(res.message || 'Request sent to the Super Admin for approval.');
+        return;
+      }
+      toast.success(freeze ? 'User frozen.' : 'User unfrozen.');
+      await load();
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not update freeze status'));
+    }
+  };
+
   const confirmUnlink = async () => {
     if (!unlinkTarget) return;
     const { user, link } = unlinkTarget;
     setUnlinkTarget(null);
     try {
-      await ApiClient.unlinkCenterUser(user.id, link.centerId);
+      const res = await ApiClient.unlinkCenterUser(user.id, link.centerId);
+      if (isPendingApproval(res)) {
+        toast.info(res.message || 'Unlink sent to the Super Admin for approval.');
+        return;
+      }
       toast.success(`${user.email} removed from ${link.centerName || link.centerId}`);
       await load();
       refreshSession(() => ApiClient.getMe());
@@ -273,6 +318,11 @@ export default function CenterUsersPage() {
                       {data?.currentUserId === u.id && (
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">You</span>
                       )}
+                      {u.frozenAt ? (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200" data-testid={`center-user-frozen-${u.id}`}>
+                          <Snowflake className="w-3 h-3" /> Frozen
+                        </span>
+                      ) : null}
                     </div>
                     <div className="text-xs text-slate-500 font-mono truncate">{u.email}</div>
                     {u.otherCenterCount > 0 && (
@@ -292,6 +342,16 @@ export default function CenterUsersPage() {
                       <KeyRound className="w-3.5 h-3.5" />
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => handleFreezeUser(u)}
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-300 text-slate-600 hover:border-sky-500 hover:text-sky-700"
+                    title={u.frozenAt ? 'Unfreeze' : 'Freeze'}
+                    aria-label={`${u.frozenAt ? 'Unfreeze' : 'Freeze'} ${u.name}`}
+                    data-testid={`center-user-freeze-${u.id}`}
+                  >
+                    {u.frozenAt ? <Sun className="w-3.5 h-3.5" /> : <Snowflake className="w-3.5 h-3.5" />}
+                  </button>
                   <button
                     type="button"
                     onClick={() => openEdit(u)}

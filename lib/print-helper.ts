@@ -73,14 +73,17 @@ export const REPORT_SHEET_CSS = `
 .rn-sheet .center-name { font-family: system-ui, sans-serif; font-weight: 700; font-size: 14pt; line-height: 1.25; text-transform: uppercase; letter-spacing: 0.02em; }
 .rn-sheet .center-meta { font-family: system-ui, sans-serif; font-size: 9pt; color: #222; margin-top: 2px; }
 .rn-sheet .accredit { font-family: system-ui, sans-serif; font-size: 8.5pt; color: #555; margin-top: 4px; }
-.rn-sheet table.demo { width: 100%; border-collapse: collapse; margin: 0 0 14px 0; font-family: system-ui, sans-serif; font-size: 10pt; line-height: 1.4; }
-.rn-sheet table.demo td { border: 1px solid #000; padding: 7px 9px; vertical-align: top; width: 50%; }
-.rn-sheet table.demo .lbl { display: block; color: #444; font-size: 8.5pt; margin-bottom: 2px; }
-.rn-sheet table.demo .val { font-weight: 700; color: #000; text-transform: none; }
-.rn-sheet table.demo td.pt-l { text-align: left; }
-.rn-sheet table.demo td.pt-r { text-align: left; }
-.rn-sheet table.demo td.pt-l, .rn-sheet table.demo td.pt-r { white-space: normal; word-break: normal; overflow-wrap: anywhere; }
-.rn-sheet table.demo td.pt-l .lbl, .rn-sheet table.demo td.pt-r .lbl { display: inline; color: #000; font-size: inherit; margin: 0; }
+.rn-sheet .pt-info { margin: 0 0 14px 0; font-family: system-ui, sans-serif; border-top: 1.5px solid #111; border-bottom: 1.5px solid #111; }
+.rn-sheet .pt-info-head { display: flex; align-items: center; gap: 6px; padding: 6px 2px 5px; }
+.rn-sheet .pt-info-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1.25px solid #333; border-radius: 2px; font-size: 10px; font-weight: 700; line-height: 1; color: #222; }
+.rn-sheet .pt-info-title { font-size: 8.5pt; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: #222; }
+.rn-sheet .pt-grid { border-top: 1px solid #111; }
+.rn-sheet .pt-row { display: flex; width: 100%; }
+.rn-sheet .pt-row + .pt-row { border-top: 1px solid #c8c8c8; }
+.rn-sheet .pt-cell { flex: 1 1 0; min-width: 0; padding: 8px 10px; text-align: left; white-space: normal; word-break: normal; overflow-wrap: anywhere; border-right: 1px solid #c8c8c8; }
+.rn-sheet .pt-cell:last-child { border-right: none; }
+.rn-sheet .pt-cell .lbl { display: block; color: #6b7280; font-size: 8pt; font-weight: 500; margin-bottom: 3px; }
+.rn-sheet .pt-cell .val { display: block; font-weight: 700; color: #000; font-size: 10.5pt; text-transform: none; }
 /* Last page: QR bottom-left of the content, level with the signature (right); then the footer:
    one divider, page no. + End of report, NOTE full width */
 .rn-sheet .rn-foot-last .sig-row .sig-inner { margin-left: auto; }
@@ -391,18 +394,22 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
     )
     .join('');
 
-  // Patient header: left column left-aligned, right column right-aligned, "Label : value"
+  // Patient header: PATIENT INFORMATION — top: ID + Name; bottom: Age/Gender + Ref doctor + Report date
   const pga = patientGenderAge(payload);
-  const ptCell = (label: string, value: string, side: 'l' | 'r') =>
-    `<td class="pt-${side}"><span class="lbl">${esc(label)} : </span><span class="val">${esc(value || '\u2014')}</span></td>`;
+  const ptCell = (label: string, value: string) =>
+    `<div class="pt-cell"><span class="lbl">${esc(label)}</span><span class="val">${esc(value || '\u2014')}</span></div>`;
+  const ageGender = [pga.age, pga.gender].map((x) => String(x || '').trim()).filter((x) => x && x !== '\u2014').join(' / ');
   const flow = `<div data-rn="flow">
-    <table class="demo">
-      <tbody>
-        <tr>${ptCell('Patient ID', payload.patientId, 'l')}${ptCell('Patient Name', payload.patientName, 'r')}</tr>
-        <tr>${ptCell('Age / Gender', [pga.age, pga.gender].map((x) => String(x || '').trim()).filter((x) => x && x !== '\u2014').join(' / '), 'l')}${ptCell('Referring Doctor', payload.referringDoctor, 'r')}</tr>
-        <tr>${ptCell('Report Date', formatReportDate(payload.reportDate || ''), 'l')}<td class="pt-r"></td></tr>
-      </tbody>
-    </table>
+    <div class="pt-info">
+      <div class="pt-info-head">
+        <span class="pt-info-icon" aria-hidden="true">+</span>
+        <span class="pt-info-title">Patient Information</span>
+      </div>
+      <div class="pt-grid">
+        <div class="pt-row">${ptCell('Patient ID', payload.patientId)}${ptCell('Patient Name', payload.patientName)}</div>
+        <div class="pt-row">${ptCell('Age / Gender', ageGender)}${ptCell('Referring Doctor', payload.referringDoctor)}${ptCell('Report Date', formatReportDate(payload.reportDate || ''))}</div>
+      </div>
+    </div>
     ${studies}
   </div>`;
 

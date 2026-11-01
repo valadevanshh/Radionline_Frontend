@@ -81,6 +81,8 @@ export interface Doctor {
   expertise?: string[];
   cvUrl?: string | null;
   cvFileName?: string | null;
+  /** ISO timestamp when frozen; null/undefined = active */
+  frozenAt?: string | null;
 }
 
 export interface RadiologyCenter {
@@ -97,6 +99,8 @@ export interface RadiologyCenter {
   letterheadMode?: 'header' | 'footer' | 'full-page' | 'preprinted';
   logoUrl?: string;
   createdAt: string;
+  /** ISO timestamp when frozen; null/undefined = active */
+  frozenAt?: string | null;
 }
 
 export interface StudyReportInfo {

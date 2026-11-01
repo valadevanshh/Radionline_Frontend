@@ -18,6 +18,7 @@ import { useConfirm, StatusBadge } from '@/components/ui';
 import { RowCard, RowCardList, RT_CONTAINER, RT_TABLE_ONLY } from '@/components/ui/ResponsiveTable';
 import { InvoiceActions } from '@/components/InvoiceActions';
 import CenterWalletsAdmin from '@/components/CenterWalletsAdmin';
+import EntityAuditPanel from '@/components/EntityAuditPanel';
 import { exportInvoiceListExcel } from '@/lib/invoice-excel';
 import { currentBillingPeriodIST, formatPeriodLabel } from '@/lib/invoice-print';
 
@@ -255,6 +256,7 @@ export default function SuperAdminInvoicesPage() {
         </div>
 
         <CenterWalletsAdmin />
+        <EntityAuditPanel />
 
         {/* Month toolbar */}
         <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 space-y-3">

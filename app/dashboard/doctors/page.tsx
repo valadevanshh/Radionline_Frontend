@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, Search, Plus, Trash2, UserPlus, Briefcase, AlertTriangle, RefreshCw, SearchX, KeyRound } from 'lucide-react';
+import { Users, Search, Plus, Trash2, UserPlus, Briefcase, AlertTriangle, RefreshCw, SearchX, KeyRound, Snowflake, Sun } from 'lucide-react';
 import ResetPasswordModal, { ResetTarget } from '@/components/ResetPasswordModal';
 import { RadiologyStore, Doctor, UserAccount } from '@/lib/radiology-store';
 import AddDoctorModal from '@/components/AddDoctorModal';
@@ -146,6 +146,38 @@ export default function DoctorsPage() {
       toast.success('Doctor deleted.');
     } catch (err) {
       toast.error(apiErrorMessage(err, 'Could not delete the doctor'));
+    }
+    loadDoctors();
+  };
+
+  const handleFreezeDoctor = async (doc: Doctor) => {
+    const freeze = !doc.frozenAt;
+    const ok = await confirm({
+      title: isManager
+        ? freeze
+          ? 'Request freeze'
+          : 'Request unfreeze'
+        : freeze
+          ? 'Freeze doctor'
+          : 'Unfreeze doctor',
+      message: isManager
+        ? `This sends a ${freeze ? 'freeze' : 'unfreeze'} request to the Super Admin.`
+        : freeze
+          ? `${doc.fullName} will not be able to sign in or work cases until unfrozen.`
+          : `${doc.fullName} will be able to sign in again.`,
+      confirmLabel: isManager ? 'Send Request' : freeze ? 'Freeze' : 'Unfreeze',
+      variant: freeze ? 'danger' : 'primary',
+    });
+    if (!ok) return;
+    try {
+      const res = await ApiClient.setDoctorFrozen(doc.id, freeze);
+      if (isPendingApproval(res)) {
+        toast.info(res.message || 'Request sent to the Super Admin for approval.');
+        return;
+      }
+      toast.success(freeze ? 'Doctor frozen.' : 'Doctor unfrozen.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not update freeze status'));
     }
     loadDoctors();
   };
@@ -340,9 +372,16 @@ export default function DoctorsPage() {
                           <div className="text-[12px] text-slate-500 font-medium truncate" title={doc.degree || 'M.D. (Radiodiagnosis)'}>
                             {doc.degree || 'M.D. (Radiodiagnosis)'}
                           </div>
-                          <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600">
-                            <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{experienceLabel(doc.yearsOfExperience)}</span>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+                              <Briefcase className="w-3.5 h-3.5 text-slate-400" />
+                              <span>{experienceLabel(doc.yearsOfExperience)}</span>
+                            </span>
+                            {doc.frozenAt ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[10px] font-bold font-mono" data-testid={`doctor-frozen-${doc.id}`}>
+                                <Snowflake className="w-3 h-3" /> Frozen
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                         {canEditSignature && (
@@ -358,6 +397,21 @@ export default function DoctorsPage() {
                             data-testid={`reset-password-doctor-${doc.id}`}
                           >
                             <KeyRound className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canManageDoctors && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleFreezeDoctor(doc);
+                            }}
+                            className="p-1.5 -mt-1.5 text-slate-400 hover:text-sky-700 transition-colors cursor-pointer rounded hover:bg-sky-50 shrink-0"
+                            title={doc.frozenAt ? (isManager ? 'Request unfreeze' : 'Unfreeze') : isManager ? 'Request freeze' : 'Freeze'}
+                            aria-label={`${doc.frozenAt ? 'Unfreeze' : 'Freeze'} ${doc.fullName}`}
+                            data-testid={`doctor-freeze-${doc.id}`}
+                          >
+                            {doc.frozenAt ? <Sun className="w-4 h-4" /> : <Snowflake className="w-4 h-4" />}
                           </button>
                         )}
                         {canManageDoctors && (

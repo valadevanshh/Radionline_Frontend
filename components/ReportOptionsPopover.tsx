@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { FileText, ChevronDown, Printer, Eye } from 'lucide-react';
-import { XRayReport } from '@/lib/radiology-store';
+import { FileText, ChevronDown, Printer } from 'lucide-react';
+import { RadiologyStore, XRayReport } from '@/lib/radiology-store';
 import { formatPatientDisplayId } from '@/lib/uuid';
 import { hasDoctorReport, isReportReady } from '@/lib/report-status';
 
@@ -12,12 +12,25 @@ interface ReportOptionsPopoverProps {
   onSelectOption: (report: XRayReport, withHeader: boolean, bodyPart?: string) => void;
 }
 
+function centerHasHeader(report: XRayReport): boolean {
+  const centers = RadiologyStore.getCenters();
+  const id = (report.radiologyCenterId || '').trim();
+  const name = (report.radiologyCenterName || '').trim().toLowerCase();
+  const match =
+    centers.find((c) => c.id === id) ||
+    (name
+      ? centers.find((c) => (c.centerName || '').trim().toLowerCase() === name)
+      : undefined);
+  return Boolean((match?.headerTemplateUrl || '').trim());
+}
+
 export default function ReportOptionsPopover({ report, onSelectOption }: ReportOptionsPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [mounted, setMounted] = useState(false);
+  const showWithHeader = useMemo(() => centerHasHeader(report), [report]);
 
   useEffect(() => {
     setMounted(true);
@@ -108,17 +121,20 @@ export default function ReportOptionsPopover({ report, onSelectOption }: ReportO
                   </p>
                 ) : (
                 <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsOpen(false);
-                    onSelectOption(report, true, part);
-                  }}
-                  className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 hover:bg-[#009ef7]/10 hover:text-[#009ef7] transition-colors cursor-pointer rounded"
-                >
-                  <Printer className="w-3.5 h-3.5 text-[#009ef7]" />
-                  <span className="font-medium">View Report (With Header)</span>
-                </button>
+                {showWithHeader ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      onSelectOption(report, true, part);
+                    }}
+                    className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 hover:bg-[#009ef7]/10 hover:text-[#009ef7] transition-colors cursor-pointer rounded"
+                    data-testid="view-report-with-header"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-[#009ef7]" />
+                    <span className="font-medium">View Report (With Header)</span>
+                  </button>
+                ) : null}
 
                 <button
                   type="button"
@@ -127,9 +143,12 @@ export default function ReportOptionsPopover({ report, onSelectOption }: ReportO
                     onSelectOption(report, false, part);
                   }}
                   className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer rounded"
+                  data-testid="view-report-without-header"
                 >
                   <FileText className="w-3.5 h-3.5 text-slate-500" />
-                  <span className="font-medium">View Report (Without Header)</span>
+                  <span className="font-medium">
+                    {showWithHeader ? 'View Report (Without Header)' : 'View Report'}
+                  </span>
                 </button>
                 </>
                 )}

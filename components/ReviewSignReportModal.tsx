@@ -281,13 +281,14 @@ export default function ReviewSignReportModal({
                       c.id === report.radiologyCenterId ||
                       (c.centerName && report.radiologyCenterName && c.centerName.trim().toLowerCase() === report.radiologyCenterName.trim().toLowerCase())
                   );
+                  const hasHeader = Boolean((centerRec?.headerTemplateUrl || '').trim());
                   const payload: PrintReportPayload = {
                     centerName: centerRec?.centerName || report.radiologyCenterName || 'RADIOLOGY CENTER',
                     centerAddress: centerRec?.address || '',
                     centerPhone: centerRec?.contactNumber || '',
                     centerLogoUrl: resolveMediaUrl(centerRec?.logoUrl || ''),
                     centerHeaderUrl: resolveMediaUrl(centerRec?.headerTemplateUrl || ''),
-                    letterheadMode: centerRec?.letterheadMode || 'full-page',
+                    letterheadMode: hasHeader ? (centerRec?.letterheadMode || 'full-page') : 'preprinted',
                     patientName: report.fullName,
                     patientId: formatPatientDisplayId(report.patientNumber) || '—',
                     ageSex: `${formatAgeShort(report)} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,
@@ -311,7 +312,7 @@ export default function ReviewSignReportModal({
                     reportDate,
                     reportId: shortReportId(report.studies?.[0]?.id || report.id),
                     isPortable: !!report.isPortable,
-                    withHeader: true,
+                    withHeader: hasHeader,
                   };
                   printReportElement(null, `Radiology Case Review - ${report.patientNumber}`, payload);
                 }}

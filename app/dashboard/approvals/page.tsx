@@ -11,13 +11,19 @@ const ENTITY_WORD: Record<string, string> = {
   case: 'patient record',
   doctor: 'doctor',
   center: 'diagnostic centre',
+  center_user: 'centre user',
+  'center-user': 'centre user',
   template: 'template',
 };
 
 /** Plain-language title for a request, e.g. "Delete patient record". */
 function actionTitle(actionType: string, entityType: string): string {
-  const verb = (actionType || '').split('_')[0].toUpperCase();
+  const at = (actionType || '').toUpperCase();
   const what = ENTITY_WORD[(entityType || '').toLowerCase()] || (entityType || 'record').toLowerCase();
+  if (at.startsWith('FREEZE')) return `Freeze ${what}`;
+  if (at.startsWith('UNFREEZE')) return `Unfreeze ${what}`;
+  if (at.startsWith('UNLINK')) return `Unlink ${what}`;
+  const verb = at.split('_')[0];
   if (verb === 'DELETE') return `Delete ${what}`;
   if (verb === 'UPDATE') return entityType === 'case' ? 'Edit patient details' : `Edit ${what}`;
   if (verb === 'CREATE') return entityType === 'case' ? 'Upload image (new case)' : `Add ${what}`;

@@ -12,6 +12,8 @@ import {
   Trash2,
   IndianRupee,
   KeyRound,
+  Snowflake,
+  Sun,
 } from 'lucide-react';
 import ResetPasswordModal, { ResetTarget } from '@/components/ResetPasswordModal';
 import { RadiologyStore, RadiologyCenter } from '@/lib/radiology-store';
@@ -137,6 +139,40 @@ export default function RadiologyCentersPage() {
     loadCenters();
   };
 
+  const handleFreezeCenter = async (c: RadiologyCenter) => {
+    const session = RadiologyStore.getSession();
+    const isManager = session?.role === 'MANAGER';
+    const freeze = !c.frozenAt;
+    const ok = await confirm({
+      title: isManager
+        ? freeze
+          ? 'Request freeze'
+          : 'Request unfreeze'
+        : freeze
+          ? 'Freeze centre'
+          : 'Unfreeze centre',
+      message: isManager
+        ? `This sends a ${freeze ? 'freeze' : 'unfreeze'} request to the Super Admin.`
+        : freeze
+          ? `${c.centerName} users will not be able to use this centre until it is unfrozen.`
+          : `${c.centerName} will be usable again.`,
+      confirmLabel: isManager ? 'Send Request' : freeze ? 'Freeze' : 'Unfreeze',
+      variant: freeze ? 'danger' : undefined,
+    });
+    if (!ok) return;
+    try {
+      const res = await ApiClient.setCenterFrozen(c.id, freeze);
+      if (isPendingApproval(res)) {
+        toast.info(res.message || 'Request sent to the Super Admin for approval.');
+        return;
+      }
+      toast.success(freeze ? 'Centre frozen.' : 'Centre unfrozen.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not update freeze status'));
+    }
+    loadCenters();
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 text-slate-900">
       <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-4 space-y-3 max-w-7xl w-full mx-auto">
@@ -195,9 +231,15 @@ export default function RadiologyCentersPage() {
                       title={c.centerName}
                       subtitle={c.address || 'Main Location'}
                       aside={
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded font-mono">
-                          Active
-                        </span>
+                        c.frozenAt ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-sky-100 text-sky-800 font-bold text-[10px] rounded font-mono">
+                            Frozen
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded font-mono">
+                            Active
+                          </span>
+                        )
                       }
                       fields={[
                         { label: 'Email', value: c.email, full: true },
@@ -377,11 +419,18 @@ export default function RadiologyCentersPage() {
                           </td>
                         );
                       })()}
-                      <td title="Active" className={`p-3.5 ${RT_TABLET_HIDE}`}>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded font-mono">
-                          <CheckCircle className="w-3 h-3 text-emerald-600" />
-                          <span>Active</span>
-                        </span>
+                      <td title={c.frozenAt ? 'Frozen' : 'Active'} className={`p-3.5 ${RT_TABLET_HIDE}`}>
+                        {c.frozenAt ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-sky-100 text-sky-800 font-bold text-[10px] rounded font-mono" data-testid={`center-frozen-${c.id}`}>
+                            <Snowflake className="w-3 h-3" />
+                            <span>Frozen</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded font-mono">
+                            <CheckCircle className="w-3 h-3 text-emerald-600" />
+                            <span>Active</span>
+                          </span>
+                        )}
                       </td>
                       <td className="p-3.5 text-right whitespace-nowrap">
                         {isSuperAdmin && (
@@ -408,6 +457,16 @@ export default function RadiologyCentersPage() {
                             <KeyRound className="w-4 h-4" />
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => handleFreezeCenter(c)}
+                          className="p-1.5 text-slate-400 hover:text-sky-700 transition-colors cursor-pointer rounded hover:bg-sky-50"
+                          title={c.frozenAt ? 'Unfreeze centre' : 'Freeze centre'}
+                          aria-label={`${c.frozenAt ? 'Unfreeze' : 'Freeze'} ${c.centerName}`}
+                          data-testid={`center-freeze-${c.id}`}
+                        >
+                          {c.frozenAt ? <Sun className="w-4 h-4" /> : <Snowflake className="w-4 h-4" />}
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteCenter(c.id)}

@@ -1662,6 +1662,9 @@ export default function DicomViewerModal({
   const centerAddress = (centerRecord?.address || '').trim();
   const centerLogoUrl = resolveMediaUrl((centerRecord?.logoUrl || '').trim());
   const centerHeaderUrl = resolveMediaUrl((centerRecord?.headerTemplateUrl || '').trim());
+  const hasCenterHeader = Boolean((centerRecord?.headerTemplateUrl || '').trim());
+  // Never render the letterhead mode without a real header image (avoids stretched placeholder).
+  const effectiveWithHeader = hasCenterHeader && withHeader;
   const studyModality = (report?.modality || '').trim();
   const studyPartsLabel = (report?.bodyParts || []).filter(Boolean).join(', ');
 
@@ -1712,7 +1715,7 @@ export default function DicomViewerModal({
       centerLogoUrl,
       centerHeaderUrl,
       letterheadMode: centerRecord?.letterheadMode || 'full-page',
-      withHeader,
+      withHeader: effectiveWithHeader,
       patientName,
       patientId,
       ageSex,
@@ -2716,17 +2719,19 @@ export default function DicomViewerModal({
 
               <div className={`h-4 w-px mx-0.5 ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-300'}`} />
 
-              <button
-                type="button"
-                onClick={() => setWithHeader(!withHeader)}
-                className={`px-2 py-0.5 text-[10px] leading-4 font-bold border transition-all cursor-pointer rounded-full whitespace-nowrap shrink-0 ${
-                  withHeader
-                    ? (theme === 'dark' ? 'bg-cyan-600 text-white border-cyan-500 font-extrabold' : 'bg-blue-600 text-white border-blue-500 font-extrabold')
-                    : (theme === 'dark' ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-white text-slate-700 border-slate-300')
-                }`}
-              >
-                {withHeader ? 'Header Included' : 'No Header'}
-              </button>
+              {hasCenterHeader ? (
+                <button
+                  type="button"
+                  onClick={() => setWithHeader(!withHeader)}
+                  className={`px-2 py-0.5 text-[10px] leading-4 font-bold border transition-all cursor-pointer rounded-full whitespace-nowrap shrink-0 ${
+                    withHeader
+                      ? (theme === 'dark' ? 'bg-cyan-600 text-white border-cyan-500 font-extrabold' : 'bg-blue-600 text-white border-blue-500 font-extrabold')
+                      : (theme === 'dark' ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-white text-slate-700 border-slate-300')
+                  }`}
+                >
+                  {withHeader ? 'Header Included' : 'No Header'}
+                </button>
+              ) : null}
 
               <button
                 type="button"
