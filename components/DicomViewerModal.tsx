@@ -559,6 +559,8 @@ export default function DicomViewerModal({
 
   const [bodyPartReports, setBodyPartReports] = useState<Record<string, string>>({});
   const [bodyPartImpressions, setBodyPartImpressions] = useState<Record<string, string>>({});
+  /** True after the doctor picks a template manually — blocks async auto-match from wiping it. */
+  const templateManualRef = useRef(false);
 
   const handleSwitchBodyPartTab = (newIdx: number) => {
     if (!report?.bodyParts || newIdx < 0 || newIdx >= report.bodyParts.length) return;
@@ -579,6 +581,8 @@ export default function DicomViewerModal({
     if (!isOpen) return;
 
     let cancelled = false;
+    // Fresh open / new case — allow auto-match until the doctor picks a template themselves
+    templateManualRef.current = false;
 
     const initFromReport = async () => {
       if (!report) {
@@ -654,6 +658,8 @@ export default function DicomViewerModal({
       }
 
       if (cancelled) return;
+      // Doctor already chose a template while matchTemplate was in flight — don't wipe it
+      if (templateManualRef.current) return;
 
       setBodyPartReports(rMap);
       setBodyPartImpressions(iMap);
@@ -2468,6 +2474,7 @@ export default function DicomViewerModal({
                   value={selectedTemplateId || 'blank'}
                   onChange={(e) => {
                     const tId = e.target.value;
+                    templateManualRef.current = true;
                     setSelectedTemplateId(tId === 'blank' ? 'blank' : tId);
 
                     const htmlToPlain = (html: string) =>
@@ -2505,37 +2512,33 @@ export default function DicomViewerModal({
                       // Keep each study tab in sync with the selected template, matching
                       // the initial auto-match path above. Otherwise the template appears
                       // only on the currently open body-part tab and disappears on switch.
-                      const parts = report?.bodyParts?.length ? report.bodyParts : [];
-                      if (parts.length) {
-                        setBodyPartReports((prev) => {
-                          const next = { ...prev };
-                          parts.forEach((part) => { next[part] = findings; });
-                          return next;
-                        });
-                        setBodyPartImpressions((prev) => {
-                          const next = { ...prev };
-                          parts.forEach((part) => { next[part] = impression; });
-                          return next;
-                        });
-                      }
+                      const parts = report?.bodyParts?.length ? report.bodyParts : ['GENERAL'];
+                      setBodyPartReports((prev) => {
+                        const next = { ...prev };
+                        parts.forEach((part) => { next[part] = findings; });
+                        return next;
+                      });
+                      setBodyPartImpressions((prev) => {
+                        const next = { ...prev };
+                        parts.forEach((part) => { next[part] = impression; });
+                        return next;
+                      });
                     };
 
                     if (tId === 'blank' || !tId) {
                       setFindingText('');
                       setImpressionText('');
-                      const parts = report?.bodyParts?.length ? report.bodyParts : [];
-                      if (parts.length) {
-                        setBodyPartReports((prev) => {
-                          const next = { ...prev };
-                          parts.forEach((part) => { next[part] = ''; });
-                          return next;
-                        });
-                        setBodyPartImpressions((prev) => {
-                          const next = { ...prev };
-                          parts.forEach((part) => { next[part] = ''; });
-                          return next;
-                        });
-                      }
+                      const parts = report?.bodyParts?.length ? report.bodyParts : ['GENERAL'];
+                      setBodyPartReports((prev) => {
+                        const next = { ...prev };
+                        parts.forEach((part) => { next[part] = ''; });
+                        return next;
+                      });
+                      setBodyPartImpressions((prev) => {
+                        const next = { ...prev };
+                        parts.forEach((part) => { next[part] = ''; });
+                        return next;
+                      });
                       return;
                     }
 
@@ -2545,12 +2548,18 @@ export default function DicomViewerModal({
                       if (tmpl) {
                         setReportTitle(tmpl.title);
                         applyFindingsImpression(tmpl.findings || '', tmpl.impression || '', tmpl.content);
+                      } else {
+                        setStatusToast('Template not found in the loaded list. Try Show all, or reopen the case.');
+                        setTimeout(() => setStatusToast(null), 4000);
                       }
                     } else {
                       const tmpl = RADIOLOGY_TEMPLATES.find((t) => t.id === tId);
                       if (tmpl) {
                         setReportTitle(tmpl.title);
                         applyFindingsImpression(tmpl.findings, tmpl.impression);
+                      } else {
+                        setStatusToast('Template not found.');
+                        setTimeout(() => setStatusToast(null), 3500);
                       }
                     }
                   }}
