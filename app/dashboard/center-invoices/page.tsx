@@ -6,6 +6,7 @@ import { ApiClient, apiErrorMessage, resolveMediaUrl } from '@/lib/api-client';
 import { centerIdsWith, showCenterColumn, useSession } from '@/lib/access';
 import { PageShell, PageHeader, StatusBadge } from '@/components/ui';
 import { InvoiceActions } from '@/components/InvoiceActions';
+import WalletCard from '@/components/WalletCard';
 import { currentBillingPeriodIST, formatPeriodLabel } from '@/lib/invoice-print';
 
 export default function CenterInvoicesPage() {
@@ -182,6 +183,12 @@ export default function CenterInvoicesPage() {
           </div>
         }
       />
+
+      {(() => {
+        const wid = centerFilter !== 'ALL' ? centerFilter : session?.centerId || invoiceCenters[0]?.centerId;
+        const link = (session?.centers || []).find((c) => c.centerId === wid);
+        return wid ? <WalletCard key={wid} centerId={wid} canTopUp={!!link?.isAdmin} /> : null;
+      })()}
 
       {error && (
         <div className="text-xs text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2 font-medium">

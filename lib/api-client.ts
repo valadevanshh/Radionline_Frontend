@@ -1,3 +1,4 @@
+import { cleanDr } from '@/lib/doctor-name';
 import { XRayReport, Doctor, RadiologyCenter, DocTemplate, UserAccount } from './radiology-store';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
@@ -273,6 +274,30 @@ export interface MyWorkResponse {
 
 
 
+export interface CenterReferrer {
+  name: string;
+  hasCut: boolean;
+  cutType?: 'percent' | 'fixed' | null;
+  cutValue?: number | null;
+}
+export interface ReportVersion {
+  version?: number;
+  event?: string;
+  reason?: string;
+  snapshotAt?: string;
+  snapshotByName?: string;
+  reportStatus?: string;
+  findings?: string | null;
+  impression?: string | null;
+  signedAt?: string | null;
+  signedByName?: string | null;
+  claimedByName?: string | null;
+}
+export interface ReportHistoryResponse {
+  caseId: string;
+  studies: { studyId: string; bodyPart: string; current: ReportVersion; history: ReportVersion[] }[];
+}
+
 export type ReportCommentKind = 'FLAG' | 'REASSIGN' | 'RECHECK' | 'COMMENT';
 
 export interface ReportComment {
@@ -515,7 +540,7 @@ export const ApiClient = {
 
   async saveReport(
     report: Partial<XRayReport> & {
-      studyUploads?: { bodyPart: string; images: string[]; studyDate?: string }[];
+      studyUploads?: { bodyPart: string; images: string[]; studyDate?: string; studyTime?: string }[];
     },
   ) {
     return fetchJson<XRayReport & Partial<PendingApprovalResult>>('/reports', {
@@ -614,12 +639,13 @@ export const ApiClient = {
 
   // Doctors
   async getDoctors() {
-    return fetchJson<Doctor[]>('/doctors');
+    // t86: never show "DR. DR. X" (old rows), whatever the backend returns
+    return (await fetchJson<Doctor[]>('/doctors')).map((d) => ({ ...d, fullName: cleanDr(d.fullName) }));
   },
 
   /** Doctors directory with profile details (Super Admin, Manager, centre logins). */
   async getDoctorDirectory() {
-    return fetchJson<Doctor[]>('/doctors/directory');
+    return (await fetchJson<Doctor[]>('/doctors/directory')).map((d) => ({ ...d, fullName: cleanDr(d.fullName) }));
   },
 
   async saveDoctor(doctor: Partial<Doctor>) {
@@ -912,6 +938,43 @@ export const ApiClient = {
     return fetchJson<any>(`/invoices/${id}`);
   },
 
+  /** t83 (Super Admin): include / exclude reassigned-away (recheck) payouts on a doctor invoice. */
+  async setInvoiceRecheck(id: string, include: boolean) {
+    return fetchJson<any>(`/invoices/${id}/recheck`, { method: 'PATCH', body: JSON.stringify({ include }) });
+  },
+
+  // t83: centre prepaid wallet
+  async getCenterWallet(centerId: string) {
+    return fetchJson<CenterWallet>(`/wallet/centers/${encodeURIComponent(centerId)}`);
+  },
+  async getCenterWallets() {
+    return fetchJson<CenterWallet[]>('/wallet/centers');
+  },
+  async setCenterBillingMode(centerId: string, billingMode: 'prepaid' | 'postpaid') {
+    return fetchJson<CenterWallet>(`/wallet/centers/${encodeURIComponent(centerId)}/mode`, {
+      method: 'PUT',
+      body: JSON.stringify({ billingMode }),
+    });
+  },
+  async requestWalletTopup(centerId: string, amount: number, reference?: string) {
+    return fetchJson<WalletTopup>(`/wallet/centers/${encodeURIComponent(centerId)}/topups`, {
+      method: 'POST',
+      body: JSON.stringify({ amount, reference: reference || null }),
+    });
+  },
+  async getWalletTopups(status?: 'PENDING' | 'APPROVED' | 'REJECTED') {
+    return fetchJson<WalletTopup[]>(`/wallet/topups${status ? `?status=${status}` : ''}`);
+  },
+  async approveWalletTopup(id: string) {
+    return fetchJson<WalletTopup>(`/wallet/topups/${encodeURIComponent(id)}/approve`, { method: 'POST', body: '{}' });
+  },
+  async rejectWalletTopup(id: string, note?: string) {
+    return fetchJson<WalletTopup>(`/wallet/topups/${encodeURIComponent(id)}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ note: note || null }),
+    });
+  },
+
   async updateInvoiceStatus(id: string, status: 'paid' | 'pending') {
     return fetchJson<any>(`/invoices/${id}/status`, {
       method: 'PATCH',
@@ -923,6 +986,34 @@ export const ApiClient = {
 
   async getRevenueSummary(months = 6) {
     return fetchJson<RevenueSummary>(`/billing/revenue?months=${months}`);
+  },
+
+  // Centre referring doctors (optional referral cut), stored on the centre
+  // Payee bank / payout accounts (Super Admin only)
+  async getPayees() {
+    return fetchJson<PayeeAccount[]>('/payees');
+  },
+
+  async createPayee(body: PayeeAccountInput) {
+    return fetchJson<PayeeAccount>('/payees', { method: 'POST', body: JSON.stringify(body) });
+  },
+
+  async updatePayee(id: number, body: PayeeAccountInput) {
+    return fetchJson<PayeeAccount>(`/payees/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+  },
+
+  async getCenterReferrers(centerId: string) {
+    return fetchJson<CenterReferrer[]>('/centers/' + encodeURIComponent(centerId) + '/referrers');
+  },
+  async addCenterReferrer(centerId: string, body: CenterReferrer) {
+    return fetchJson<CenterReferrer>('/centers/' + encodeURIComponent(centerId) + '/referrers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+  // Super Admin: previous report versions + current, per study
+  async getReportHistory(reportId: string) {
+    return fetchJson<ReportHistoryResponse>('/reports/' + reportId + '/report-history');
   },
 
   // Priority 6: case activity thread / flag-reassign / recheck
@@ -983,3 +1074,55 @@ export const ApiClient = {
 
 
 };
+
+export type PayeeType = 'REFERRER' | 'DOCTOR' | 'OTHER';
+export interface PayeeAccountInput {
+  payeeName: string;
+  payeeType: PayeeType;
+  centerId?: string | null;
+  doctorId?: string | null;
+  accountHolder?: string | null;
+  bankName?: string | null;
+  accountNumber?: string | null;
+  ifsc?: string | null;
+  upiId?: string | null;
+  notes?: string | null;
+  isActive: boolean;
+}
+export interface PayeeAccount extends PayeeAccountInput {
+  id: number;
+  centerName?: string | null;
+  doctorName?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface WalletTopup {
+  id: string;
+  centerId: string;
+  centerName?: string | null;
+  amount: number;
+  reference?: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | string;
+  requestedBy?: string | null;
+  requestedAt: string;
+  decidedBy?: string | null;
+  decidedAt?: string | null;
+  note?: string | null;
+  balance?: number;
+}
+export interface CenterWallet {
+  centerId: string;
+  centerName: string;
+  billingMode: 'prepaid' | 'postpaid';
+  balance: number;
+  reportCharge: number;
+  insufficient: boolean;
+  lowBalance: boolean;
+  reportsLeft: number;
+  upiId: string;
+  upiName: string;
+  defaultTopup: number;
+  topups?: WalletTopup[];
+  transactions?: { id: string; amount: number; kind: string; ref: string; note?: string; balanceAfter: number; createdAt: string }[];
+}

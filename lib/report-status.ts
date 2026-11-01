@@ -10,3 +10,12 @@ export function isReportReady(report: XRayReport, bodyPart?: string): boolean {
   }
   return report.status === 'Completed';
 }
+
+/** t82: true once a doctor has created a report for the case (any study saved as draft or signed). */
+export function hasDoctorReport(report: XRayReport): boolean {
+  if (report.status === 'Completed') return true;
+  return (report.studies || []).some((s) => {
+    const st = String(s.reportStatus || '').toUpperCase();
+    return st === 'SIGNED' || st === 'DRAFT';
+  });
+}

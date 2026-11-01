@@ -38,6 +38,8 @@ import { RowChatButton, RowEditButton } from '@/components/CaseRowButtons';
 import { toast } from '@/components/ui/Toast';
 import { RowCard, RowCardList, RT_ACTIONS, RT_CONTAINER, RT_TABLE_ONLY, RT_TABLET_HIDE, RT_TABLET_ONLY } from '@/components/ui/ResponsiveTable';
 import ReportOptionsPopover from '@/components/ReportOptionsPopover';
+import WalletCard from '@/components/WalletCard';
+import { cleanDr, withDr } from '@/lib/doctor-name';
 import { formatPatientDisplayId } from '@/lib/uuid';
 import ReportPreviewModal from '@/components/ReportPreviewModal';
 import ReportTemplateModal from '@/components/ReportTemplateModal';
@@ -76,7 +78,7 @@ function AllPatientReportsContent() {
     idx: 64,
     center: 150,
     patientId: 96,
-    patient: 150,
+    patient: 170,
     genderAge: 72,
     bodyParts: 130,
     radiologist: 140,
@@ -439,6 +441,11 @@ function AllPatientReportsContent() {
           )}
         </div>
       </div>
+      {session?.role === 'CENTER' && (session.centerId || session.centers?.[0]?.centerId) && (
+        <div className="px-3 pt-2">
+          <WalletCard variant="banner" centerId={session.centerId || session.centers?.[0]?.centerId} />
+        </div>
+      )}
 
       {/* Filter Toolbar Strip */}
       <div className="bg-white border-b border-slate-200 px-4 py-2.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0">
@@ -530,6 +537,7 @@ function AllPatientReportsContent() {
             <option value="PELVIS">Pelvis with Both Hips</option>
           </select>
 
+          {!isDoctor && (
           <select
             value={filterDoctorId}
             onChange={(e) => setFilterDoctorId(e.target.value)}
@@ -542,6 +550,7 @@ function AllPatientReportsContent() {
               </option>
             ))}
           </select>
+          )}
 
           <button
             type="button"
@@ -600,7 +609,9 @@ function AllPatientReportsContent() {
               fields={[
                 ...(showCenter ? [{ label: 'Center', value: report.radiologyCenterName }] : []),
                 { label: 'Study Date', value: <span className="font-mono">{formatDateDDMMYYYY(report.studyDate)}</span> },
-                { label: 'Radiologist', value: report.assignedDoctorName ? `Dr. ${report.assignedDoctorName}` : 'Unassigned' },
+                isDoctor
+                    ? { label: 'Referred By', value: report.referringPhysicianName || '-' }
+                    : { label: 'Radiologist', value: report.assignedDoctorName ? withDr(report.assignedDoctorName) : 'Unassigned' },
                 { label: 'Referred By', value: report.referringPhysicianName || '-' },
               ]}
               actions={
@@ -678,13 +689,9 @@ function AllPatientReportsContent() {
                   <span>Body Parts</span>
                   <div className="col-resizer" onMouseDown={(e) => startResizing('bodyParts', e.clientX, widths.bodyParts)} />
                 </th>
-                <th title="Assigned Radiologist" style={{ width: widths.radiologist, position: 'relative' }}>
-                  <span>Radiologist</span>
+                <th title={isDoctor ? 'Referred By' : 'Assigned Radiologist'} style={{ width: widths.radiologist, position: 'relative' }}>
+                  <span>{isDoctor ? 'Referred By' : 'Radiologist'}</span>
                   <div className="col-resizer" onMouseDown={(e) => startResizing('radiologist', e.clientX, widths.radiologist)} />
-                </th>
-                <th title="Status" style={{ width: widths.status, position: 'relative' }}>
-                  <span>Status</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('status', e.clientX, widths.status)} />
                 </th>
                 <th title="Study Date" className={RT_TABLET_HIDE} style={{ width: widths.studyDate, position: 'relative' }}>
                   <span>Study Date</span>
@@ -699,7 +706,7 @@ function AllPatientReportsContent() {
             <tbody className="divide-y divide-slate-100">
               {filteredReports.length === 0 ? (
                 <tr>
-                  <td colSpan={showCenter ? 10 : 9} className="text-center p-8 text-slate-500 italic font-sans">
+                  <td colSpan={showCenter ? 9 : 8} className="text-center p-8 text-slate-500 italic font-sans">
                     No matching radiology reports found.
                   </td>
                 </tr>
@@ -752,8 +759,11 @@ function AllPatientReportsContent() {
                         {showCenter ? <>{report.radiologyCenterName} {'\u00b7'} </> : null}{report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'}/{formatAgeShort(report)} {'\u00b7'} <span className="font-mono whitespace-nowrap">{formatDateDDMMYYYY(report.studyDate)}</span>
                       </div>
                     </td>
-                    <td title={report.patientNumber} className="p-2 font-mono text-[11px] font-bold text-slate-700" data-testid="cell-patient-id">
-                      {formatPatientDisplayId(report.patientNumber) ? report.patientNumber : '-'}
+                    <td title={session?.role === 'SUPER_ADMIN' ? report.patientNumber : report.centerPatientId || ''} className="p-2 font-mono text-[11px] font-bold text-slate-700" data-testid="cell-patient-id">
+                      {session?.role === 'SUPER_ADMIN'
+                        ? (formatPatientDisplayId(report.patientNumber) ? report.patientNumber : '-')
+                        : (report.centerPatientId || '-')}
+                      {session?.role === 'SUPER_ADMIN' && report.centerPatientId ? <div className="text-[10px] font-medium text-slate-500" title="Centre Patient ID">C: {report.centerPatientId}</div> : null}
                     </td>
                     <td title={`${report.gender} / ${formatAgeShort(report)}`} className={`p-2 text-slate-800 font-medium ${RT_TABLET_HIDE}`}>
                       {report.gender?.trim().toUpperCase().startsWith('F') ? 'F' : report.gender?.trim().toUpperCase().startsWith('O') ? 'O' : 'M'} / {formatAgeShort(report)}
@@ -767,22 +777,19 @@ function AllPatientReportsContent() {
                         ))}
                       </div>
                     </td>
-                    <td title={`Dr. ${report.assignedDoctorName || 'Unassigned'} | Ref: ${report.referringPhysicianName}`} className="p-2">
+                    {isDoctor ? (
+                      <td title={report.referringPhysicianName} className="p-2">
+                        <div className="font-medium text-slate-800 truncate">{report.referringPhysicianName || '-'}</div>
+                      </td>
+                    ) : (
+                    <td title={`${report.assignedDoctorName ? withDr(report.assignedDoctorName) : 'Unassigned'} | Ref: ${cleanDr(report.referringPhysicianName)}`} className="p-2">
                       <div className="font-bold text-slate-900 truncate">{report.assignedDoctorName}</div>
                       <div className="text-[10px] text-slate-500 truncate">Ref: {report.referringPhysicianName}</div>
                     </td>
-                    <td title={report.status} className="p-2">
-                      <StatusBadge
-                        status={report.status}
-                        isPartial={
-                          report.isPartial ||
-                          ((report.signedStudyCount ?? 0) > 0 &&
-                            (report.signedStudyCount ?? 0) < (report.studyCount ?? report.bodyParts?.length ?? 0))
-                        }
-                      />
-                    </td>
+                    )}
                     <td title={formatDateDDMMYYYY(report.studyDate)} className={`p-2 font-mono text-slate-500 text-[11px] ${RT_TABLET_HIDE}`}>
                       {formatDateDDMMYYYY(report.studyDate)}
+                      {report.studies?.[0]?.studyTime ? <div className="text-[10px] text-slate-400">{report.studies[0].studyTime}</div> : null}
                     </td>
                     <td style={{ width: widths.actions, minWidth: 180 }} className="p-2 text-right sticky right-0 bg-white shadow-2xs z-10">
                       <div className={`flex flex-wrap items-center gap-1.5 justify-end ${RT_ACTIONS}`}>
@@ -821,7 +828,7 @@ function AllPatientReportsContent() {
                   </tr>
                   {expandedIds.has(report.id) && (
                     <tr>
-                      <td colSpan={showCenter ? 10 : 9} className="p-0">
+                      <td colSpan={showCenter ? 9 : 8} className="p-0">
                         <StudyThumbsRow report={report} />
                       </td>
                     </tr>

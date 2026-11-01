@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { FileText, ChevronDown, Printer, Eye } from 'lucide-react';
 import { XRayReport } from '@/lib/radiology-store';
 import { formatPatientDisplayId } from '@/lib/uuid';
-import { isReportReady } from '@/lib/report-status';
+import { hasDoctorReport, isReportReady } from '@/lib/report-status';
 
 interface ReportOptionsPopoverProps {
   report: XRayReport;
@@ -61,6 +61,9 @@ export default function ReportOptionsPopover({ report, onSelectOption }: ReportO
       window.removeEventListener('scroll', handleScroll, true);
     };
   }, [isOpen]);
+
+  // t82: no With/Without Header options until a doctor has created a report
+  if (!hasDoctorReport(report)) return null;
 
   return (
     <>

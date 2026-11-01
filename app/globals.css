@@ -695,5 +695,7 @@ input[type="text"]:focus, input[type="search"]:focus, input[type="password"]:foc
     :where(input[type="checkbox"], input[type="radio"]) { min-width: 18px; min-height: 18px; }
     /* report page (A4) and viewer canvas keep their exact geometry */
     :where([data-testid="report-print-area"]) :where(button, input, select) { min-height: 0; min-width: 0; }
+    /* age steppers: the whole 40px box is the target; inner arrows split it */
+    :where([data-testid="patient-age"], [data-testid="patient-gender"]) :where(button, input) { min-height: 0; min-width: 0; }
   }
 }

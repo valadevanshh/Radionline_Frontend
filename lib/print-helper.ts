@@ -1,3 +1,4 @@
+import { cleanDr } from '@/lib/doctor-name';
 /**
  * A4 Print Helper — builds a complete static report document (not a fragile live-DOM clone).
  * Opens a real-sized iframe, writes the report source, splits it into A4 pages (letterhead,
@@ -338,10 +339,9 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
       ${qr ? `<${qrTag} class="rn-qr" data-rn-qr data-testid="sheet-qr"${qrHref}>${qr}<span class="rn-qr-cap">Scan to verify</span></${qrTag}>` : ''}
       <div class="sig-inner">
         ${sigImg}
-        <div class="sig-name">${esc(payload.doctorName || 'Reporting Radiologist')}</div>
+        <div class="sig-name">${esc(cleanDr(payload.doctorName) || 'Reporting Radiologist')}</div>
         ${payload.doctorDegree ? `<div class="sig-meta">${esc(payload.doctorDegree)}</div>` : ''}
         ${payload.doctorRegNo ? `<div class="sig-meta">${esc(formatRegNo(payload.doctorRegNo))}</div>` : ''}
-        ${payload.reportedAt ? `<div class="sig-meta">Reported: ${esc(payload.reportedAt)}</div>` : ''}
         ${payload.reportId ? `<div class="sig-meta" data-testid="sheet-report-id">Report ID: ${esc(payload.reportId)}</div>` : ''}
       </div>
     </div>

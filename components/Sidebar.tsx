@@ -26,6 +26,7 @@ import {
   Menu,
   UserCircle,
   UserCog,
+  Landmark,
 } from 'lucide-react';
 import { RadiologyStore, UserAccount, XRayReport } from '@/lib/radiology-store';
 import { hasCenterLevel } from '@/lib/access';
@@ -56,6 +57,10 @@ const isReportOpenForDoctor = (r: XRayReport, s: UserAccount | null) => {
 // Styles for the mobile overlays: "More" sheet (slides up) and Notifications panel (drops down).
 // Animations are disabled for reduced motion; overlays never show above the mobile breakpoint.
 const MOBILE_OVERLAY_CSS = `
+.rn-sb-hover { box-shadow: 8px 0 24px -8px rgba(15, 23, 42, 0.18); }
+@keyframes rnSbFade { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+.rn-sb-open a > div, .rn-sb-open button > span:not([class*="absolute"]), .rn-sb-open button > div, .rn-sb-open img + * { animation: rnSbFade 220ms ease-out both; animation-delay: 60ms; }
+@media (prefers-reduced-motion: reduce) { .rn-sb { transition: none !important; } .rn-sb-open * { animation: none !important; } }
 @keyframes rn-more-slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 @keyframes rn-more-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rn-notif-drop { from { transform: translateY(-24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -82,11 +87,22 @@ interface SidebarProps {
 }
 
 export default function Sidebar({
-  collapsed,
+  collapsed: pinnedCollapsed,
   onToggleCollapse,
   mobileOpen = false,
   onCloseMobile,
 }: SidebarProps) {
+  // Desktop hover-expand: while the sidebar is collapsed, hovering opens it as an overlay
+  // (main content does not move). Small open/close delays avoid flicker on quick fly-bys.
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const collapsed = pinnedCollapsed && !hoverOpen;
+  const scheduleHover = (open: boolean) => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setHoverOpen(open), open ? 90 : 160);
+  };
+  useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []);
+  useEffect(() => { if (!pinnedCollapsed) setHoverOpen(false); }, [pinnedCollapsed]);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -113,7 +129,7 @@ export default function Sidebar({
         ];
       case 'DOCTOR':
         return [
-          { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+          { href: '/dashboard', label: 'Analytics', icon: LayoutDashboard },
           { href: '/dashboard/live-feed', label: 'Live Dashboard', icon: Radio, isLive: true },
           { href: '/dashboard/my-work', label: 'My Work', icon: Briefcase },
           { href: '/dashboard/all-reports', label: 'All Reports', icon: FileText },
@@ -125,7 +141,7 @@ export default function Sidebar({
         // Pages follow the login's per-centre permissions (best level over its centres)
         const items: Array<{ href: string; label: string; icon: typeof FileText; isLive?: boolean }> = [];
         if (hasCenterLevel(session, 'reports', 'read')) {
-          items.push({ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard });
+          items.push({ href: '/dashboard', label: 'Analytics', icon: LayoutDashboard });
           items.push({ href: '/dashboard/all-reports', label: 'All Reports', icon: FileText });
         }
         items.push({ href: '/dashboard/doctors', label: 'Doctors', icon: Users });
@@ -144,6 +160,7 @@ export default function Sidebar({
           { href: '/dashboard/doctors', label: 'Doctors', icon: Users },
           { href: '/dashboard/radiology', label: 'Centers', icon: Building },
           { href: '/dashboard/center-users', label: 'Center Users', icon: UserCog },
+          { href: '/dashboard/payees', label: 'Payee Accounts', icon: Landmark },
         ];
     }
   };
@@ -245,7 +262,7 @@ export default function Sidebar({
       const target = event.target as Node | null;
       if (notifContainerRef.current && !notifContainerRef.current.contains(target)) {
         setNotificationsOpen(false);
-        if (!collapsed) {
+        if (!pinnedCollapsed) {
           onToggleCollapse();
         }
         if (mobileOpen) {
@@ -257,7 +274,7 @@ export default function Sidebar({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setNotificationsOpen(false);
-        if (!collapsed) {
+        if (!pinnedCollapsed) {
           onToggleCollapse();
         }
         if (mobileOpen) {
@@ -283,7 +300,7 @@ export default function Sidebar({
       document.removeEventListener('touchstart', handleClickOutside);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [notificationsOpen, collapsed, onToggleCollapse, mobileOpen, onCloseMobile]);
+  }, [notificationsOpen, pinnedCollapsed, onToggleCollapse, mobileOpen, onCloseMobile]);
   const [liveReports, setLiveReports] = useState<XRayReport[]>([]);
   const [rejectedIds, setRejectedIds] = useState<string[]>([]);
   const [toastNotice, setToastNotice] = useState<string | null>(null);
@@ -683,14 +700,16 @@ export default function Sidebar({
 
   const SidebarContent = (
     <aside
-      className="bg-white border-r border-slate-200 relative"
+      className={`bg-white border-r border-slate-200 relative rn-sb ${collapsed ? '' : 'rn-sb-open'} ${pinnedCollapsed && hoverOpen ? 'rn-sb-hover' : ''}`}
+      data-testid="sidebar"
       style={{
         width: collapsed ? 52 : 210,
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
         flexShrink: 0,
-        transition: 'width 0.18s ease-in-out',
+        transition: 'width 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease',
+        whiteSpace: 'nowrap',
         userSelect: 'none',
       }}
     >
@@ -926,8 +945,21 @@ export default function Sidebar({
       <style>{MOBILE_OVERLAY_CSS}</style>
 
       {/* Desktop sidebar */}
-      <div className="hidden-mobile" style={{ display: 'flex', height: '100%' }}>
-        {SidebarContent}
+      <div
+        className="hidden-mobile"
+        style={{ display: 'flex', height: '100%', position: 'relative', width: pinnedCollapsed ? 52 : undefined, flexShrink: 0 }}
+        onMouseEnter={() => { if (pinnedCollapsed) scheduleHover(true); }}
+        onMouseLeave={() => { if (pinnedCollapsed && !notificationsOpen) scheduleHover(false); }}
+      >
+        <div
+          style={
+            pinnedCollapsed
+              ? { position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 60, display: 'flex' }
+              : { display: 'flex', height: '100%' }
+          }
+        >
+          {SidebarContent}
+        </div>
       </div>
 
       {/* Mobile drawer overlay */}

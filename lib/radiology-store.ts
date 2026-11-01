@@ -102,6 +102,10 @@ export interface RadiologyCenter {
 export interface StudyReportInfo {
   /** this study's own date (DD-MM-YYYY); falls back to the case studyDate */
   studyDate?: string | null;
+  /** HH:MM when the image was scanned (studies.metadata.studyTime) */
+  studyTime?: string | null;
+  /** ISO time the study was uploaded (server-set) */
+  uploadedAt?: string | null;
   id: string;
   bodyPart: string;
   modality?: string;
@@ -141,6 +145,8 @@ export interface StudySigner {
 export interface XRayReport {
   id: string;
   patientNumber: string;
+  /** the centre's own patient ID (optional, cases.metadata.centerPatientId) */
+  centerPatientId?: string | null;
   fullName: string;
   age: number;
   ageUnit?: 'Years' | 'Months' | 'Days';

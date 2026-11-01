@@ -1,4 +1,5 @@
 'use client';
+import { withDr } from '@/lib/doctor-name';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -258,7 +259,7 @@ export default function DocumentEditorStudioPage() {
                       {tmpl.doctorName ? (
                         <span className="text-[10px] text-purple-700 font-semibold bg-purple-50 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
                           <Stethoscope className="w-3 h-3" />
-                          <span>Dr. {tmpl.doctorName}</span>
+                          <span>{withDr(tmpl.doctorName)}</span>
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1">

@@ -68,9 +68,23 @@ export function canUploadCase(session: UserAccount | null | undefined): boolean 
 }
 
 /** Row Edit: Super Admin, Manager (approval), centre login with Reports = write on the case's centre. */
-export function canEditCase(session: UserAccount | null | undefined, report: Pick<XRayReport, 'radiologyCenterId'>): boolean {
+/** t81: a Completed case is read-only for centre and doctor logins (Super Admin can still edit). */
+export function isCompletedLocked(
+  session: UserAccount | null | undefined,
+  report: { status?: string | null } | null | undefined
+): boolean {
+  if (!session || !report) return false;
+  if (session.role !== 'CENTER' && session.role !== 'DOCTOR') return false;
+  return String(report.status || '') === 'Completed';
+}
+
+export function canEditCase(
+  session: UserAccount | null | undefined,
+  report: Pick<XRayReport, 'radiologyCenterId'> & { status?: string | null }
+): boolean {
   if (!session) return false;
   if (session.role === 'SUPER_ADMIN' || session.role === 'MANAGER') return true;
+  if (isCompletedLocked(session, report)) return false;
   if (session.role === 'CENTER') return hasCenterLevel(session, 'reports', 'write', report.radiologyCenterId);
   return false;
 }

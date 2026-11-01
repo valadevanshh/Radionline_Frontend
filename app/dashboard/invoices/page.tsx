@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  FileSpreadsheet,
   Receipt,
   Lock,
   Unlock,
@@ -16,6 +17,8 @@ import { RadiologyStore } from '@/lib/radiology-store';
 import { useConfirm, StatusBadge } from '@/components/ui';
 import { RowCard, RowCardList, RT_CONTAINER, RT_TABLE_ONLY } from '@/components/ui/ResponsiveTable';
 import { InvoiceActions } from '@/components/InvoiceActions';
+import CenterWalletsAdmin from '@/components/CenterWalletsAdmin';
+import { exportInvoiceListExcel } from '@/lib/invoice-excel';
 import { currentBillingPeriodIST, formatPeriodLabel } from '@/lib/invoice-print';
 
 type InvoiceRow = {
@@ -94,6 +97,21 @@ export default function SuperAdminInvoicesPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, periodFilter, statusFilter]);
+
+  const [recheckBusy, setRecheckBusy] = useState(false);
+  const toggleRecheck = async (include: boolean) => {
+    if (!detail) return;
+    setRecheckBusy(true);
+    try {
+      const d = await ApiClient.setInvoiceRecheck(detail.id, include);
+      setDetail(d);
+      setInvoices((prev) => prev.map((i) => (i.id === d.id ? { ...i, totalAmount: d.totalAmount } : i)));
+    } catch (e: any) {
+      setError(e?.message || 'Could not update the recheck amount');
+    } finally {
+      setRecheckBusy(false);
+    }
+  };
 
   const openDetail = async (id: string) => {
     setSelectedId(id);
@@ -221,7 +239,22 @@ export default function SuperAdminInvoicesPage() {
           >
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </button>
+          <button
+            type="button"
+            data-testid="invoice-list-excel"
+            disabled={!invoices.length}
+            onClick={() =>
+              exportInvoiceListExcel(invoices as unknown as Record<string, unknown>[], `${tab}-${periodFilter || 'all'}`).catch(() =>
+                setError('Could not create the Excel file')
+              )
+            }
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200 bg-green-50 text-xs font-bold text-green-800 hover:bg-green-100 cursor-pointer disabled:opacity-50"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" /> Export Excel
+          </button>
         </div>
+
+        <CenterWalletsAdmin />
 
         {/* Month toolbar */}
         <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 space-y-3">
@@ -540,12 +573,52 @@ export default function SuperAdminInvoicesPage() {
                       locked: detail.locked,
                       byDay: detail.byDay,
                       lineItems: detail.lineItems,
+                      recheckLines: detail.recheckLines,
+                      includeRecheck: detail.includeRecheck,
                       issuerName: 'Radionline',
                     }}
                     letterheadUrl={letterheadFor(detail)}
                     serviceDate={viewMode === 'day' ? dayFilter || null : null}
                   />
                 </div>
+
+                {detail.partyType === 'doctor' && (
+                  <div className="rounded-lg border border-violet-200 bg-violet-50/60 p-2.5" data-testid="recheck-box">
+                    <label className={`flex items-start gap-2 text-xs ${detail.locked || !detail.recheckLines?.length ? 'opacity-60' : 'cursor-pointer'}`}>
+                      <input
+                        type="checkbox"
+                        data-testid="recheck-checkbox"
+                        className="mt-0.5 h-4 w-4 accent-violet-600"
+                        checked={!!detail.includeRecheck}
+                        disabled={detail.locked || recheckBusy || (!detail.recheckLines?.length && !detail.includeRecheck)}
+                        onChange={(e) => toggleRecheck(e.target.checked)}
+                      />
+                      <span>
+                        <span className="font-bold text-violet-900">Add Recheck amount</span>
+                        <span className="ml-1 font-mono font-bold text-violet-900">₹{detail.recheckAmount || 0}</span>
+                        <span className="block text-[11px] text-slate-600">
+                          {detail.recheckLines?.length
+                            ? `Pay this doctor for ${detail.recheckLines.length} report${detail.recheckLines.length > 1 ? 's that were' : ' that was'} reassigned to another doctor.`
+                            : 'No reassigned (recheck) reports on this invoice.'}
+                          {detail.locked ? ' Month is locked.' : ''}
+                        </span>
+                      </span>
+                    </label>
+                    {detail.recheckLines?.length > 0 && (
+                      <ul className="mt-1.5 space-y-0.5 pl-6">
+                        {detail.recheckLines.map((l: any) => (
+                          <li key={l.id} className="text-[10px] text-slate-600 flex justify-between gap-2">
+                            <span className="truncate">
+                              {l.serviceDate} · {l.patientName} · {l.bodyPart}
+                              {l.statusReason ? ` · ${l.statusReason}` : ''}
+                            </span>
+                            <span className="font-mono shrink-0">₹{-Number(l.amount || 0)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex flex-wrap gap-2">
                   <button

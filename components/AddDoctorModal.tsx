@@ -1,4 +1,5 @@
 'use client';
+import { hasDrPrefix, stripDr, DR_HINT } from '@/lib/doctor-name';
 
 import React, { useState } from 'react';
 import { X, Upload, Check, UserPlus, Image as ImageIcon, Key, Lock, Eye, EyeOff, Wand2 } from 'lucide-react';
@@ -48,9 +49,9 @@ export default function AddDoctorModal({ isOpen, onClose, onSave }: AddDoctorMod
     const finalPassword = password.trim() || 'doctor@123';
 
     onSave({
-      firstName,
-      lastName,
-      fullName: `DR. ${firstName.toUpperCase()} ${lastName.toUpperCase()}`,
+      firstName: stripDr(firstName),
+      lastName: stripDr(lastName),
+      fullName: `DR. ${stripDr(firstName).toUpperCase()} ${stripDr(lastName).toUpperCase()}`,
       email,
       username: finalUsername,
       password: finalPassword,
@@ -101,7 +102,7 @@ export default function AddDoctorModal({ isOpen, onClose, onSave }: AddDoctorMod
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">First Name *</label>
+              <label className="block font-semibold text-slate-700 mb-1">First Name * <span className="font-normal text-slate-400">(name only, no &quot;Dr.&quot;)</span>{(hasDrPrefix(firstName) || hasDrPrefix(lastName)) && <span className="block text-[11px] font-semibold text-amber-700" data-testid="dr-hint">{DR_HINT}</span>}</label>
               <input
                 type="text"
                 required

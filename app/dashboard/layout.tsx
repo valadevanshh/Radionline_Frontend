@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
+import WalletTopupApprovals from '@/components/WalletTopupApprovals';
 import { ThemeProvider } from '@/lib/theme-context';
 import { ApiClient, getAccessToken } from '@/lib/api-client';
 import { refreshSession } from '@/lib/access';
@@ -61,6 +62,7 @@ export default function DashboardLayout({
           <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             {children}
           </main>
+          {RadiologyStore.getSession()?.role === 'SUPER_ADMIN' && <WalletTopupApprovals />}
         </div>
       </div>
     </ThemeProvider>

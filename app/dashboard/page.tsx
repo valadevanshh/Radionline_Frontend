@@ -207,7 +207,7 @@ export default function DashboardOverviewPage() {
               <Activity className="w-4 h-4" />
             </div>
             <h1 className="text-xs sm:text-sm font-extrabold text-slate-900 font-mono uppercase tracking-tight truncate">
-              Dashboard
+              {isDoctor || session?.role === 'CENTER' ? 'Analytics' : 'Dashboard'}
             </h1>
           </div>
 
@@ -385,7 +385,7 @@ export default function DashboardOverviewPage() {
                     <div className="text-[10px] text-slate-400">{revenue?.currentPeriod || '-'}</div>
                   </div>
                 </div>
-                {revenue ? (
+                {revenue?.currentMonth ? (
                   <div className="flex items-center gap-x-5 gap-y-1 flex-wrap">
                     {[
                       ['Billing', revenue.currentMonth.centerBilling, 'text-sky-700'],
@@ -394,7 +394,7 @@ export default function DashboardOverviewPage() {
                     ].map(([k, v, c]) => (
                       <div key={String(k)} className="leading-tight">
                         <div className="text-[10px] uppercase tracking-wider text-slate-400">{k}</div>
-                        <div className={`text-sm font-bold tabular-nums ${c}`}>{'\u20B9'}{Number(v).toLocaleString('en-IN')}</div>
+                        <div className={`text-sm font-bold tabular-nums ${c}`}>{'\u20B9'}{(Number(v) || 0).toLocaleString('en-IN')}</div>
                       </div>
                     ))}
                   </div>

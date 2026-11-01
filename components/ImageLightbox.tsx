@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { FileText, X } from 'lucide-react';
+import { Download, FileText, X } from 'lucide-react';
+import { downloadImage, useImageContextMenu } from '@/components/ui/ImageContextMenu';
 
 export interface LightboxItem {
   key: string;
@@ -27,6 +28,7 @@ export default function ImageLightbox({
   onClose: () => void;
 }) {
   const n = items.length;
+  const { onImageContextMenu, imageMenu } = useImageContextMenu();
   useEffect(() => {
     if (!n) return;
     const onKey = (e: KeyboardEvent) => {
@@ -47,6 +49,8 @@ export default function ImageLightbox({
   if (!item) return null;
 
   return (
+    <>
+    {imageMenu}
     <div
       className="fixed inset-0 z-[450] flex flex-col bg-slate-950/90"
       role="dialog"
@@ -62,6 +66,19 @@ export default function ImageLightbox({
           {item.name}
           {n > 1 ? ` (${index + 1} / ${n})` : ''}
         </span>
+        {item.imageUrl && (
+          <button
+            type="button"
+            onClick={() => downloadImage(item.imageUrl as string, item.name)}
+            aria-label="Download image"
+            title="Download image"
+            data-testid="lightbox-download"
+            className="h-9 px-3 rounded-full bg-white/10 hover:bg-white/20 inline-flex items-center gap-1.5 text-[13px] font-semibold"
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Download</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}
@@ -79,7 +96,7 @@ export default function ImageLightbox({
       >
         {item.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.imageUrl} alt={item.name} className="max-w-full max-h-full object-contain select-none" />
+          <img src={item.imageUrl} alt={item.name} onContextMenu={onImageContextMenu(item.imageUrl, item.name)} className="max-w-full max-h-full object-contain select-none" />
         ) : item.kind === 'pdf' && item.pdfUrl ? (
           <iframe src={item.pdfUrl} title={item.name} className="w-full max-w-4xl h-full bg-white rounded" />
         ) : (
@@ -114,5 +131,6 @@ export default function ImageLightbox({
         )}
       </div>
     </div>
+    </>
   );
 }

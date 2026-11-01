@@ -1,11 +1,16 @@
 'use client';
 
 import React from 'react';
-import { Download, FileText, Printer } from 'lucide-react';
-import { downloadInvoice, printInvoice, type InvoicePrintPayload } from '@/lib/invoice-print';
+import { Download, FileSpreadsheet, FileText, Printer } from 'lucide-react';
+import { downloadInvoice, printInvoice, type InvoicePrintPayload, type InvoicePrintStudy } from '@/lib/invoice-print';
+import { exportInvoiceExcel } from '@/lib/invoice-excel';
+import { toast } from '@/components/ui/Toast';
 
 type Props = {
-  invoice: Omit<InvoicePrintPayload, 'withLetterhead' | 'serviceDate' | 'letterheadUrl'>;
+  invoice: Omit<InvoicePrintPayload, 'withLetterhead' | 'serviceDate' | 'letterheadUrl'> & {
+    recheckLines?: InvoicePrintStudy[];
+    includeRecheck?: boolean;
+  };
   letterheadUrl?: string | null;
   serviceDate?: string | null;
   compact?: boolean;
@@ -59,6 +64,18 @@ export function InvoiceActions({ invoice, letterheadUrl, serviceDate, compact }:
       >
         <Download className="w-3.5 h-3.5" />
         {compact ? 'DL' : 'Download plain'}
+      </button>
+      <button
+        type="button"
+        title="Export as Excel (.xlsx)"
+        data-testid="invoice-excel"
+        onClick={() =>
+          exportInvoiceExcel(base).catch(() => toast.error('Could not create the Excel file'))
+        }
+        className={`${btn} ${size} border-green-200 bg-green-50 text-green-800 hover:bg-green-100`}
+      >
+        <FileSpreadsheet className="w-3.5 h-3.5" />
+        {compact ? 'XLS' : 'Excel'}
       </button>
     </div>
   );

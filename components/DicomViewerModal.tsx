@@ -83,6 +83,7 @@ const SHEET_FONT_STACKS: Record<string, string> = {
 const SHEET_FONT_PT: Record<string, number> = { 'text-xs': 10, 'text-sm': 11, 'text-base': 12 };
 import { ApiClient, resolveMediaUrl, apiErrorMessage, publicReportLink, getAccessToken, WS_BASE_URL, type ImageAnnotation } from '@/lib/api-client';
 import { canWriteTemplates } from '@/lib/access';
+import { downloadImage, useImageContextMenu } from '@/components/ui/ImageContextMenu';
 
 interface DicomViewerModalProps {
   isOpen: boolean;
@@ -749,6 +750,7 @@ export default function DicomViewerModal({
   const [selectedMarkId, setSelectedMarkId] = useState<number | null>(null);
   const svgRefs = useRef<(SVGSVGElement | null)[]>([]);
   const viewerSession = RadiologyStore.getSession();
+  const { onImageContextMenu, imageMenu } = useImageContextMenu();
   const canDrawArrows = viewerSession?.role === 'DOCTOR' || viewerSession?.role === 'SUPER_ADMIN';
   const canCreateTemplate = canWriteTemplates(viewerSession);
   const isBlankTemplate = !selectedTemplateId || selectedTemplateId === 'blank';
@@ -920,6 +922,10 @@ export default function DicomViewerModal({
 
 
   const handleSaveAndSubmitReport = async () => {
+    if (reportLocked) {
+      alert(lockedTitle);
+      return;
+    }
     if (!report) {
       alert('No active patient report selected.');
       return;
@@ -1044,7 +1050,7 @@ export default function DicomViewerModal({
   };
 
   const handleSaveDraft = async () => {
-    if (!report || isSubmitting) return;
+    if (!report || isSubmitting || reportLocked) return;
     setIsSubmitting(true);
     const parts = report.bodyParts || [];
     const currentPart = parts[activeBodyPartIdx] || parts[0] || 'CHEST PA/AP';
@@ -1554,6 +1560,12 @@ export default function DicomViewerModal({
     const list = report?.studies || [];
     return list.find((s) => s.bodyPart === part) || list[activeBodyPartIdx] || null;
   })();
+  // t81: a signed study of a Completed case is read-only for centre / doctor logins
+  const reportLocked =
+    (viewerSession?.role === 'DOCTOR' || viewerSession?.role === 'CENTER') &&
+    String(report?.status || '') === 'Completed' &&
+    String(activeStudyInfo?.reportStatus || '').toUpperCase() === 'SIGNED';
+  const lockedTitle = 'Report completed - read-only (only Super Admin can edit)';
   const frozenSigner =
     String(activeStudyInfo?.reportStatus || '').toUpperCase() === 'SIGNED' && activeStudyInfo?.signer
       ? activeStudyInfo.signer
@@ -1749,7 +1761,7 @@ export default function DicomViewerModal({
           <div className={`text-[12px] sm:text-[13px] truncate leading-snug ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
             <span>{patientAge !== '—' && patientAge !== '-' ? patientAge : '—'} / {patientGender ? (String(patientGender).trim().toUpperCase().startsWith('F') ? 'F' : String(patientGender).trim().toUpperCase().startsWith('O') ? 'O' : 'M') : '—'}</span>
             <span className="mx-1.5 opacity-50">·</span>
-            <span className="font-mono">{patientId}</span>
+            <span className="font-mono" data-testid="viewer-patient-id">{RadiologyStore.getSession()?.role === 'SUPER_ADMIN' ? patientId : (report?.centerPatientId || '-')}</span>
             <span className="mx-1.5 opacity-50 hidden sm:inline">·</span>
             <span className="hidden sm:inline">{report?.bodyParts?.join(', ') || report?.modality || 'Study'}</span>
             <span className="mx-1.5 opacity-50 hidden md:inline">·</span>
@@ -1839,13 +1851,14 @@ export default function DicomViewerModal({
           <button
             type="button"
             onClick={handleSaveDraft}
-            disabled={isSubmitting}
+            disabled={isSubmitting || reportLocked}
+            data-locked={reportLocked ? "true" : undefined}
             className={`flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg border text-[13px] font-semibold transition-colors ${
               theme === 'dark'
                 ? 'border-slate-700 text-slate-200 hover:bg-slate-800'
                 : 'border-slate-300 text-slate-700 hover:bg-slate-50'
             }`}
-            title="Save Draft Report"
+            title={reportLocked ? lockedTitle : 'Save Draft Report'}
           >
             <BookmarkPlus className="w-4 h-4 text-[#009ef7]" />
             <span className="hidden md:inline">Save Draft</span>
@@ -1854,12 +1867,13 @@ export default function DicomViewerModal({
           <button
             type="button"
             onClick={handleSaveAndSubmitReport}
-            disabled={isSubmitting}
-            className="flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[13px] font-bold transition-colors disabled:opacity-60"
-            title="Save & Submit Report"
+            disabled={isSubmitting || reportLocked}
+            data-locked={reportLocked ? "true" : undefined}
+            className="flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[13px] font-bold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            title={reportLocked ? lockedTitle : 'Save & Submit Report'}
           >
             {reportSavedSuccess ? <CheckCircle2 className="w-4 h-4" /> : <FileCheck className="w-4 h-4" />}
-            <span>{isSubmitting ? 'Submitting...' : reportSavedSuccess ? 'Submitted!' : 'Save & Submit'}</span>
+            <span>{reportLocked ? 'Completed (read-only)' : isSubmitting ? 'Submitting...' : reportSavedSuccess ? 'Submitted!' : 'Save & Submit'}</span>
           </button>
         </div>
 
@@ -2138,6 +2152,7 @@ export default function DicomViewerModal({
                     });
                   }}
                   title={`${s.title}`}
+                  onContextMenu={onImageContextMenu(s.imageUrl, s.title)}
                   className={`w-11 h-8 border-2 cursor-pointer relative overflow-hidden rounded shrink-0 ${
                     viewportSeries[activeViewportIdx] === idx ? 'border-cyan-400 ring-2 ring-cyan-500/40' : 'border-slate-700 opacity-70 hover:opacity-100'
                   }`}
@@ -2173,6 +2188,7 @@ export default function DicomViewerModal({
                 onPointerUp={(e) => handleViewportPointerUp(e, vIdx)}
                 onPointerCancel={(e) => handleViewportPointerUp(e, vIdx)}
                 onWheel={(e) => handleViewportWheel(e, vIdx)}
+                onContextMenu={onImageContextMenu(series?.imageUrl, series?.title || 'image')}
                 className={`relative bg-black border overflow-hidden flex items-center justify-center cursor-crosshair touch-none select-none ${
                   isActive ? 'border-cyan-400 ring-2 ring-cyan-500/30' : 'border-slate-800/80'
                 }`}
@@ -2310,6 +2326,24 @@ export default function DicomViewerModal({
                     })()}
                     </svg>
                   </div>
+
+                  {/* t84: download the image shown in this viewport */}
+                  {series?.imageUrl && (
+                    <button
+                      type="button"
+                      title="Download image"
+                      aria-label="Download image"
+                      data-testid={`viewport-download-${vIdx}`}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        downloadImage(series.imageUrl, series.title || 'image');
+                      }}
+                      className="absolute top-2 right-2 z-50 pointer-events-auto inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-slate-900/80 border border-slate-600 text-cyan-200 text-[11px] font-bold hover:bg-slate-800 hover:text-white"
+                    >
+                      <Download className="w-3.5 h-3.5" /> <span className="hidden md:inline">Download</span>
+                    </button>
+                  )}
 
                   {/* Interactive Magnifier Lens Overlay */}
                   {activeTool === 'magnifier' && magnifierPos && isActive && (
@@ -2880,11 +2914,12 @@ export default function DicomViewerModal({
               <button
                 type="button"
                 onClick={handleSaveAndSubmitReport}
-                disabled={isSubmitting}
+                disabled={isSubmitting || reportLocked}
+                data-locked={reportLocked ? "true" : undefined}
                 className="flex-1 flex items-center justify-center gap-2 h-11 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[14px] font-bold disabled:opacity-60"
               >
                 {reportSavedSuccess ? <CheckCircle2 className="w-5 h-5" /> : <FileCheck className="w-5 h-5" />}
-                {isSubmitting ? 'Submitting...' : reportSavedSuccess ? 'Submitted!' : 'Save & Submit'}
+                {reportLocked ? 'Completed (read-only)' : isSubmitting ? 'Submitting...' : reportSavedSuccess ? 'Submitted!' : 'Save & Submit'}
               </button>
             </div>
 
@@ -2893,6 +2928,7 @@ export default function DicomViewerModal({
 
       </div>
 
+      {imageMenu}
       {/* Save as Template Modal in Report Format (DICOM Viewer Workstation) */}
       {canCreateTemplate && (
         <ReportTemplateModal
