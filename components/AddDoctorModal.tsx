@@ -4,6 +4,7 @@ import { hasDrPrefix, stripDr, DR_HINT } from '@/lib/doctor-name';
 import React, { useState } from 'react';
 import { X, Upload, Check, UserPlus, Image as ImageIcon, Key, Lock, Eye, EyeOff, Wand2 } from 'lucide-react';
 import { Doctor } from '@/lib/radiology-store';
+import { processSignatureImage } from '@/lib/signature-process';
 
 interface AddDoctorModalProps {
   isOpen: boolean;
@@ -248,7 +249,7 @@ export default function AddDoctorModal({ isOpen, onClose, onSave }: AddDoctorMod
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const f = e.target.files?.[0];
                     setSignatureName('');
                     setSignatureData('');
@@ -258,12 +259,14 @@ export default function AddDoctorModal({ isOpen, onClose, onSave }: AddDoctorMod
                       e.target.value = '';
                       return;
                     }
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      setSignatureData(String(reader.result || ''));
-                      setSignatureName(f.name);
-                    };
-                    reader.readAsDataURL(f);
+                    try {
+                      const url = await processSignatureImage(f);
+                      setSignatureData(url);
+                      setSignatureName(f.name.replace(/\.[^.]+$/, '') + '.png');
+                    } catch {
+                      alert('Could not process that signature image.');
+                      e.target.value = '';
+                    }
                   }}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />

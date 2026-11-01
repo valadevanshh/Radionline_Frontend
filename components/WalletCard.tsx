@@ -171,6 +171,9 @@ export default function WalletCard({
             <div className="text-center">
               <div className="text-lg font-bold font-mono text-slate-900">₹{amount.toLocaleString('en-IN')}</div>
               <div className="text-xs text-slate-500">Scan with any UPI app or pay to</div>
+              {w.collectionLabel && (
+                <div className="text-[11px] font-semibold text-slate-600 mt-0.5">{w.collectionLabel}</div>
+              )}
               <div className="text-sm font-mono font-semibold text-slate-800">{w.upiId}</div>
             </div>
           </div>

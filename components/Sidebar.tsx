@@ -27,6 +27,7 @@ import {
   UserCircle,
   UserCog,
   Landmark,
+  QrCode,
 } from 'lucide-react';
 import { RadiologyStore, UserAccount, XRayReport } from '@/lib/radiology-store';
 import { hasCenterLevel } from '@/lib/access';
@@ -161,6 +162,7 @@ export default function Sidebar({
           { href: '/dashboard/radiology', label: 'Centers', icon: Building },
           { href: '/dashboard/center-users', label: 'Center Users', icon: UserCog },
           { href: '/dashboard/payees', label: 'Payee Accounts', icon: Landmark },
+          { href: '/dashboard/payment-qr', label: 'Receive Payments', icon: QrCode },
         ];
     }
   };

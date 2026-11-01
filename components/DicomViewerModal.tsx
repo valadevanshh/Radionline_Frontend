@@ -2502,11 +2502,21 @@ export default function DicomViewerModal({
                       }
                       setFindingText(findings);
                       setImpressionText(impression);
+                      // Keep each study tab in sync with the selected template, matching
+                      // the initial auto-match path above. Otherwise the template appears
+                      // only on the currently open body-part tab and disappears on switch.
                       const parts = report?.bodyParts?.length ? report.bodyParts : [];
-                      const currentPart = parts[activeBodyPartIdx] || parts[0];
-                      if (currentPart) {
-                        setBodyPartReports((prev) => ({ ...prev, [currentPart]: findings }));
-                        setBodyPartImpressions((prev) => ({ ...prev, [currentPart]: impression }));
+                      if (parts.length) {
+                        setBodyPartReports((prev) => {
+                          const next = { ...prev };
+                          parts.forEach((part) => { next[part] = findings; });
+                          return next;
+                        });
+                        setBodyPartImpressions((prev) => {
+                          const next = { ...prev };
+                          parts.forEach((part) => { next[part] = impression; });
+                          return next;
+                        });
                       }
                     };
 
@@ -2514,10 +2524,17 @@ export default function DicomViewerModal({
                       setFindingText('');
                       setImpressionText('');
                       const parts = report?.bodyParts?.length ? report.bodyParts : [];
-                      const currentPart = parts[activeBodyPartIdx] || parts[0];
-                      if (currentPart) {
-                        setBodyPartReports((prev) => ({ ...prev, [currentPart]: '' }));
-                        setBodyPartImpressions((prev) => ({ ...prev, [currentPart]: '' }));
+                      if (parts.length) {
+                        setBodyPartReports((prev) => {
+                          const next = { ...prev };
+                          parts.forEach((part) => { next[part] = ''; });
+                          return next;
+                        });
+                        setBodyPartImpressions((prev) => {
+                          const next = { ...prev };
+                          parts.forEach((part) => { next[part] = ''; });
+                          return next;
+                        });
                       }
                       return;
                     }

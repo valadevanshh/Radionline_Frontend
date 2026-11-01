@@ -975,6 +975,32 @@ export const ApiClient = {
     });
   },
 
+  /** Super Admin: UPI accounts centres pay into (Add money QR). */
+  async getCollectionAccounts() {
+    return fetchJson<{
+      accounts: PaymentCollectionAccount[];
+      active: { id: number | null; upiId: string; upiName: string; label: string | null };
+    }>('/wallet/collection-accounts');
+  },
+  async createCollectionAccount(body: PaymentCollectionAccountInput) {
+    return fetchJson<PaymentCollectionAccount>('/wallet/collection-accounts', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+  async updateCollectionAccount(id: number, body: PaymentCollectionAccountInput) {
+    return fetchJson<PaymentCollectionAccount>(`/wallet/collection-accounts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  },
+  async selectCollectionAccount(id: number) {
+    return fetchJson<PaymentCollectionAccount>(`/wallet/collection-accounts/${id}/select`, {
+      method: 'POST',
+      body: '{}',
+    });
+  },
+
   async updateInvoiceStatus(id: string, status: 'paid' | 'pending') {
     return fetchJson<any>(`/invoices/${id}/status`, {
       method: 'PATCH',
@@ -1122,7 +1148,28 @@ export interface CenterWallet {
   reportsLeft: number;
   upiId: string;
   upiName: string;
+  collectionAccountId?: number | null;
+  collectionLabel?: string | null;
   defaultTopup: number;
   topups?: WalletTopup[];
   transactions?: { id: string; amount: number; kind: string; ref: string; note?: string; balanceAfter: number; createdAt: string }[];
+}
+
+export interface PaymentCollectionAccount {
+  id: number;
+  label: string;
+  upiId: string;
+  upiName: string;
+  isActive: boolean;
+  isSelected: boolean;
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
+export interface PaymentCollectionAccountInput {
+  label: string;
+  upiId: string;
+  upiName?: string;
+  isActive?: boolean;
+  select?: boolean;
 }

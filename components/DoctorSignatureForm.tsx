@@ -21,6 +21,7 @@ import {
   openFileInNewTab,
   readAsDataUrl,
 } from '@/lib/doctor-profile';
+import { processSignatureImage } from '@/lib/signature-process';
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPT = 'image/png,image/jpeg,image/webp';
@@ -89,7 +90,7 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
     doctor.cvFileName,
   ]);
 
-  const pickFile = (file?: File | null) => {
+  const pickFile = async (file?: File | null) => {
     setError('');
     if (!file) return;
     if (!ACCEPT.split(',').includes(file.type)) {
@@ -100,14 +101,14 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
       setError('Signature image: File must be 5 MB or smaller.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const url = String(reader.result || '');
+    try {
+      // Strip paper / photo background so the signature composites cleanly on reports
+      const url = await processSignatureImage(file);
       setSigUpload(url);
       setSigPreview(url);
-    };
-    reader.onerror = () => setError('Could not read that file.');
-    reader.readAsDataURL(file);
+    } catch {
+      setError('Could not process that signature image.');
+    }
   };
 
   const pickPhoto = async (file?: File | null) => {
@@ -292,9 +293,20 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
 
       <section>
         <h3 className="text-[13px] font-bold text-slate-900 mb-1">Signature image</h3>
-        <p className="mb-2 text-[12px] text-slate-500">Printed under your name on every report you sign.</p>
+        <p className="mb-2 text-[12px] text-slate-500">
+          Printed under your name on every report you sign. Paper / photo background is removed automatically.
+        </p>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="h-20 w-full sm:w-56 rounded-lg border border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden">
+          <div
+            className="h-20 w-full sm:w-56 rounded-lg border border-dashed border-slate-300 flex items-center justify-center overflow-hidden"
+            style={{
+              backgroundImage:
+                'linear-gradient(45deg,#f1f5f9 25%,transparent 25%),linear-gradient(-45deg,#f1f5f9 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f1f5f9 75%),linear-gradient(-45deg,transparent 75%,#f1f5f9 75%)',
+              backgroundSize: '12px 12px',
+              backgroundPosition: '0 0,0 6px,6px -6px,-6px 0',
+              backgroundColor: '#fff',
+            }}
+          >
             {sigPreview ? (
               <img src={sigPreview} alt="Signature" className="max-h-16 max-w-[90%] object-contain" data-testid="signature-preview" />
             ) : (
