@@ -441,14 +441,8 @@ export default function DicomViewerModal({
             ApiClient.getCenters(),
           ]);
           if (tmpls?.length) {
-            // Merge API templates with local/system templates so built-ins stay available
-            const byId = new Map<string, DocTemplate>();
-            RadiologyStore.getTemplates().forEach((t) => byId.set(t.id, t));
-            tmpls.forEach((t) => {
-              byId.set(t.id, t);
-              RadiologyStore.saveTemplate(t);
-            });
-            setStoredTemplates(Array.from(byId.values()));
+            // API is source of truth for remote templates (also clears UUID clone dupes)
+            setStoredTemplates(RadiologyStore.replaceRemoteTemplates(tmpls));
           }
           if (cntrs?.length) setAllCenters(cntrs);
         } catch (err) {
@@ -2523,26 +2517,31 @@ export default function DicomViewerModal({
                     const applyFindingsImpression = (rawFindings: string, rawImpression: string, content?: string) => {
                       let findings = (rawFindings || '').trim();
                       let impression = (rawImpression || '').trim();
+                      // Always try content HTML when either body field is empty (templates often
+                      // store the full report only in `content`).
                       if ((!findings || !impression) && content) {
                         const plain = htmlToPlain(content);
                         const parts = plain.split(/\bIMPRESSION(?:\s*&\s*CONCLUSION)?\s*:?/i);
                         if (parts.length >= 2) {
                           if (!findings) {
-                            findings = parts[0].replace(/^(?:RADIOLOGICAL\s+)?FINDINGS\s*:?/i, '').trim();
+                            findings = parts[0]
+                              .replace(/^(?:RADIOLOGICAL\s+)?FINDINGS\s*:?/i, '')
+                              .replace(/^[\s\S]*?\bFINDINGS\s*:?/i, '')
+                              .trim();
                           }
                           if (!impression) {
                             impression = parts.slice(1).join('\n').trim();
                           }
                         } else if (!findings) {
-                          findings = plain.replace(/^(?:RADIOLOGICAL\s+)?FINDINGS\s*:?/i, '').trim();
+                          findings = plain
+                            .replace(/^(?:RADIOLOGICAL\s+)?FINDINGS\s*:?/i, '')
+                            .replace(/^[\s\S]*?\bFINDINGS\s*:?/i, '')
+                            .trim();
                         }
                       }
-                      setFindingText(findings);
-                      setImpressionText(impression);
-                      // Keep each study tab in sync with the selected template, matching
-                      // the initial auto-match path above. Otherwise the template appears
-                      // only on the currently open body-part tab and disappears on switch.
                       const parts = report?.bodyParts?.length ? report.bodyParts : ['GENERAL'];
+                      // Apply body maps first, then text + remount key in one turn so the
+                      // A4 editor mounts already holding the template body.
                       setBodyPartReports((prev) => {
                         const next = { ...prev };
                         parts.forEach((part) => { next[part] = findings; });
@@ -2553,7 +2552,8 @@ export default function DicomViewerModal({
                         parts.forEach((part) => { next[part] = impression; });
                         return next;
                       });
-                      // Remount the A4 editor so pagination measures the new body text.
+                      setFindingText(findings);
+                      setImpressionText(impression);
                       setTemplateApplyKey((k) => k + 1);
                       if (!findings && !impression) {
                         setStatusToast('This template has no findings/impression text saved.');

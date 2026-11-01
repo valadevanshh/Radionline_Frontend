@@ -400,7 +400,7 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
       <tbody>
         <tr>${ptCell('Patient ID', payload.patientId, 'l')}${ptCell('Patient Name', payload.patientName, 'r')}</tr>
         <tr>${ptCell('Age / Gender', [pga.age, pga.gender].map((x) => String(x || '').trim()).filter((x) => x && x !== '\u2014').join(' / '), 'l')}${ptCell('Referring Doctor', payload.referringDoctor, 'r')}</tr>
-        <tr>${ptCell('Study / Body Part', payload.studyParts, 'l')}${ptCell('Report Date', formatReportDate(payload.reportDate || ''), 'r')}</tr>
+        <tr>${ptCell('Report Date', formatReportDate(payload.reportDate || ''), 'l')}<td class="pt-r"></td></tr>
       </tbody>
     </table>
     ${studies}

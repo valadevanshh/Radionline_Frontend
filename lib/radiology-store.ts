@@ -614,10 +614,12 @@ export const RadiologyStore = {
         rawTemplates[idx] = { ...rawTemplates[idx], ...toSave } as DocTemplate;
         saved = rawTemplates[idx];
       } else {
+        // Keep the provided id (API ids must not be replaced with a new UUID —
+        // that was cloning the same template in the PACS dropdown on every open).
         saved = {
           ...toSave,
-          id: generateUUID(),
-          createdAt: new Date().toISOString(),
+          id: String(toSave.id),
+          createdAt: (toSave as DocTemplate).createdAt || new Date().toISOString(),
         } as DocTemplate;
         rawTemplates.unshift(saved);
       }
@@ -632,6 +634,38 @@ export const RadiologyStore = {
     localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(rawTemplates));
     window.dispatchEvent(new Event('radionline_templates_changed'));
     return saved;
+  },
+
+  /** Replace non-system local templates with the API list (dedupes UUID clones). */
+  replaceRemoteTemplates(apiTemplates: DocTemplate[]): DocTemplate[] {
+    if (typeof window === 'undefined') return apiTemplates;
+    this.init();
+    const stored = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
+    const parsed: DocTemplate[] = stored ? JSON.parse(stored) : [];
+    const system = parsed.filter((t) => String(t.id || '').startsWith('sys-'));
+    const byId = new Map<string, DocTemplate>();
+    system.forEach((t) => byId.set(t.id, t));
+    apiTemplates.forEach((t) => {
+      if (!t?.id) return;
+      byId.set(t.id, t);
+    });
+    // Drop legacy local clones that share title+center+modality+bodyPart with an API row
+    const apiFingerprints = new Set(
+      apiTemplates.map(
+        (t) =>
+          `${(t.title || '').trim().toLowerCase()}|${(t.centerId || '').trim()}|${(t.modality || '').trim().toLowerCase()}|${(t.bodyPart || '').trim().toLowerCase()}`
+      )
+    );
+    parsed.forEach((t) => {
+      if (!t?.id || byId.has(t.id) || String(t.id).startsWith('sys-')) return;
+      const fp = `${(t.title || '').trim().toLowerCase()}|${(t.centerId || '').trim()}|${(t.modality || '').trim().toLowerCase()}|${(t.bodyPart || '').trim().toLowerCase()}`;
+      if (apiFingerprints.has(fp)) return; // clone of an API template — discard
+      byId.set(t.id, t); // keep truly local-only drafts
+    });
+    const combined = Array.from(byId.values());
+    localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(combined));
+    window.dispatchEvent(new Event('radionline_templates_changed'));
+    return this.getTemplates();
   },
 
   deleteTemplate(id: string) {

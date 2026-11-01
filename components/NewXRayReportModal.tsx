@@ -853,9 +853,10 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
   const renderThumb = (f: PickedFile, onRemove?: () => void, group?: PickedFile[]) => (
     <div
       key={f.key}
-      className="relative rounded-lg border border-slate-200 bg-slate-50 overflow-hidden w-11 h-11 shrink-0"
+      className="relative rounded-xl border border-slate-200 bg-slate-50 overflow-hidden w-16 h-16 shrink-0 group/thumb"
       data-testid="upload-thumb"
     >
+      {/* Whole tile opens the image; remove is a small corner control so it does not block the tap target */}
       <button
         type="button"
         onClick={() => {
@@ -863,7 +864,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
           setLightbox({ files: list, idx: Math.max(0, list.findIndex((x) => x.key === f.key)) });
         }}
         aria-label={`Open ${f.name}`}
-        title="Click to view"
+        title="Tap to open"
         className="block w-full h-full cursor-zoom-in"
         data-testid="upload-thumb-open"
       >
@@ -872,19 +873,28 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
           <img src={f.previewUrl} alt={f.name} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-0.5 p-1 text-slate-500">
-            <FileText className="w-4 h-4" />
+            <FileText className="w-5 h-5" />
             <span className="text-[9px] font-bold uppercase">{f.kind === 'dicom' ? 'DCM' : 'PDF'}</span>
           </div>
         )}
+        <span className="pointer-events-none absolute inset-x-0 bottom-0 py-0.5 text-center text-[9px] font-bold tracking-wide text-white bg-slate-950/55">
+          Open
+        </span>
       </button>
       {!submitting && onRemove && (
         <button
           type="button"
-          onClick={onRemove}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRemove();
+          }}
           aria-label={`Remove ${f.name}`}
-          className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-slate-900/70 hover:bg-rose-600 text-white flex items-center justify-center"
+          title="Remove image"
+          className="absolute top-0.5 right-0.5 z-10 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-sm ring-1 ring-white/80"
+          data-testid="upload-thumb-remove"
         >
-          <X className="w-3 h-3" />
+          <X className="w-2.5 h-2.5" strokeWidth={3} />
         </button>
       )}
       {submitting && (
