@@ -109,6 +109,10 @@ export default function A4ReportEditor({
           ph.setAttribute('data-testid', kind === 'findings' ? 'findings-editor' : 'impression-editor');
           if (kind === 'findings' && el.getAttribute('style')) ph.setAttribute('style', el.getAttribute('style') as string);
           if (kind === 'impression') ph.style.fontWeight = '700';
+          // Keep the measured block height so replacing <p>text</p> with an empty
+          // portal host does not collapse Findings/Impression to a blank gap.
+          const measuredH = el.getBoundingClientRect().height;
+          if (measuredH > 0) ph.style.minHeight = `${Math.ceil(measuredH)}px`;
           el.parentNode?.replaceChild(ph, el);
         }
         ph.setAttribute('data-edit', String(edits.length));

@@ -276,7 +276,9 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
   const text = (s: string | undefined | null, fallback: string) => {
     let v = String(s ?? '').replace(/\r\n?/g, '\n');
     if (!v.trim() && !opts.editorText) v = '';
-    if (!v) return esc(fallback);
+    // Editor mode: keep empty findings/impression truly empty (no em-dash placeholder),
+    // so selecting a template remeasures against real text instead of a 1-char stub.
+    if (!v) return opts.editorText ? '' : esc(fallback);
     if (opts.editorText && v.endsWith('\n')) v += '\u200b';
     return esc(v);
   };

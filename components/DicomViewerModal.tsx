@@ -290,6 +290,8 @@ export default function DicomViewerModal({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [storedTemplates, setStoredTemplates] = useState<DocTemplate[]>([]);
   const [showAllTemplates, setShowAllTemplates] = useState(false);
+  /** Bumps when a template is applied so A4ReportEditor remounts with the new body text. */
+  const [templateApplyKey, setTemplateApplyKey] = useState(0);
 
   // Save Template Modal State
   const [saveTemplateModalOpen, setSaveTemplateModalOpen] = useState(false);
@@ -501,9 +503,22 @@ export default function DicomViewerModal({
       caseBodyParts.some((bp) => bp === tBp || bp.includes(tBp) || tBp.includes(bp));
     return modalityOk && bodyOk;
   };
+  // PACS dropdown: doctors only see templates they created. No own templates → empty list.
+  const pacsSession = RadiologyStore.getSession();
+  const doctorOwnsTemplate = (tmpl: DocTemplate) => {
+    if (pacsSession?.role !== 'DOCTOR') return true;
+    const docId = String(pacsSession.doctorId || pacsSession.userId || '').trim();
+    const tmplDocId = String(tmpl.doctorId || '').trim();
+    if (!tmplDocId || !docId) return false;
+    return tmplDocId === docId || tmplDocId === String(pacsSession.doctorId || '').trim();
+  };
+  const pacsTemplates =
+    pacsSession?.role === 'DOCTOR'
+      ? storedTemplates.filter(doctorOwnsTemplate)
+      : storedTemplates;
   const filteredTemplates = showAllTemplates
-    ? storedTemplates
-    : storedTemplates.filter(templateMatchesCase);
+    ? pacsTemplates
+    : pacsTemplates.filter(templateMatchesCase);
 
   const handleOpenSaveTemplate = () => {
     if (!canWriteTemplates(RadiologyStore.getSession())) return;
@@ -623,6 +638,17 @@ export default function DicomViewerModal({
               console.warn('Template match error:', err);
               matched = null;
             }
+            // Doctors: only auto-apply templates they created (never shared/system defaults)
+            if (matched) {
+              const sess = RadiologyStore.getSession();
+              if (sess?.role === 'DOCTOR') {
+                const docId = String(sess.doctorId || sess.userId || '').trim();
+                const tmplDocId = String(matched.doctorId || '').trim();
+                if (!tmplDocId || !docId || (tmplDocId !== docId && tmplDocId !== String(sess.doctorId || '').trim())) {
+                  matched = null;
+                }
+              }
+            }
             if (matched) break;
           }
         }
@@ -685,7 +711,9 @@ export default function DicomViewerModal({
     return () => {
       cancelled = true;
     };
-  }, [report, isOpen]);
+    // Use report.id so a parent re-render with a new object reference cannot wipe a
+    // template the doctor just selected (title applied, findings cleared).
+  }, [report?.id, isOpen]);
 
   const seriesList = React.useMemo(() => {
     if (report) {
@@ -2333,22 +2361,62 @@ export default function DicomViewerModal({
                     </svg>
                   </div>
 
-                  {/* t84: download the image shown in this viewport */}
-                  {series?.imageUrl && (
-                    <button
-                      type="button"
-                      title="Download image"
-                      aria-label="Download image"
-                      data-testid={`viewport-download-${vIdx}`}
+                  {/* Top-right viewport chrome: download + arrow tools share one stack (no overlap) */}
+                  {(series?.imageUrl || (activeTool === 'arrow' && canDrawArrows && isActive)) && (
+                    <div
+                      className="absolute top-2 right-2 z-50 flex flex-col items-end gap-1.5 pointer-events-auto max-w-[calc(100%-1rem)]"
                       onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        downloadImage(series.imageUrl, series.title || 'image');
-                      }}
-                      className="absolute top-2 right-2 z-50 pointer-events-auto inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-slate-900/80 border border-slate-600 text-cyan-200 text-[11px] font-bold hover:bg-slate-800 hover:text-white"
+                      onPointerUp={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <Download className="w-3.5 h-3.5" /> <span className="hidden md:inline">Download</span>
-                    </button>
+                      {series?.imageUrl && (
+                        <button
+                          type="button"
+                          title="Download image"
+                          aria-label="Download image"
+                          data-testid={`viewport-download-${vIdx}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            downloadImage(series.imageUrl, series.title || 'image');
+                          }}
+                          className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-slate-900/80 border border-slate-600 text-cyan-200 text-[11px] font-bold hover:bg-slate-800 hover:text-white shrink-0"
+                        >
+                          <Download className="w-3.5 h-3.5" /> <span className="hidden md:inline">Download</span>
+                        </button>
+                      )}
+
+                      {activeTool === 'arrow' && canDrawArrows && isActive && (
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          <span className="hidden sm:inline px-2 py-1 rounded bg-slate-950/90 border border-slate-700 text-[10px] font-mono text-amber-300 whitespace-nowrap">
+                            Drag to draw · tap an arrow to select
+                          </span>
+                          <button
+                            type="button"
+                            onClick={undoMyLastArrow}
+                            className="min-h-[34px] px-2.5 rounded-lg bg-slate-950/90 border border-slate-700 text-amber-300 text-[11px] font-bold inline-flex items-center gap-1"
+                            title="Undo my last arrow on this image"
+                            data-testid="arrow-undo"
+                          >
+                            <Undo className="w-3.5 h-3.5" /> Undo
+                          </button>
+                          {(() => {
+                            const sel = marks.find((m) => m.id === selectedMarkId);
+                            if (!sel || !canRemoveMark(sel)) return null;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => removeMark(sel)}
+                                className="min-h-[34px] px-2.5 rounded-lg bg-rose-600 text-white text-[11px] font-bold inline-flex items-center gap-1"
+                                title="Delete the selected arrow"
+                                data-testid="arrow-delete"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> Delete
+                              </button>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {/* Interactive Magnifier Lens Overlay */}
@@ -2373,44 +2441,6 @@ export default function DicomViewerModal({
                       <span className="absolute bottom-1 left-1/2 -translate-x-1/2 bg-black/80 text-amber-400 text-[9px] font-mono px-1 font-bold rounded-xs">
                         2.5X MAGNIFIER
                       </span>
-                    </div>
-                  )}
-
-                  {/* Arrow tool actions (active viewport) */}
-                  {activeTool === 'arrow' && canDrawArrows && isActive && (
-                    <div
-                      className="absolute top-2 right-2 z-30 flex items-center gap-1 pointer-events-auto"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onPointerUp={(e) => e.stopPropagation()}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <span className="hidden sm:inline px-2 py-1 rounded bg-slate-950/90 border border-slate-700 text-[10px] font-mono text-amber-300">
-                        Drag to draw · tap an arrow to select
-                      </span>
-                      <button
-                        type="button"
-                        onClick={undoMyLastArrow}
-                        className="min-h-[34px] px-2.5 rounded-lg bg-slate-950/90 border border-slate-700 text-amber-300 text-[11px] font-bold inline-flex items-center gap-1"
-                        title="Undo my last arrow on this image"
-                        data-testid="arrow-undo"
-                      >
-                        <Undo className="w-3.5 h-3.5" /> Undo
-                      </button>
-                      {(() => {
-                        const sel = marks.find((m) => m.id === selectedMarkId);
-                        if (!sel || !canRemoveMark(sel)) return null;
-                        return (
-                          <button
-                            type="button"
-                            onClick={() => removeMark(sel)}
-                            className="min-h-[34px] px-2.5 rounded-lg bg-rose-600 text-white text-[11px] font-bold inline-flex items-center gap-1"
-                            title="Delete the selected arrow"
-                            data-testid="arrow-delete"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" /> Delete
-                          </button>
-                        );
-                      })()}
                     </div>
                   )}
 
@@ -2523,6 +2553,12 @@ export default function DicomViewerModal({
                         parts.forEach((part) => { next[part] = impression; });
                         return next;
                       });
+                      // Remount the A4 editor so pagination measures the new body text.
+                      setTemplateApplyKey((k) => k + 1);
+                      if (!findings && !impression) {
+                        setStatusToast('This template has no findings/impression text saved.');
+                        setTimeout(() => setStatusToast(null), 4000);
+                      }
                     };
 
                     if (tId === 'blank' || !tId) {
@@ -2539,15 +2575,56 @@ export default function DicomViewerModal({
                         parts.forEach((part) => { next[part] = ''; });
                         return next;
                       });
+                      setTemplateApplyKey((k) => k + 1);
                       return;
                     }
 
                     if (tId.startsWith('stored_')) {
                       const id = tId.replace('stored_', '');
-                      const tmpl = storedTemplates.find((t) => t.id === id);
-                      if (tmpl) {
+                      const tmpl =
+                        pacsTemplates.find((t) => t.id === id) ||
+                        storedTemplates.find((t) => t.id === id);
+                      const hasBody = Boolean(
+                        (tmpl?.findings || '').trim() ||
+                          (tmpl?.impression || '').trim() ||
+                          (tmpl?.content || '').trim()
+                      );
+                      if (tmpl && hasBody) {
                         setReportTitle(tmpl.title);
                         applyFindingsImpression(tmpl.findings || '', tmpl.impression || '', tmpl.content);
+                      } else if (tmpl) {
+                        // Stale/local copy missing body — refresh from API then apply
+                        setReportTitle(tmpl.title);
+                        ApiClient.getTemplates()
+                          .then((list) => {
+                            const fresh = list?.find((t) => t.id === id);
+                            if (fresh) {
+                              RadiologyStore.saveTemplate(fresh);
+                              setStoredTemplates((prev) => {
+                                const byId = new Map(prev.map((t) => [t.id, t]));
+                                byId.set(fresh.id, fresh);
+                                return Array.from(byId.values());
+                              });
+                              applyFindingsImpression(
+                                fresh.findings || '',
+                                fresh.impression || '',
+                                fresh.content
+                              );
+                            } else {
+                              applyFindingsImpression(
+                                tmpl.findings || '',
+                                tmpl.impression || '',
+                                tmpl.content
+                              );
+                            }
+                          })
+                          .catch(() => {
+                            applyFindingsImpression(
+                              tmpl.findings || '',
+                              tmpl.impression || '',
+                              tmpl.content
+                            );
+                          });
                       } else {
                         setStatusToast('Template not found in the loaded list. Try Show all, or reopen the case.');
                         setTimeout(() => setStatusToast(null), 4000);
@@ -2571,9 +2648,11 @@ export default function DicomViewerModal({
                   data-testid="template-select"
                 >
                   <option value="blank">Blank template — write your own</option>
-                  {filteredTemplates.length === 0 && !showAllTemplates && (
+                  {filteredTemplates.length === 0 && (
                     <option value="" disabled>
-                      No saved templates match this study
+                      {pacsTemplates.length === 0
+                        ? 'No templates saved yet'
+                        : 'No saved templates match this study'}
                     </option>
                   )}
                   {filteredTemplates.map((tmpl) => (
@@ -2878,6 +2957,7 @@ export default function DicomViewerModal({
                 data-testid="report-page-frame"
               >
                 <A4ReportEditor
+                  key={`a4-${templateApplyKey}-${selectedTemplateId || 'blank'}`}
                   payload={buildPrintPayload(true)}
                   findings={findingText}
                   impression={impressionText}

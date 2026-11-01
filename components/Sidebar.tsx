@@ -946,26 +946,28 @@ export default function Sidebar({
     <>
       <style>{MOBILE_OVERLAY_CSS}</style>
 
-      {/* Desktop sidebar */}
-      <div
-        className="hidden-mobile"
-        style={{ display: 'flex', height: '100%', position: 'relative', width: pinnedCollapsed ? 52 : undefined, flexShrink: 0 }}
-        onMouseEnter={() => { if (pinnedCollapsed) scheduleHover(true); }}
-        onMouseLeave={() => { if (pinnedCollapsed && !notificationsOpen) scheduleHover(false); }}
-      >
+      {/* Desktop sidebar — fully hidden on case workspace so PACS gets full width */}
+      {!isWorkspaceRoute && (
         <div
-          style={
-            pinnedCollapsed
-              ? { position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 60, display: 'flex' }
-              : { display: 'flex', height: '100%' }
-          }
+          className="hidden-mobile"
+          style={{ display: 'flex', height: '100%', position: 'relative', width: pinnedCollapsed ? 52 : undefined, flexShrink: 0 }}
+          onMouseEnter={() => { if (pinnedCollapsed) scheduleHover(true); }}
+          onMouseLeave={() => { if (pinnedCollapsed && !notificationsOpen) scheduleHover(false); }}
         >
-          {SidebarContent}
+          <div
+            style={
+              pinnedCollapsed
+                ? { position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 60, display: 'flex' }
+                : { display: 'flex', height: '100%' }
+            }
+          >
+            {SidebarContent}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Mobile drawer overlay */}
-      {mobileOpen && (
+      {/* Mobile drawer overlay — also suppressed on case workspace */}
+      {!isWorkspaceRoute && mobileOpen && (
         <>
           <div
             onClick={onCloseMobile}
