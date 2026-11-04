@@ -319,9 +319,9 @@ export default function ReportTemplateModal({
         )}
 
         {/* Configuration Ribbon */}
-        <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs shrink-0 shadow-2xs">
+        <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3 text-xs shrink-0 shadow-2xs">
           {/* Template Name */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1.5 min-w-0">
             <label className="font-bold text-slate-700 font-mono text-[11px] uppercase">
               Template Name <span className="text-rose-500">*</span>
             </label>
@@ -337,7 +337,7 @@ export default function ReportTemplateModal({
           </div>
 
           {/* Modality */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1.5 min-w-0">
             <label className="font-bold text-slate-700 font-mono text-[11px] uppercase">
               Modality <span className="text-rose-500">*</span>
             </label>
@@ -356,7 +356,7 @@ export default function ReportTemplateModal({
           </div>
 
           {/* Body Part */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1.5 min-w-0">
             <label className="font-bold text-slate-700 font-mono text-[11px] uppercase">
               Body Part / Study <span className="text-rose-500">*</span>
             </label>
@@ -380,7 +380,7 @@ export default function ReportTemplateModal({
           </div>
 
           {/* Target Center */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1.5 min-w-0">
             <label className="font-bold text-slate-700 font-mono text-[11px] uppercase">
               Assign to Center
             </label>
@@ -401,7 +401,7 @@ export default function ReportTemplateModal({
         </div>
 
         {/* Quick Toolbar Bar: Preset Dropdown & Helper Controls */}
-        <div className="bg-slate-100/90 border-b border-slate-200 px-4 sm:px-6 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+        <div className="bg-slate-100/90 border-b border-slate-200 px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-[11px] font-bold text-slate-500 uppercase flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-purple-600" /> Presets:
@@ -442,10 +442,10 @@ export default function ReportTemplateModal({
         </div>
 
         {/* Main Work Area: Authentic A4 Report Document */}
-        <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col items-center bg-slate-200/60">
+        <form onSubmit={handleSave} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 flex flex-col items-center bg-slate-200/60">
           {/* A4 Sheet Container */}
           <div
-            className="w-full max-w-[210mm] bg-white text-black shadow-xl rounded-sm p-6 sm:p-10 border border-slate-300/80 transition-all relative overflow-hidden"
+            className="w-full max-w-[210mm] shrink-0 bg-white text-black shadow-xl rounded-sm p-6 sm:p-10 border border-slate-300/80 transition-all relative overflow-hidden break-words"
             style={{
               minHeight: '297mm',
               fontFamily: 'Georgia, "Times New Roman", Times, serif',
@@ -503,26 +503,26 @@ export default function ReportTemplateModal({
                 </span>
               </div>
               <div className="border-t border-slate-900 text-xs">
-                <div className="flex">
-                  <div className="min-w-0 flex-1 border-r border-slate-300 px-2.5 py-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2">
+                  <div className="min-w-0 border-b sm:border-b-0 sm:border-r border-slate-300 px-3 py-2">
                     <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Patient ID</span>
-                    <span className="block text-sm font-bold text-black font-mono">PID-SAMPLE-TEMPLATE</span>
+                    <span className="block text-sm font-bold text-black font-mono break-all">PID-SAMPLE-TEMPLATE</span>
                   </div>
-                  <div className="min-w-0 flex-1 px-2.5 py-2">
+                  <div className="min-w-0 px-3 py-2">
                     <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Patient Name</span>
                     <span className="block text-sm font-bold uppercase text-black">PATIENT PREVIEW (SAMPLE)</span>
                   </div>
                 </div>
-                <div className="flex border-t border-slate-300">
-                  <div className="min-w-0 flex-1 border-r border-slate-300 px-2.5 py-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 border-t border-slate-300">
+                  <div className="min-w-0 border-b sm:border-b-0 sm:border-r border-slate-300 px-3 py-2">
                     <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Age / Gender</span>
                     <span className="block text-sm font-bold text-black">45 Yrs / Male</span>
                   </div>
-                  <div className="min-w-0 flex-1 border-r border-slate-300 px-2.5 py-2">
+                  <div className="min-w-0 border-b sm:border-b-0 sm:border-r border-slate-300 px-3 py-2">
                     <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Referring Doctor</span>
                     <span className="block text-sm font-bold text-black">Dr. Attending Physician</span>
                   </div>
-                  <div className="min-w-0 flex-1 px-2.5 py-2">
+                  <div className="min-w-0 px-3 py-2">
                     <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Report Date</span>
                     <span className="block text-sm font-bold text-black font-mono">
                       {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -551,7 +551,7 @@ export default function ReportTemplateModal({
 
             {/* 5. Technique Section */}
             <div className="mb-5">
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
                 <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-black">
                   Technique:
                 </h3>
@@ -569,7 +569,7 @@ export default function ReportTemplateModal({
 
             {/* 6. Findings Section (Hero editable section) */}
             <div className="mb-6">
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
                 <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-black flex items-center gap-1.5">
                   Radiological Findings:
                   <span className="text-rose-500">*</span>
@@ -606,7 +606,7 @@ export default function ReportTemplateModal({
 
             {/* 7. Impression / Conclusion Section */}
             <div className="mb-8">
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
                 <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-black flex items-center gap-1.5">
                   Impression & Conclusion:
                   <span className="text-rose-500">*</span>
@@ -635,7 +635,7 @@ export default function ReportTemplateModal({
 
             {/* 8. Doctor Signature & Verification Block */}
             <div className="mt-8 pt-4 border-t border-slate-300 font-sans">
-              <div className="flex items-end justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
                 <div className="text-[10px] text-slate-400 font-mono">
                   <span>Standard Report Template Draft</span>
                   <br />
@@ -669,7 +669,7 @@ export default function ReportTemplateModal({
           </div>
 
           {/* Bottom Action Strip */}
-          <div className="w-full max-w-[210mm] mt-4 flex items-center justify-between gap-3 shrink-0">
+          <div className="w-full max-w-[210mm] mt-4 pb-2 flex items-center justify-between gap-3 shrink-0">
             <button
               type="button"
               onClick={onClose}

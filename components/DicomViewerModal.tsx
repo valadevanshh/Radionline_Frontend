@@ -182,6 +182,24 @@ export const SAMPLE_DICOM_SERIES = [
   },
 ];
 
+/**
+ * CSS filter for a viewport, relative to the series' own default WW/WL.
+ * At the default window (as opened / after Reset) this returns 'none', so uploaded
+ * images show their original pixels. Previously the absolute formula turned the
+ * upload default (WW 1500 / WL -600) into brightness(60%) contrast(200%) = darker image.
+ */
+function viewportCssFilter(
+  state: { ww: number; wl: number; invert: boolean },
+  series: { ww: number; wl: number },
+): string {
+  const parts: string[] = [];
+  const b = 100 + (state.wl - series.wl) / 20;
+  const c = Math.max(10, Math.min(500, (100 * series.ww) / Math.max(1, state.ww)));
+  if (Math.abs(b - 100) > 0.01) parts.push(`brightness(${Math.max(0, b)}%)`);
+  if (Math.abs(c - 100) > 0.01) parts.push(`contrast(${c}%)`);
+  if (state.invert) parts.push('invert(100%)');
+  return parts.length ? parts.join(' ') : 'none';
+}
 import { RADIOLOGY_TEMPLATES, SystemReportTemplate as ReportTemplate } from '@/lib/radiology-templates';
 export type { ReportTemplate };
 export { RADIOLOGY_TEMPLATES };
@@ -2250,7 +2268,7 @@ export default function DicomViewerModal({
                         setImgSizes((prev) => ({ ...prev, [vIdx]: { w, h } }));
                       }}
                       style={{
-                        filter: `brightness(${100 + (state.wl - 200) / 20}%) contrast(${Math.max(50, 100 * ((2000 - state.ww) / 500 + 1))}%) ${state.invert ? 'invert(100%)' : ''}`,
+                        filter: viewportCssFilter(state, series),
                       }}
                       className="w-full h-full object-cover select-none pointer-events-none block"
                     />
@@ -2435,7 +2453,7 @@ export default function DicomViewerModal({
                         alt="Magnified View"
                         style={{
                           transform: `scale(${state.zoom * 2.5}) translate(${state.pan.x - (magnifierPos.x - 150) / 2}px, ${state.pan.y - (magnifierPos.y - 150) / 2}px)`,
-                          filter: `brightness(${100 + (state.wl - 200) / 20}%) contrast(${Math.max(50, 100 * ((2000 - state.ww) / 500 + 1))}%) ${state.invert ? 'invert(100%)' : ''}`,
+                          filter: viewportCssFilter(state, series),
                         }}
                         className="max-w-none max-h-none absolute w-full h-full object-cover"
                       />

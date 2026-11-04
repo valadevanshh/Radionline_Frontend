@@ -123,7 +123,7 @@ function fileKind(file: File): PickedFile['kind'] | null {
   return null;
 }
 
-function compressImage(file: File, maxSide = 1200, quality = 0.8): Promise<Blob> {
+function compressImage(file: File, maxSide = 2048, quality = 0.95): Promise<Blob> {
   return new Promise((resolve) => {
     if (!file.type.startsWith('image/')) return resolve(file);
     const url = URL.createObjectURL(file);
@@ -138,6 +138,10 @@ function compressImage(file: File, maxSide = 1200, quality = 0.8): Promise<Blob>
           width = Math.round((width * maxSide) / height);
           height = maxSide;
         }
+      } else {
+        // Already small enough: upload the original bytes untouched (no re-encode / no darkening).
+        URL.revokeObjectURL(url);
+        return resolve(file);
       }
       const canvas = document.createElement('canvas');
       canvas.width = width;
@@ -147,6 +151,10 @@ function compressImage(file: File, maxSide = 1200, quality = 0.8): Promise<Blob>
         URL.revokeObjectURL(url);
         return resolve(file);
       }
+      // White base so transparent PNG areas don't turn black when flattened to JPEG.
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+      ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, width, height);
       canvas.toBlob(
         (b) => {

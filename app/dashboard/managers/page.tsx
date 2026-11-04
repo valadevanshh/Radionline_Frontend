@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserCog, Plus, Pencil, Trash2, X, RefreshCw } from 'lucide-react';
+import { UserCog, Plus, Pencil, Trash2, X, RefreshCw, Search } from 'lucide-react';
 import { ApiClient, ManagerAccount, ManagerPage, ManagerPermissions, apiErrorMessage } from '@/lib/api-client';
 import { RadiologyStore } from '@/lib/radiology-store';
 import { toast } from '@/components/ui/Toast';
@@ -35,6 +35,7 @@ export default function ManagersPage() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,32 +122,37 @@ export default function ManagersPage() {
       return bits ? `${label}: ${bits}` : null;
     })
       .filter(Boolean)
-      .join(' · ') || 'No pages';
+      .join(' \u00B7 ') || 'No pages';
 
   if (allowed !== true) return null;
 
+  const q = searchQuery.trim().toLowerCase();
+  const filtered = q ? rows.filter((m) => m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q)) : rows;
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 text-slate-900">
-      <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-4 space-y-3 max-w-6xl w-full mx-auto">
+      <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-4 space-y-3 max-w-7xl w-full mx-auto">
+        {/* Header (same style as Diagnostic Radiology Centers) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-xs">
           <div>
-            <h1 className="text-base sm:text-lg font-extrabold tracking-tight flex items-center gap-2 font-mono">
+            <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2 font-mono">
               <UserCog className="w-5 h-5 text-[#009ef7]" />
               <span>Managers</span>
             </h1>
-            <p className="mt-0.5 text-[12px] text-slate-500">
+            <p className="mt-0.5 text-[11px] text-slate-500">
               Choose which pages each Manager can open. Their add / edit / delete requests wait for your approval.
             </p>
           </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={load} className="px-3 py-2 border border-slate-300 rounded-lg text-xs font-bold inline-flex items-center gap-1" aria-label="Refresh">
+          <div className="flex items-center gap-2 shrink-0">
+            <button type="button" onClick={load} title="Refresh" aria-label="Refresh"
+              className="p-2 text-slate-500 hover:text-[#009ef7] border border-slate-200 rounded-lg hover:bg-sky-50 transition-colors cursor-pointer">
               <RefreshCw className="w-4 h-4" />
             </button>
             <button
               type="button"
               data-testid="add-manager"
               onClick={() => setForm({ name: '', email: '', password: '', permissions: emptyPerms() })}
-              className="flex items-center gap-2 px-3.5 py-2 bg-[#009ef7] hover:bg-[#008be0] text-white text-xs font-bold uppercase tracking-wider rounded-lg font-mono"
+              className="flex items-center justify-center gap-2 px-3.5 py-2 bg-[#009ef7] hover:bg-[#008be0] text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-all shadow-xs cursor-pointer shrink-0 font-mono"
             >
               <Plus className="w-4 h-4" />
               <span>Add Manager</span>
@@ -154,84 +160,132 @@ export default function ManagersPage() {
           </div>
         </div>
 
-        <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-xs overflow-auto">
-          {loading ? (
-            <div className="p-8 text-center text-xs text-slate-500">Loading...</div>
-          ) : rows.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-500">No managers yet. Use Add Manager to create one.</div>
-          ) : (
-            <table className="data-table w-full">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Login email</th>
-                  <th>Page access</th>
-                  <th>Pending requests</th>
-                  <th style={{ width: 90 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((m) => (
-                  <tr key={m.id} data-testid={`manager-row-${m.id}`}>
-                    <td className="font-semibold">{m.name}</td>
-                    <td className="font-mono text-[11px]">{m.email}</td>
-                    <td className="text-[11px]">{summary(m.permissions)}</td>
-                    <td className="font-mono">{m.pendingRequests}</td>
-                    <td>
-                      <button type="button" title="Edit" aria-label={`Edit ${m.name}`} className="p-1.5 text-slate-500 hover:text-[#009ef7]"
-                        onClick={() => setForm({ id: m.id, name: m.name, email: m.email, password: '', permissions: m.permissions })}>
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button type="button" title="Deactivate" aria-label={`Deactivate ${m.name}`} className="p-1.5 text-slate-500 hover:text-rose-600" onClick={() => remove(m)}>
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
+        <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col min-h-0">
+          {/* Search bar + count */}
+          <div className="p-3 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between gap-4 flex-wrap shrink-0">
+            <div className="relative flex-1 min-w-[240px] max-w-md">
+              <Search className="rn-icon-vcenter w-4 h-4 absolute left-3 top-2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search by manager name or email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="rn-input-iconpad w-full pl-9 pr-3 py-1.5 border border-slate-300 bg-white text-slate-900 rounded-lg text-xs focus:outline-none focus:border-[#009ef7]"
+              />
+            </div>
+            <div className="text-xs font-mono text-slate-500 font-bold">
+              {filtered.length} MANAGER{filtered.length === 1 ? '' : 'S'}
+            </div>
+          </div>
+
+          <div className="data-table-container flex-1 overflow-y-auto overflow-x-auto">
+            {loading ? (
+              <div className="p-8 text-center text-xs text-slate-500">Loading...</div>
+            ) : filtered.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-500">
+                {rows.length === 0 ? 'No managers yet. Use Add Manager to create one.' : 'No managers match your search.'}
+              </div>
+            ) : (
+              <table className="data-table w-full" style={{ tableLayout: 'fixed', minWidth: 760 }}>
+                <colgroup>
+                  <col style={{ width: '24%' }} />
+                  <col style={{ width: '26%' }} />
+                  <col style={{ width: '30%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '10%', minWidth: 96 }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th title="Manager Name">Manager Name</th>
+                    <th title="Login Email">Login Email</th>
+                    <th title="Page Access">Page Access</th>
+                    <th title="Pending Requests">Pending</th>
+                    <th title="Actions" style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filtered.map((m) => (
+                    <tr key={m.id} data-testid={`manager-row-${m.id}`} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="p-3.5" title={m.name}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-[#009ef7]/10 border border-[#009ef7]/20 flex items-center justify-center font-bold text-[#009ef7] text-sm shrink-0 font-mono">
+                            {(m.name || '?').charAt(0).toUpperCase()}
+                          </div>
+                          <div className="font-bold text-slate-900 truncate">{m.name}</div>
+                        </div>
+                      </td>
+                      <td className="p-3.5" title={m.email}>
+                        <div className="font-mono text-[11px] bg-slate-100 border border-slate-200 px-2.5 py-1 rounded inline-block max-w-full truncate text-slate-700 align-middle">
+                          {m.email}
+                        </div>
+                      </td>
+                      <td className="p-3.5 text-[11px] text-slate-700" title={summary(m.permissions)}>
+                        <div className="truncate">{summary(m.permissions)}</div>
+                      </td>
+                      <td className="p-3.5">
+                        <span className={`inline-flex items-center px-2 py-0.5 font-bold text-[10px] rounded font-mono ${m.pendingRequests > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                          {m.pendingRequests}
+                        </span>
+                      </td>
+                      <td className="p-3.5 text-right whitespace-nowrap">
+                        <button type="button" title="Edit" aria-label={`Edit ${m.name}`}
+                          className="p-1.5 text-slate-400 hover:text-[#009ef7] transition-colors cursor-pointer rounded hover:bg-sky-50"
+                          onClick={() => setForm({ id: m.id, name: m.name, email: m.email, password: '', permissions: m.permissions })}>
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button type="button" title="Deactivate" aria-label={`Deactivate ${m.name}`}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer rounded hover:bg-rose-50"
+                          onClick={() => remove(m)}>
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
 
       {form && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center bg-slate-900/40 p-4 overflow-y-auto">
-          <form onSubmit={submit} className="bg-white w-full max-w-xl border border-slate-200 shadow-2xl rounded-xl text-xs" data-testid="manager-form">
+          <form onSubmit={submit} className="bg-white w-full max-w-xl border border-slate-200 shadow-2xl rounded-xl text-xs text-slate-900" data-testid="manager-form">
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
-              <h3 className="text-sm font-bold">{form.id ? 'Edit Manager' : 'Add Manager'}</h3>
-              <button type="button" onClick={() => setForm(null)} aria-label="Close"><X className="w-5 h-5" /></button>
+              <h3 className="text-sm font-bold text-slate-900">{form.id ? 'Edit Manager' : 'Add Manager'}</h3>
+              <button type="button" onClick={() => setForm(null)} aria-label="Close" className="text-slate-600 hover:text-slate-900"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-5 space-y-3">
               <label className="block">
-                <span className="block font-semibold mb-1">Name *</span>
-                <input className="w-full px-3 py-2 border border-slate-300 rounded" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+                <span className="block font-semibold mb-1 text-slate-800">Name *</span>
+                <input className="w-full px-3 py-2 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-400 rounded-md focus:outline-none focus:border-[#009ef7] focus:ring-2 focus:ring-[#009ef7]/30" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
               </label>
               <label className="block">
-                <span className="block font-semibold mb-1">Login email *</span>
-                <input type="email" className="w-full px-3 py-2 border border-slate-300 rounded disabled:bg-slate-100" value={form.email}
+                <span className="block font-semibold mb-1 text-slate-800">Login email *</span>
+                <input type="email" className="w-full px-3 py-2 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-400 rounded-md focus:outline-none focus:border-[#009ef7] focus:ring-2 focus:ring-[#009ef7]/30 disabled:bg-slate-100 disabled:text-slate-600" value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })} disabled={!!form.id} required={!form.id} />
               </label>
               <label className="block">
-                <span className="block font-semibold mb-1">{form.id ? 'New password (leave blank to keep)' : 'Password * (min 8)'}</span>
-                <input type="password" autoComplete="new-password" className="w-full px-3 py-2 border border-slate-300 rounded" value={form.password}
+                <span className="block font-semibold mb-1 text-slate-800">{form.id ? 'New password (leave blank to keep)' : 'Password * (min 8)'}</span>
+                <input type="password" autoComplete="new-password" className="w-full px-3 py-2 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-400 rounded-md focus:outline-none focus:border-[#009ef7] focus:ring-2 focus:ring-[#009ef7]/30" value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })} />
               </label>
               <div>
-                <span className="block font-semibold mb-1">Page access</span>
+                <span className="block font-semibold mb-1 text-slate-800">Page access</span>
                 <table className="w-full border border-slate-200">
                   <thead>
                     <tr className="bg-slate-50">
-                      <th className="text-left p-2">Page</th>
-                      {ACTIONS.map((a) => <th key={a.key} className="p-2">{a.label}</th>)}
+                      <th className="text-left p-2 text-slate-800">Page</th>
+                      {ACTIONS.map((a) => <th key={a.key} className="p-2 text-slate-800">{a.label}</th>)}
                     </tr>
                   </thead>
                   <tbody>
                     {PAGES.map((p) => (
                       <tr key={p.key} className="border-t border-slate-200">
-                        <td className="p-2"><div className="font-semibold">{p.label}</div><div className="text-[10px] text-slate-500">{p.hint}</div></td>
+                        <td className="p-2"><div className="font-semibold">{p.label}</div><div className="text-[10px] text-slate-600">{p.hint}</div></td>
                         {ACTIONS.map((a) => (
                           <td key={a.key} className="p-2 text-center">
-                            <input type="checkbox" data-testid={`perm-${p.key}-${a.key}`} aria-label={`${p.label} ${a.label}`}
+                            <input type="checkbox" className="w-4 h-4 accent-[#009ef7]" data-testid={`perm-${p.key}-${a.key}`} aria-label={`${p.label} ${a.label}`}
                               checked={!!form.permissions[p.key][a.key]} onChange={(e) => setPerm(p.key, a.key, e.target.checked)} />
                           </td>
                         ))}
@@ -239,11 +293,11 @@ export default function ManagersPage() {
                     ))}
                   </tbody>
                 </table>
-                <p className="mt-1 text-[10px] text-slate-500">Read applies at once. Write and Delete only let the Manager send a request; nothing changes until you approve it.</p>
+                <p className="mt-1 text-[10px] text-slate-600">Read applies at once. Write and Delete only let the Manager send a request; nothing changes until you approve it.</p>
               </div>
             </div>
             <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-200">
-              <button type="button" className="px-3 py-2 border border-slate-300 rounded" onClick={() => setForm(null)}>Cancel</button>
+              <button type="button" className="px-3 py-2 bg-white text-slate-800 border border-slate-400 rounded hover:bg-slate-50" onClick={() => setForm(null)}>Cancel</button>
               <button type="submit" disabled={saving} className="px-3 py-2 bg-[#009ef7] text-white font-bold rounded disabled:opacity-60">
                 {saving ? 'Saving...' : form.id ? 'Save changes' : 'Create manager'}
               </button>

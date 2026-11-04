@@ -28,7 +28,7 @@ export const REPORT_PAGES_CSS = `
 .rn-page .rn-page-lhfoot img { position: absolute; bottom: 0; left: 0; width: 210mm; height: auto; max-width: none; }
 .rn-page .rn-page-inner { position: absolute; z-index: 1; display: flex; flex-direction: column; }
 .rn-page .rn-page-inner > .letterhead { flex: none; }
-.rn-page .rn-page-content { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flow-root; }
+.rn-page .rn-page-content { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flow-root; padding-top: 6mm; }
 .rn-page .rn-page-foot { flex: none; }
 .rn-sheet .rn-first { margin-top: 0 !important; }
 .rn-sheet .rn-split-head { margin-bottom: 0 !important; }

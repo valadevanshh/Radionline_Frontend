@@ -13,7 +13,7 @@ import {
   Building2,
   Layers,
 } from 'lucide-react';
-import { RadiologyStore, DocTemplate, RadiologyCenter } from '@/lib/radiology-store';
+import { RadiologyStore, DocTemplate, RadiologyCenter, isSystemStandardTemplate } from '@/lib/radiology-store';
 import { ApiClient, apiErrorMessage } from '@/lib/api-client';
 import { canWriteTemplates, useSession } from '@/lib/access';
 import { toast } from '@/components/ui/Toast';
@@ -45,7 +45,7 @@ export default function DocumentEditorStudioPage() {
         ApiClient.getTemplates(),
         ApiClient.getCenters(),
       ]);
-      setSavedTemplates(tmpls);
+      setSavedTemplates(tmpls.filter((t) => !isSystemStandardTemplate(t)));
       setAllCenters(cntrs.length > 0 ? cntrs : RadiologyStore.getCenters());
     } catch {
       setSavedTemplates(RadiologyStore.getTemplates());
@@ -264,7 +264,7 @@ export default function DocumentEditorStudioPage() {
                       ) : (
                         <span className="text-[10px] text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
                           <Layers className="w-3 h-3" />
-                          <span>System Standard</span>
+                          <span>Centre Template</span>
                         </span>
                       )}
                       {tmpl.bodyPart && (

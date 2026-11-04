@@ -253,6 +253,12 @@ const STORAGE_KEYS = {
   USERS: 'radionline_users_v1',
 };
 
+/** Built-in System Standard templates (hidden from all listings). */
+export function isSystemStandardTemplate(t: Partial<DocTemplate> | null | undefined): boolean {
+  if (!t) return false;
+  return String(t.id || '').startsWith('sys-') || (t.centerName || '').trim().toLowerCase() === 'system standard';
+}
+
 export const RadiologyStore = {
   init() {
     if (typeof window === 'undefined') return;
@@ -267,7 +273,7 @@ export const RadiologyStore = {
       localStorage.setItem(STORAGE_KEYS.CENTERS, JSON.stringify(INITIAL_CENTERS));
     }
     if (!localStorage.getItem(STORAGE_KEYS.TEMPLATES)) {
-      localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(INITIAL_TEMPLATES));
+      localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify([]));
     }
     const storedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
     if (storedUsers && /admin@radio\.com|manager@radio\.com|radio@1|manager@123/.test(storedUsers)) {
@@ -544,20 +550,16 @@ export const RadiologyStore = {
   },
 
   getTemplates(): DocTemplate[] {
-    if (typeof window === 'undefined') return INITIAL_TEMPLATES;
+    if (typeof window === 'undefined') return [];
     this.init();
     const stored = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
     const parsed: DocTemplate[] = stored ? JSON.parse(stored) : [];
     
-    // Auto-merge system templates so all standard templates are always available
-    const existingIds = new Set(parsed.map((t) => t.id));
-    const missingSystem = INITIAL_TEMPLATES.filter((t) => !existingIds.has(t.id));
-    let combined = parsed;
-    if (missingSystem.length > 0) {
-      combined = [...parsed, ...missingSystem];
+    // System Standard (built-in sys-*) templates are no longer shown; purge any cached copies.
+    const combined = parsed.filter((t) => !isSystemStandardTemplate(t));
+    if (combined.length !== parsed.length) {
       localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(combined));
     }
-    if (combined.length === 0) combined = INITIAL_TEMPLATES;
 
     const session = this.getSession();
     if (!session) return combined;
@@ -611,7 +613,7 @@ export const RadiologyStore = {
     };
 
     const stored = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
-    const rawTemplates: DocTemplate[] = stored ? JSON.parse(stored) : [...INITIAL_TEMPLATES];
+    const rawTemplates: DocTemplate[] = stored ? JSON.parse(stored) : [];
 
     let saved: DocTemplate;
     if (toSave.id) {
@@ -648,11 +650,9 @@ export const RadiologyStore = {
     this.init();
     const stored = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
     const parsed: DocTemplate[] = stored ? JSON.parse(stored) : [];
-    const system = parsed.filter((t) => String(t.id || '').startsWith('sys-'));
     const byId = new Map<string, DocTemplate>();
-    system.forEach((t) => byId.set(t.id, t));
     apiTemplates.forEach((t) => {
-      if (!t?.id) return;
+      if (!t?.id || isSystemStandardTemplate(t)) return;
       byId.set(t.id, t);
     });
     // Drop legacy local clones that share title+center+modality+bodyPart with an API row
