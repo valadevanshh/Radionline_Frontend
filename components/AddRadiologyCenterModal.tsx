@@ -1,20 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Building, Check, FileImage, Key, Lock, Eye, EyeOff, Wand2 } from 'lucide-react';
 import { RadiologyCenter } from '@/lib/radiology-store';
 
 interface AddRadiologyCenterModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (center: Omit<RadiologyCenter, 'id' | 'createdAt'>) => void;
+  onSave: (center: Omit<RadiologyCenter, 'id' | 'createdAt'> & { id?: string }) => void;
+  /** Edit mode: prefill from this centre; blank password keeps the current one. */
+  initial?: RadiologyCenter | null;
 }
 
 export default function AddRadiologyCenterModal({
   isOpen,
   onClose,
   onSave,
+  initial = null,
 }: AddRadiologyCenterModalProps) {
+  const isEdit = !!initial;
   const [centerName, setCenterName] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -25,6 +29,19 @@ export default function AddRadiologyCenterModal({
   const [contactNumber, setContactNumber] = useState('');
   const [address, setAddress] = useState('');
   const [headerFileName, setHeaderFileName] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setCenterName(initial?.centerName || '');
+    setFirstName(initial?.firstName || '');
+    setLastName(initial?.lastName || '');
+    setEmail(initial?.email || '');
+    setUsername(initial?.username || '');
+    setPassword('');
+    setContactNumber(initial?.contactNumber || '');
+    setAddress(initial?.address || '');
+    setHeaderFileName('');
+  }, [isOpen, initial]);
 
   if (!isOpen) return null;
 
@@ -45,6 +62,23 @@ export default function AddRadiologyCenterModal({
     }
 
     const finalUsername = username.trim() || email.trim();
+    if (initial) {
+      // Edit: keep letterhead / logo; password only when a new one is typed
+      onSave({
+        id: initial.id,
+        centerName: centerName.toUpperCase(),
+        firstName,
+        lastName,
+        email,
+        username: finalUsername,
+        ...(password.trim() ? { password: password.trim() } : {}),
+        contactNumber,
+        address,
+        headerTemplateUrl: initial.headerTemplateUrl,
+      } as Omit<RadiologyCenter, 'id' | 'createdAt'> & { id?: string });
+      onClose();
+      return;
+    }
     const finalPassword = password.trim() || 'center@123';
 
     onSave({
@@ -83,7 +117,7 @@ export default function AddRadiologyCenterModal({
               <Building className="w-4 h-4" />
             </div>
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-100">
-              Add Radiology Diagnostic Center
+              {isEdit ? 'Edit Radiology Diagnostic Center' : 'Add Radiology Diagnostic Center'}
             </h3>
           </div>
           <button
@@ -190,14 +224,14 @@ export default function AddRadiologyCenterModal({
               </div>
 
               <div>
-                <label className="block font-bold text-sky-900 mb-1">Login Password *</label>
+                <label className="block font-bold text-sky-900 mb-1">{isEdit ? 'New Password (blank = keep current)' : 'Login Password *'}</label>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    required
+                    required={!isEdit}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Set password"
+                    placeholder={isEdit ? 'Leave blank to keep' : 'Set password'}
                     className="w-full pl-3 pr-9 py-2 border border-sky-300 bg-white text-slate-900 focus:border-sky-500 focus:outline-none text-xs font-mono font-bold"
                   />
                   <button
@@ -257,7 +291,7 @@ export default function AddRadiologyCenterModal({
               className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-[#009ef7] hover:bg-[#0095e8] transition-colors cursor-pointer shadow-xs"
             >
               <Check className="w-3.5 h-3.5" />
-              <span>Create Radiology Center</span>
+              <span>{isEdit ? 'Save Changes' : 'Create Radiology Center'}</span>
             </button>
           </div>
         </form>

@@ -141,8 +141,18 @@ export default function A4ReportEditor({
 
   // 2. Find the placeholders in the page HTML (new nodes only when a page's HTML changed)
   const hostRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const hostHtml = useRef<(string | null)[]>([]);
   const [targets, setTargets] = useState<{ plan: Plan | null; list: HTMLElement[][] }>({ plan: null, list: [] });
   useLayoutEffect(() => {
+    // The page HTML is written here, not with dangerouslySetInnerHTML: React could re-write it on a
+    // later render and detach the placeholders the editors are portaled into (no editable text).
+    plan.pages.forEach((pg, i) => {
+      const host = hostRefs.current[i];
+      if (host && hostHtml.current[i] !== pg.html) {
+        host.innerHTML = pg.html;
+        hostHtml.current[i] = pg.html;
+      }
+    });
     const list = plan.pages.map((_, i) => Array.from(hostRefs.current[i]?.querySelectorAll<HTMLElement>('[data-edit]') || []));
     setTargets({ plan, list });
   }, [plan]);
@@ -291,10 +301,10 @@ export default function A4ReportEditor({
           <div
             key={i}
             ref={(el) => {
+              if (hostRefs.current[i] !== el) hostHtml.current[i] = null;
               hostRefs.current[i] = el;
             }}
             data-testid="report-page"
-            dangerouslySetInnerHTML={{ __html: pg.html }}
           />
         ))}
       </div>

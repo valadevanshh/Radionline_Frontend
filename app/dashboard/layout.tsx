@@ -6,7 +6,7 @@ import Sidebar from '@/components/Sidebar';
 import WalletTopupApprovals from '@/components/WalletTopupApprovals';
 import { ThemeProvider } from '@/lib/theme-context';
 import { ApiClient, getAccessToken } from '@/lib/api-client';
-import { refreshSession } from '@/lib/access';
+import { refreshSession, managerCan, managerPageForPath } from '@/lib/access';
 import { RadiologyStore } from '@/lib/radiology-store';
 
 export default function DashboardLayout({
@@ -33,6 +33,20 @@ export default function DashboardLayout({
       if (token) refreshSession(() => ApiClient.getMe());
     }
   }, [router]);
+
+  // Manager: only the pages the Super Admin granted (read); re-checked when the session refreshes
+  useEffect(() => {
+    if (!authChecked) return;
+    const check = () => {
+      const s = RadiologyStore.getSession();
+      if (s?.role !== 'MANAGER') return;
+      const page = managerPageForPath(pathname);
+      if (page === 'deny' || (page && !managerCan(s, page, 'read'))) router.replace('/dashboard');
+    };
+    check();
+    window.addEventListener('radionline_session_changed', check);
+    return () => window.removeEventListener('radionline_session_changed', check);
+  }, [authChecked, pathname, router]);
 
   if (!authChecked) {
     return (

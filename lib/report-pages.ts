@@ -21,11 +21,11 @@ export const REPORT_PAGES_CSS = `
 .rn-page { position: relative; width: 210mm; height: 297mm; overflow: hidden; background: #fff; box-sizing: border-box; }
 .rn-page *, .rn-page *::before, .rn-page *::after { box-sizing: border-box; margin: 0; padding: 0; }
 .rn-page img, .rn-page svg { display: block; }
-.rn-page .rn-page-bg { position: absolute; top: 0; left: 0; width: 210mm; height: 297mm; max-width: none; object-fit: fill; z-index: 0; pointer-events: none; }
+.rn-page .rn-page-bg { position: absolute; top: 0; left: 0; width: 210mm; height: 297mm; max-width: none; object-fit: contain; object-position: center top; z-index: 0; pointer-events: none; }
 .rn-page .rn-page-crop { position: absolute; top: 0; left: 0; width: 210mm; height: 42mm; overflow: hidden; z-index: 0; }
-.rn-page .rn-page-crop img { position: absolute; top: 0; left: 0; width: 210mm; height: 297mm; max-width: none; object-fit: fill; }
+.rn-page .rn-page-crop img { position: absolute; top: 0; left: 0; width: 210mm; height: auto; max-width: none; }
 .rn-page .rn-page-lhfoot { position: absolute; bottom: 0; left: 0; width: 210mm; height: 27mm; overflow: hidden; z-index: 0; }
-.rn-page .rn-page-lhfoot img { position: absolute; bottom: 0; left: 0; width: 210mm; height: 297mm; max-width: none; object-fit: fill; }
+.rn-page .rn-page-lhfoot img { position: absolute; bottom: 0; left: 0; width: 210mm; height: auto; max-width: none; }
 .rn-page .rn-page-inner { position: absolute; z-index: 1; display: flex; flex-direction: column; }
 .rn-page .rn-page-inner > .letterhead { flex: none; }
 .rn-page .rn-page-content { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flow-root; }

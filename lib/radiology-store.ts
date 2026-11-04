@@ -57,6 +57,8 @@ export interface UserAccount {
   pagePermissions?: Partial<Record<'reports' | 'invoices' | 'templates' | 'center_info', CenterPageLevel>> | null;
   /** Super Admin, or Center Admin of at least one centre */
   canManageCenterUsers?: boolean;
+  /** Manager only: pages the Super Admin granted (read / write / delete). */
+  managerPermissions?: Record<'reports' | 'doctors' | 'centers', { read: boolean; write: boolean; delete: boolean }> | null;
 }
 
 export interface Doctor {

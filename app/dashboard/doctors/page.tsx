@@ -13,6 +13,7 @@ import DoctorSignatureForm from '@/components/DoctorSignatureForm';
 import DoctorAvatar from '@/components/DoctorAvatar';
 import DoctorDetailsModal from '@/components/DoctorDetailsModal';
 import { experienceLabel } from '@/lib/doctor-profile';
+import { managerCan } from '@/lib/access';
 
 const TOP_TAGS = 3;
 
@@ -54,7 +55,9 @@ export default function DoctorsPage() {
     return () => window.removeEventListener('radionline_session_changed', checkAuth);
   }, [router]);
 
-  const canManageDoctors = session?.role === 'SUPER_ADMIN' || session?.role === 'MANAGER';
+  // Manager: Add / freeze need Doctors = write, delete needs Doctors = delete (both still go to Super Admin approval)
+  const canManageDoctors = session?.role === 'SUPER_ADMIN' || managerCan(session, 'doctors', 'write');
+  const canDeleteDoctors = session?.role === 'SUPER_ADMIN' || managerCan(session, 'doctors', 'delete');
   const canEditSignature = session?.role === 'SUPER_ADMIN';
   const isManager = session?.role === 'MANAGER';
 
@@ -414,7 +417,7 @@ export default function DoctorsPage() {
                             {doc.frozenAt ? <Sun className="w-4 h-4" /> : <Snowflake className="w-4 h-4" />}
                           </button>
                         )}
-                        {canManageDoctors && (
+                        {canDeleteDoctors && (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -477,7 +480,7 @@ export default function DoctorsPage() {
             : undefined
         }
         onDelete={
-          canManageDoctors
+          canDeleteDoctors
             ? (d) => {
                 setViewDoctor(null);
                 handleDeleteDoctor(d.id);

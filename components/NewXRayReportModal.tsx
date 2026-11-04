@@ -777,7 +777,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
 
       // New referring doctor for this centre (optional referral cut)
       const refName = withDr(referringDoctor, true);
-      if (saveReferrer && refName && centerId && !referrers.some((r) => stripDr(r.name).toUpperCase() === stripDr(refName).toUpperCase())) {
+      if (session?.role !== 'MANAGER' && saveReferrer && refName && centerId && !referrers.some((r) => stripDr(r.name).toUpperCase() === stripDr(refName).toUpperCase())) {
         try {
           await ApiClient.addCenterReferrer(centerId, {
             name: refName,

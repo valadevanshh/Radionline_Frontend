@@ -30,7 +30,7 @@ import {
   QrCode,
 } from 'lucide-react';
 import { RadiologyStore, UserAccount, XRayReport } from '@/lib/radiology-store';
-import { hasCenterLevel } from '@/lib/access';
+import { hasCenterLevel, managerCan } from '@/lib/access';
 import { ApiClient, getAccessToken, WS_BASE_URL, apiErrorMessage, UserNotification } from '@/lib/api-client';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { formatPatientDisplayId } from '@/lib/uuid';
@@ -123,9 +123,10 @@ export default function Sidebar({
       case 'MANAGER':
         return [
           { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-          { href: '/dashboard/all-reports', label: 'All Reports', icon: FileText },
-          { href: '/dashboard/doctors', label: 'Doctors', icon: Users },
-          { href: '/dashboard/radiology', label: 'Centers', icon: Building },
+          // Only the pages the Super Admin granted (read)
+          ...(managerCan(session, 'reports', 'read') ? [{ href: '/dashboard/all-reports', label: 'All Reports', icon: FileText }] : []),
+          ...(managerCan(session, 'doctors', 'read') ? [{ href: '/dashboard/doctors', label: 'Doctors', icon: Users }] : []),
+          ...(managerCan(session, 'centers', 'read') ? [{ href: '/dashboard/radiology', label: 'Centers', icon: Building }] : []),
           { href: '/dashboard/approvals', label: 'My Submissions', icon: Shield },
         ];
       case 'DOCTOR':
@@ -161,6 +162,7 @@ export default function Sidebar({
           { href: '/dashboard/doctors', label: 'Doctors', icon: Users },
           { href: '/dashboard/radiology', label: 'Centers', icon: Building },
           { href: '/dashboard/center-users', label: 'Center Users', icon: UserCog },
+          { href: '/dashboard/managers', label: 'Managers', icon: UserCog },
           { href: '/dashboard/payees', label: 'Payee Accounts', icon: Landmark },
           { href: '/dashboard/payment-qr', label: 'Receive Payments', icon: QrCode },
         ];

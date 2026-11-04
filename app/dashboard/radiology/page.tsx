@@ -14,6 +14,7 @@ import {
   KeyRound,
   Snowflake,
   Sun,
+  Pencil,
 } from 'lucide-react';
 import ResetPasswordModal, { ResetTarget } from '@/components/ResetPasswordModal';
 import { RadiologyStore, RadiologyCenter } from '@/lib/radiology-store';
@@ -21,6 +22,7 @@ import AddRadiologyCenterModal from '@/components/AddRadiologyCenterModal';
 import { ApiClient, CenterPricing, RateCard, apiErrorMessage, isPendingApproval } from '@/lib/api-client';
 import { useConfirm, toast } from '@/components/ui';
 import CenterPricingModal, { formatRates } from '@/components/CenterPricingModal';
+import { managerCan } from '@/lib/access';
 
 import { useResizableColumns } from '@/lib/use-resizable-columns';
 import { RowCard, RowCardList, RT_CONTAINER, RT_TABLET_HIDE } from '@/components/ui/ResponsiveTable';
@@ -36,6 +38,10 @@ export default function RadiologyCentersPage() {
   const [defaultRates, setDefaultRates] = useState<RateCard | null>(null);
   const [editPricing, setEditPricing] = useState<CenterPricing | null>(null);
   const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
+  // Edit centre: Super Admin saves at once; Manager (Centers = write) sends it for approval
+  const [editCenter, setEditCenter] = useState<RadiologyCenter | null>(null);
+  const [canWrite, setCanWrite] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
 
   const { widths, startResizing } = useResizableColumns({
     centerName: 200,
@@ -60,8 +66,23 @@ export default function RadiologyCentersPage() {
   useEffect(() => {
     const admin = RadiologyStore.getSession()?.role === 'SUPER_ADMIN';
     setIsSuperAdmin(admin);
+    const sess = RadiologyStore.getSession();
+    setCanWrite(admin || managerCan(sess, 'centers', 'write'));
+    setCanDelete(admin || managerCan(sess, 'centers', 'delete'));
     if (admin) loadPricing();
   }, [centers.length]);
+
+  // Page rights can change while open (Super Admin edits the Manager): re-read on session refresh
+  useEffect(() => {
+    const onSession = () => {
+      const sess = RadiologyStore.getSession();
+      const admin = sess?.role === 'SUPER_ADMIN';
+      setCanWrite(admin || managerCan(sess, 'centers', 'write'));
+      setCanDelete(admin || managerCan(sess, 'centers', 'delete'));
+    };
+    window.addEventListener('radionline_session_changed', onSession);
+    return () => window.removeEventListener('radionline_session_changed', onSession);
+  }, []);
 
   const openPricing = (c: RadiologyCenter) => {
     const p = pricingById[c.id];
@@ -106,6 +127,7 @@ export default function RadiologyCentersPage() {
       }
       RadiologyStore.saveCenter(saved);
       toast.success(`Centre saved: ${saved.centerName || center.centerName}`);
+      window.dispatchEvent(new Event('radionline_centers_changed'));
     } catch (err) {
       toast.error(apiErrorMessage(err, 'Could not save the centre'));
     }
@@ -186,14 +208,14 @@ export default function RadiologyCentersPage() {
             </h1>
           </div>
 
-          <button
+          {canWrite && (<button
             type="button"
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center justify-center gap-2 px-3.5 py-2 bg-[#009ef7] hover:bg-[#008be0] text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-all shadow-xs cursor-pointer shrink-0 font-mono"
           >
             <Plus className="w-4 h-4" />
             <span>Add Center</span>
-          </button>
+          </button>)}
         </div>
 
         {/* Filter Toolbar & Data Card */}
@@ -296,14 +318,23 @@ export default function RadiologyCentersPage() {
                               <span>Reset password</span>
                             </button>
                           )}
-                          <button
+                          {canWrite && (<button
+                            type="button"
+                            onClick={() => setEditCenter(c)}
+                            className="px-3 py-1.5 text-slate-700 hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold inline-flex items-center gap-1"
+                            data-testid={`center-edit-card-${c.id}`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            <span>Edit</span>
+                          </button>)}
+                          {canDelete && (<button
                             type="button"
                             onClick={() => handleDeleteCenter(c.id)}
                             className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold inline-flex items-center gap-1"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                             <span>Delete</span>
-                          </button>
+                          </button>)}
                         </>
                       }
                     />
@@ -457,7 +488,17 @@ export default function RadiologyCentersPage() {
                             <KeyRound className="w-4 h-4" />
                           </button>
                         )}
-                        <button
+                        {canWrite && (<button
+                          type="button"
+                          onClick={() => setEditCenter(c)}
+                          className="p-1.5 text-slate-400 hover:text-[#009ef7] transition-colors cursor-pointer rounded hover:bg-sky-50"
+                          title="Edit centre"
+                          aria-label={`Edit ${c.centerName}`}
+                          data-testid={`center-edit-${c.id}`}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>)}
+                        {canWrite && (<button
                           type="button"
                           onClick={() => handleFreezeCenter(c)}
                           className="p-1.5 text-slate-400 hover:text-sky-700 transition-colors cursor-pointer rounded hover:bg-sky-50"
@@ -466,15 +507,15 @@ export default function RadiologyCentersPage() {
                           data-testid={`center-freeze-${c.id}`}
                         >
                           {c.frozenAt ? <Sun className="w-4 h-4" /> : <Snowflake className="w-4 h-4" />}
-                        </button>
-                        <button
+                        </button>)}
+                        {canDelete && (<button
                           type="button"
                           onClick={() => handleDeleteCenter(c.id)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer rounded hover:bg-rose-50"
                           title="Delete Radiology Center"
                         >
                           <Trash2 className="w-4 h-4" />
-                        </button>
+                        </button>)}
                       </td>
                     </tr>
                   ))}
@@ -493,14 +534,14 @@ export default function RadiologyCentersPage() {
                 <p className="text-xs text-slate-500 max-w-md mt-1 mb-6">
                   Add your diagnostic center profiles to upload letterheads and create center login credentials.
                 </p>
-                <button
+                {canWrite && (<button
                   type="button"
                   onClick={() => setIsAddModalOpen(true)}
                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#009ef7] hover:bg-[#008be0] text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-all shadow-xs cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Add First Radiology Center</span>
-                </button>
+                </button>)}
               </div>
             )}
           </div>
@@ -521,9 +562,13 @@ export default function RadiologyCentersPage() {
       />
 
       <AddRadiologyCenterModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        isOpen={isAddModalOpen || !!editCenter}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setEditCenter(null);
+        }}
         onSave={handleAddCenter}
+        initial={editCenter}
       />
       <ResetPasswordModal target={resetTarget} onClose={() => setResetTarget(null)} />
     </div>

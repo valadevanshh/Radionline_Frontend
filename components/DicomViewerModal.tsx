@@ -478,10 +478,15 @@ export default function DicomViewerModal({
 
   const norm = (s?: string | null) => (s || '').trim().toLowerCase();
   const caseModality = norm(report?.modality);
-  const caseBodyParts = (report?.bodyParts || []).map((bp) => norm(bp)).filter(Boolean);
+  // Body part only: strip view/laterality words (AP, LAT, PA, oblique, right/left...) so a
+  // template saved as "Heel AP" still matches a case "Heel Lateral (right)".
+  const VIEW_WORDS = /\b(ap|pa|lat|lateral|obl|oblique|axial|view|views|both|bilateral|b\/l|right|left|rt|lt|r|l|and|supine|erect|standing|frontal|dorsoplantar|dp|skyline|sunrise|flexion|extension|portable|image|images|x-?ray|radiograph)\b/g;
+  const bodyPartKey = (s?: string | null) =>
+    norm(s).replace(/[()\[\],.&+\/\\-]/g, ' ').replace(VIEW_WORDS, ' ').replace(/\s+/g, ' ').trim();
+  const caseBodyParts = (report?.bodyParts || []).map((bp) => bodyPartKey(bp)).filter(Boolean);
   const templateMatchesCase = (tmpl: DocTemplate) => {
     const tMod = norm(tmpl.modality);
-    const tBp = norm(tmpl.bodyPart);
+    const tBp = bodyPartKey(tmpl.bodyPart);
     // "X-Ray" should match "X-Ray Chest", "CT" match "CT Scan", etc.
     const modalityOk =
       !caseModality ||

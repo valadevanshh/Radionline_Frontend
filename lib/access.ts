@@ -4,6 +4,27 @@ import { useEffect, useState } from 'react';
 import { RadiologyStore, UserAccount, XRayReport, CenterPageLevel } from './radiology-store';
 
 export type CenterPage = 'reports' | 'invoices' | 'templates' | 'center_info';
+export type ManagerPageKey = 'reports' | 'doctors' | 'centers';
+export type ManagerAction = 'read' | 'write' | 'delete';
+
+/** Manager login: what the Super Admin granted on a page. Other roles -> false.
+ *  A Manager session without managerPermissions (account from before page access existed) keeps full rights. */
+export function managerCan(session: UserAccount | null | undefined, page: ManagerPageKey, action: ManagerAction = 'read'): boolean {
+  if (!session || session.role !== 'MANAGER') return false;
+  const perms = session.managerPermissions;
+  if (!perms) return true;
+  return !!perms[page]?.[action];
+}
+
+/** Which Manager page a dashboard route belongs to. null = always open, 'deny' = never for Managers. */
+export function managerPageForPath(pathname: string | null | undefined): ManagerPageKey | null | 'deny' {
+  const p = (pathname || '').replace(/\/+$/, '') || '/dashboard';
+  if (p === '/dashboard' || p.startsWith('/dashboard/approvals') || p.startsWith('/dashboard/profile')) return null;
+  if (p.startsWith('/dashboard/all-reports') || p.startsWith('/dashboard/workspace') || p.startsWith('/dashboard/dicom-viewer')) return 'reports';
+  if (p.startsWith('/dashboard/doctors')) return 'doctors';
+  if (p.startsWith('/dashboard/radiology')) return 'centers';
+  return p.startsWith('/dashboard') ? 'deny' : null;
+}
 
 const RANK: Record<CenterPageLevel, number> = { none: 0, read: 1, write: 2 };
 
@@ -62,7 +83,8 @@ export function centerIdsWith(session: UserAccount | null | undefined, page: Cen
 /** "Upload Image" button: Super Admin, Manager (goes to approval), centre login with Reports = write somewhere. */
 export function canUploadCase(session: UserAccount | null | undefined): boolean {
   if (!session) return false;
-  if (session.role === 'SUPER_ADMIN' || session.role === 'MANAGER') return true;
+  if (session.role === 'SUPER_ADMIN') return true;
+  if (session.role === 'MANAGER') return managerCan(session, 'reports', 'write');
   if (session.role === 'CENTER') return hasCenterLevel(session, 'reports', 'write');
   return false;
 }
@@ -83,7 +105,8 @@ export function canEditCase(
   report: Pick<XRayReport, 'radiologyCenterId'> & { status?: string | null }
 ): boolean {
   if (!session) return false;
-  if (session.role === 'SUPER_ADMIN' || session.role === 'MANAGER') return true;
+  if (session.role === 'SUPER_ADMIN') return true;
+  if (session.role === 'MANAGER') return managerCan(session, 'reports', 'write');
   if (isCompletedLocked(session, report)) return false;
   if (session.role === 'CENTER') return hasCenterLevel(session, 'reports', 'write', report.radiologyCenterId);
   return false;
@@ -91,7 +114,7 @@ export function canEditCase(
 
 /** Delete: only Super Admin and Manager (Manager's delete waits for Super Admin approval). */
 export function canDeleteRecords(session: UserAccount | null | undefined): boolean {
-  return session?.role === 'SUPER_ADMIN' || session?.role === 'MANAGER';
+  return session?.role === 'SUPER_ADMIN' || managerCan(session, 'reports', 'delete');
 }
 
 /** Templates: create / edit — strictly limited to doctors only. */

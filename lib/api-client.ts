@@ -766,6 +766,20 @@ export const ApiClient = {
     );
   },
 
+  // Super Admin: Manager accounts + page access
+  async getManagers() {
+    return fetchJson<ManagerAccount[]>('/managers');
+  },
+  async createManager(body: { name: string; email: string; password: string; permissions: ManagerPermissions }) {
+    return fetchJson<ManagerAccount>('/managers', { method: 'POST', body: JSON.stringify(body) });
+  },
+  async updateManager(id: number, body: { name?: string; password?: string; permissions?: ManagerPermissions }) {
+    return fetchJson<ManagerAccount>(`/managers/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+  },
+  async deleteManager(id: number) {
+    return fetchJson<Record<string, never>>(`/managers/${id}`, { method: 'DELETE' });
+  },
+
   /** Upload binary to KV2/disk; returns relative path + public URL. */
   async uploadFile(
     file: File,
@@ -1229,4 +1243,16 @@ export interface PaymentCollectionAccountInput {
   upiName?: string;
   isActive?: boolean;
   select?: boolean;
+}
+
+export type ManagerPage = 'reports' | 'doctors' | 'centers';
+export type ManagerPermissions = Record<ManagerPage, { read: boolean; write: boolean; delete: boolean }>;
+export interface ManagerAccount {
+  id: number;
+  name: string;
+  email: string;
+  role: 'MANAGER';
+  permissions: ManagerPermissions;
+  pendingRequests: number;
+  createdAt?: number | null;
 }
