@@ -227,17 +227,17 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              style={{ animationDelay: '460ms' }}
-              className="rn-login-rise group relative overflow-hidden w-full h-10 rounded-lg bg-gradient-to-r from-[#009ef7] to-blue-600 hover:from-[#0086d6] hover:to-blue-700 text-white text-sm font-semibold shadow-md shadow-sky-500/25 hover:shadow-lg hover:shadow-sky-500/35 hover:-translate-y-px active:translate-y-0 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+              style={{ backgroundColor: '#009ef7', color: '#ffffff', opacity: loading ? 0.7 : 1 }}
+              className="group relative overflow-hidden w-full h-10 rounded-lg bg-[#009ef7] hover:bg-[#0086d6] text-white text-sm font-semibold shadow-md shadow-sky-500/25 hover:shadow-lg hover:shadow-sky-500/35 hover:-translate-y-px active:translate-y-0 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
             >
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/2 -skew-x-12 bg-gradient-to-r from-transparent via-white/35 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-[300%]"
+                className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/2 -skew-x-12 bg-white/20 transition-transform duration-700 ease-out group-hover:translate-x-[300%]"
               />
               {loading && (
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               )}
-              <span className="relative">{loading ? 'Signing in...' : 'Sign in'}</span>
+              <span className="relative" style={{ color: '#ffffff' }}>{loading ? 'Signing in...' : 'Sign in'}</span>
             </button>
           </form>
         </div>
