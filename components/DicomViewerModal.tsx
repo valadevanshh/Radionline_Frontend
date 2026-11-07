@@ -83,6 +83,14 @@ const SHEET_FONT_STACKS: Record<string, string> = {
 const SHEET_FONT_PT: Record<string, number> = { 'text-xs': 10, 'text-sm': 11, 'text-base': 12 };
 import { ApiClient, resolveMediaUrl, apiErrorMessage, publicReportLink, getAccessToken, WS_BASE_URL, type ImageAnnotation } from '@/lib/api-client';
 import { canWriteTemplates } from '@/lib/access';
+import {
+  commitAndSwitchPart,
+  parseTemplateBody,
+  replacementNeedsConfirm,
+  savedTextForParts,
+  templatesForStudyPicker,
+  writeActivePartText,
+} from '@/lib/template-match';
 import { downloadImage, useImageContextMenu } from '@/components/ui/ImageContextMenu';
 
 interface DicomViewerModalProps {
@@ -181,6 +189,25 @@ export const SAMPLE_DICOM_SERIES = [
     wl: 40,
   },
 ];
+
+/**
+ * CSS filter for a viewport, relative to the series' own default WW/WL.
+ * At the default window (as opened / after Reset) this returns 'none', so uploaded
+ * images show their original pixels. An absolute formula turned the upload default
+ * (WW 1500 / WL -600) into brightness(60%) contrast(200%) and darkened the image.
+ */
+function viewportCssFilter(
+  state: { ww: number; wl: number; invert: boolean },
+  series: { ww: number; wl: number },
+): string {
+  const parts: string[] = [];
+  const b = 100 + (state.wl - series.wl) / 20;
+  const c = Math.max(10, Math.min(500, (100 * series.ww) / Math.max(1, state.ww)));
+  if (Math.abs(b - 100) > 0.01) parts.push('brightness(' + Math.max(0, b) + '%)');
+  if (Math.abs(c - 100) > 0.01) parts.push('contrast(' + c + '%)');
+  if (state.invert) parts.push('invert(100%)');
+  return parts.length ? parts.join(' ') : 'none';
+}
 
 import { RADIOLOGY_TEMPLATES, SystemReportTemplate as ReportTemplate } from '@/lib/radiology-templates';
 export type { ReportTemplate };
@@ -476,49 +503,6 @@ export default function DicomViewerModal({
   );
 
 
-  const norm = (s?: string | null) => (s || '').trim().toLowerCase();
-  const caseModality = norm(report?.modality);
-  // Body part only: strip view/laterality words (AP, LAT, PA, oblique, right/left...) so a
-  // template saved as "Heel AP" still matches a case "Heel Lateral (right)".
-  const VIEW_WORDS = /\b(ap|pa|lat|lateral|obl|oblique|axial|view|views|both|bilateral|b\/l|right|left|rt|lt|r|l|and|supine|erect|standing|frontal|dorsoplantar|dp|skyline|sunrise|flexion|extension|portable|image|images|x-?ray|radiograph)\b/g;
-  const bodyPartKey = (s?: string | null) =>
-    norm(s).replace(/[()\[\],.&+\/\\-]/g, ' ').replace(VIEW_WORDS, ' ').replace(/\s+/g, ' ').trim();
-  const caseBodyParts = (report?.bodyParts || []).map((bp) => bodyPartKey(bp)).filter(Boolean);
-  const templateMatchesCase = (tmpl: DocTemplate) => {
-    const tMod = norm(tmpl.modality);
-    const tBp = bodyPartKey(tmpl.bodyPart);
-    // "X-Ray" should match "X-Ray Chest", "CT" match "CT Scan", etc.
-    const modalityOk =
-      !caseModality ||
-      !tMod ||
-      tMod === caseModality ||
-      tMod.startsWith(caseModality) ||
-      caseModality.startsWith(tMod) ||
-      tMod.includes(caseModality) ||
-      caseModality.includes(tMod.split(/\s+/)[0] || tMod);
-    const bodyOk =
-      caseBodyParts.length === 0 ||
-      !tBp ||
-      caseBodyParts.some((bp) => bp === tBp || bp.includes(tBp) || tBp.includes(bp));
-    return modalityOk && bodyOk;
-  };
-  // PACS dropdown: doctors only see templates they created. No own templates → empty list.
-  const pacsSession = RadiologyStore.getSession();
-  const doctorOwnsTemplate = (tmpl: DocTemplate) => {
-    if (pacsSession?.role !== 'DOCTOR') return true;
-    const docId = String(pacsSession.doctorId || pacsSession.userId || '').trim();
-    const tmplDocId = String(tmpl.doctorId || '').trim();
-    if (!tmplDocId || !docId) return false;
-    return tmplDocId === docId || tmplDocId === String(pacsSession.doctorId || '').trim();
-  };
-  const pacsTemplates =
-    pacsSession?.role === 'DOCTOR'
-      ? storedTemplates.filter(doctorOwnsTemplate)
-      : storedTemplates;
-  const filteredTemplates = showAllTemplates
-    ? pacsTemplates
-    : pacsTemplates.filter(templateMatchesCase);
-
   const handleOpenSaveTemplate = () => {
     if (!canWriteTemplates(RadiologyStore.getSession())) return;
     if (!findingText.trim() && !impressionText.trim()) {
@@ -573,32 +557,44 @@ export default function DicomViewerModal({
 
   const [bodyPartReports, setBodyPartReports] = useState<Record<string, string>>({});
   const [bodyPartImpressions, setBodyPartImpressions] = useState<Record<string, string>>({});
-  /** True after the doctor picks a template manually — blocks async auto-match from wiping it. */
+  /** True after the doctor picks a template — blocks a late reset from wiping it. */
   const templateManualRef = useRef(false);
+  const activePartRef = useRef('');
+  const [pendingReplace, setPendingReplace] = useState<null | {
+    part: string;
+    templateId: string;
+    title: string;
+    findings: string;
+    impression: string;
+  }>(null);
 
   const handleSwitchBodyPartTab = (newIdx: number) => {
     if (!report?.bodyParts || newIdx < 0 || newIdx >= report.bodyParts.length) return;
-    const currentPart = report.bodyParts[activeBodyPartIdx] || 'GENERAL';
-    const updatedRMap = { ...bodyPartReports, [currentPart]: findingText };
-    const updatedIMap = { ...bodyPartImpressions, [currentPart]: impressionText };
-    setBodyPartReports(updatedRMap);
-    setBodyPartImpressions(updatedIMap);
-
-    setActiveBodyPartIdx(newIdx);
+    const currentPart = report.bodyParts[activeBodyPartIdx] || '';
     const newPart = report.bodyParts[newIdx];
-    setFindingText(updatedRMap[newPart] || '');
-    setImpressionText(updatedIMap[newPart] || '');
+    const next = commitAndSwitchPart(
+      { findings: bodyPartReports, impressions: bodyPartImpressions },
+      currentPart,
+      newPart,
+      findingText,
+      impressionText,
+    );
+    setBodyPartReports(next.findings);
+    setBodyPartImpressions(next.impressions);
+    setActiveBodyPartIdx(newIdx);
+    setFindingText(next.editorFindings);
+    setImpressionText(next.editorImpression);
     setReportTitle(`X-RAY ${newPart.toUpperCase()} EXAMINATION`);
+    setSelectedTemplateId('blank');
   };
 
   useEffect(() => {
     if (!isOpen) return;
 
     let cancelled = false;
-    // Fresh open / new case — allow auto-match until the doctor picks a template themselves
     templateManualRef.current = false;
 
-    const initFromReport = async () => {
+    const initFromReport = () => {
       if (!report) {
         setReportTitle('X-RAY EXAMINATION');
         setFindingText('');
@@ -606,90 +602,31 @@ export default function DicomViewerModal({
         setBodyPartReports({});
         setBodyPartImpressions({});
         setActiveBodyPartIdx(0);
-        setSelectedTemplateId('');
+        setSelectedTemplateId('blank');
         return;
       }
 
-      const parts = report.bodyParts && report.bodyParts.length > 0 ? report.bodyParts : ['GENERAL'];
-      const rMap: Record<string, string> = { ...(report.reportsByBodyPart || {}) };
-      const iMap: Record<string, string> = { ...(report.impressionsByBodyPart || {}) };
+      // Real study labels only. An unnamed case is not mapped to GENERAL, and no
+      // template is inserted — the doctor picks one for the active study.
+      const parts = report.bodyParts && report.bodyParts.length > 0 ? report.bodyParts : [];
+      const saved = savedTextForParts(parts, report);
 
-      const hasSavedContent = Boolean(
-        (report.findings && report.findings.trim()) ||
-        (report.impression && report.impression.trim()) ||
-        Object.values(rMap).some((v) => v && String(v).trim()) ||
-        Object.values(iMap).some((v) => v && String(v).trim())
-      );
+      if (cancelled || templateManualRef.current) return;
 
-      let matchedTitle: string | null = null;
-      let matchedTemplateKey = '';
-
-      if (!hasSavedContent) {
-        // Template auto-match by modality + body part (equality, case-insensitive trim)
-        let matched: DocTemplate | null = null;
-        const modality = (report.modality || '').trim();
-        if (modality) {
-          for (const bp of parts) {
-            if (cancelled) return;
-            try {
-              matched = await ApiClient.matchTemplate(modality, bp);
-            } catch (err) {
-              console.warn('Template match error:', err);
-              matched = null;
-            }
-            // Doctors: only auto-apply templates they created (never shared/system defaults)
-            if (matched) {
-              const sess = RadiologyStore.getSession();
-              if (sess?.role === 'DOCTOR') {
-                const docId = String(sess.doctorId || sess.userId || '').trim();
-                const tmplDocId = String(matched.doctorId || '').trim();
-                if (!tmplDocId || !docId || (tmplDocId !== docId && tmplDocId !== String(sess.doctorId || '').trim())) {
-                  matched = null;
-                }
-              }
-            }
-            if (matched) break;
-          }
-        }
-
-        if (matched) {
-          const findingsText =
-            matched.findings ||
-            (matched.content ? matched.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '') ||
-            '';
-          const impressionVal = matched.impression || '';
-          parts.forEach((p) => {
-            rMap[p] = findingsText;
-            iMap[p] = impressionVal;
-          });
-          matchedTitle = matched.title || null;
-          matchedTemplateKey = matched.id ? `stored_${matched.id}` : '';
-        } else {
-          // No match: leave blank starting point (do not invent placeholder text)
-          parts.forEach((p) => {
-            rMap[p] = '';
-            iMap[p] = '';
-          });
-        }
-      } else {
-        parts.forEach((p) => {
-          if (!rMap[p]) {
-            rMap[p] = report.findings || '';
-          }
-          if (!iMap[p]) {
-            iMap[p] = report.impression || '';
-          }
-        });
+      if (!parts.length) {
+        setBodyPartReports({});
+        setBodyPartImpressions({});
+        setActiveBodyPartIdx(0);
+        setReportTitle('X-RAY EXAMINATION');
+        setFindingText(saved.hasSavedDraft ? (report.findings || '') : '');
+        setImpressionText(saved.hasSavedDraft ? (report.impression || '') : '');
+        setSelectedTemplateId('blank');
+        return;
       }
 
-      if (cancelled) return;
-      // Doctor already chose a template while matchTemplate was in flight — don't wipe it
-      if (templateManualRef.current) return;
+      setBodyPartReports(saved.findings);
+      setBodyPartImpressions(saved.impressions);
 
-      setBodyPartReports(rMap);
-      setBodyPartImpressions(iMap);
-
-      // Open on the first study that is not signed yet (falls back to the first study)
       const caseStudies = report.studies || [];
       const firstOpenIdx = parts.findIndex((bp, i) => {
         const st = caseStudies.find((s) => s.bodyPart === bp) || caseStudies[i];
@@ -699,11 +636,10 @@ export default function DicomViewerModal({
       setActiveBodyPartIdx(startIdx);
 
       const firstPart = parts[startIdx];
-      setReportTitle(matchedTitle || `X-RAY ${firstPart.toUpperCase()} EXAMINATION`);
-      setFindingText(rMap[firstPart] || '');
-      setImpressionText(iMap[firstPart] || '');
-      setSelectedTemplateId(matchedTemplateKey || 'blank');
-
+      setReportTitle(`X-RAY ${firstPart.toUpperCase()} EXAMINATION`);
+      setFindingText(saved.findings[firstPart] || '');
+      setImpressionText(saved.impressions[firstPart] || '');
+      setSelectedTemplateId('blank');
     };
 
     initFromReport();
@@ -966,8 +902,14 @@ export default function DicomViewerModal({
 
     setIsSubmitting(true);
 
-    const parts = report.bodyParts && report.bodyParts.length > 0 ? report.bodyParts : ['GENERAL'];
-    const currentPart = parts[activeBodyPartIdx] || parts[0];
+    const parts = report.bodyParts && report.bodyParts.length > 0 ? report.bodyParts : [];
+    const studyPart = (report.studies || [])[activeBodyPartIdx]?.bodyPart || '';
+    const currentPart = parts[activeBodyPartIdx] || parts[0] || studyPart || '';
+    if (!currentPart) {
+      setIsSubmitting(false);
+      alert('This case has no study procedure to save against.');
+      return;
+    }
     const studies = report.studies || [];
     const currentStudy =
       studies.find((s) => s.bodyPart === currentPart) || studies[activeBodyPartIdx];
@@ -978,14 +920,13 @@ export default function DicomViewerModal({
       return;
     }
 
-    const finalReportsMap: Record<string, string> = {
-      ...bodyPartReports,
-      [currentPart]: findingText,
-    };
-    const finalImpressionsMap: Record<string, string> = {
-      ...bodyPartImpressions,
-      [currentPart]: impressionText,
-    };
+    const mergedText = writeActivePartText(
+      { findings: bodyPartReports, impressions: bodyPartImpressions },
+      currentPart,
+      { findings: findingText, impression: impressionText },
+    );
+    const finalReportsMap = mergedText.findings;
+    const finalImpressionsMap = mergedText.impressions;
     const finalTechniqueMap: Record<string, string> = {
       ...techniqueByPart,
       [currentPart]: techniqueText || `${report.modality || 'Radiograph'} — ${currentPart}`,
@@ -1086,9 +1027,19 @@ export default function DicomViewerModal({
     if (!report || isSubmitting || reportLocked) return;
     setIsSubmitting(true);
     const parts = report.bodyParts || [];
-    const currentPart = parts[activeBodyPartIdx] || parts[0] || 'CHEST PA/AP';
-    const findingText = bodyPartReports[currentPart] || '';
-    const impressionText = bodyPartImpressions[currentPart] || '';
+    const studyPart = (report.studies || [])[activeBodyPartIdx]?.bodyPart || '';
+    const currentPart = parts[activeBodyPartIdx] || parts[0] || studyPart || '';
+    if (!currentPart) {
+      setIsSubmitting(false);
+      setStatusToast('This case has no study procedure to save against.');
+      setTimeout(() => setStatusToast(null), 3000);
+      return;
+    }
+    const mergedText = writeActivePartText(
+      { findings: bodyPartReports, impressions: bodyPartImpressions },
+      currentPart,
+      { findings: findingText, impression: impressionText },
+    );
     const techText = techniqueByPart[currentPart] || `${report.modality || 'X-Ray'} — ${currentPart}`;
     const studies = report.studies || [];
     const matchedStudy = studies.find((s) => s.bodyPart === currentPart) || studies[activeBodyPartIdx];
@@ -1101,6 +1052,8 @@ export default function DicomViewerModal({
         technique: techText,
         reportDate: reportDateEdits[studyId] || undefined,
       });
+      setBodyPartReports(mergedText.findings);
+      setBodyPartImpressions(mergedText.impressions);
       setStudyStatuses((prev) => ({ ...prev, [currentPart]: 'DRAFT' }));
       setStatusToast(`Draft saved for ${currentPart}`);
       setTimeout(() => setStatusToast(null), 3000);
@@ -1757,6 +1710,126 @@ export default function DicomViewerModal({
     printReportElement(null, docTitle, payload);
   };
 
+
+  const activeStudyLabel =
+    (report?.bodyParts && report.bodyParts[activeBodyPartIdx]) ||
+    (report?.studies && report.studies[activeBodyPartIdx] && report.studies[activeBodyPartIdx].bodyPart) ||
+    '';
+  activePartRef.current = activeStudyLabel;
+
+  const templateSession = RadiologyStore.getSession();
+  const ownedTemplates = templatesForStudyPicker({
+    templates: storedTemplates,
+    studyLabel: activeStudyLabel,
+    modality: report?.modality,
+    session: templateSession,
+    showAll: true,
+  }).candidates;
+  const templatePicker = templatesForStudyPicker({
+    templates: storedTemplates,
+    studyLabel: activeStudyLabel,
+    modality: report?.modality,
+    session: templateSession,
+    showAll: showAllTemplates,
+  });
+  const filteredTemplates = templatePicker.candidates;
+  const pacsTemplates = ownedTemplates;
+  const templateMatchNote = templatePicker.note;
+
+  const applyBodyToPart = (part: string, findings: string, impression: string, templateKey: string, title?: string) => {
+    if (!part) {
+      setStatusToast('No study is selected, so the template was not applied.');
+      setTimeout(() => setStatusToast(null), 3500);
+      return;
+    }
+    setBodyPartReports((prev) => writeActivePartText({ findings: prev, impressions: {} }, part, { findings, impression }).findings);
+    setBodyPartImpressions((prev) => writeActivePartText({ findings: {}, impressions: prev }, part, { findings, impression }).impressions);
+    if (activePartRef.current === part) {
+      setFindingText(findings);
+      setImpressionText(impression);
+      setSelectedTemplateId(templateKey);
+      if (title && (report?.bodyParts?.length || 0) <= 1) setReportTitle(title);
+      setTemplateApplyKey((k) => k + 1);
+    }
+    templateManualRef.current = true;
+    if (templateKey !== 'blank' && !findings && !impression) {
+      setStatusToast('This template has no findings/impression text saved.');
+      setTimeout(() => setStatusToast(null), 4000);
+    }
+  };
+
+  const commitTemplateBody = (
+    part: string,
+    currentFindings: string,
+    currentImpression: string,
+    templateKey: string,
+    title: string,
+    findings: string,
+    impression: string,
+  ) => {
+    if (replacementNeedsConfirm(currentFindings, currentImpression, findings, impression)) {
+      setPendingReplace({ part, templateId: templateKey, title, findings, impression });
+      return;
+    }
+    applyBodyToPart(part, findings, impression, templateKey, title);
+  };
+
+  const requestTemplateSelection = (tId: string) => {
+    templateManualRef.current = true;
+    const part = activeStudyLabel;
+    const currentFindings = findingText;
+    const currentImpression = impressionText;
+    if (tId === 'blank' || !tId) {
+      commitTemplateBody(part, currentFindings, currentImpression, 'blank', '', '', '');
+      return;
+    }
+    if (tId.startsWith('stored_')) {
+      const id = tId.replace('stored_', '');
+      const tmpl = storedTemplates.find((t) => t.id === id);
+      const hasBody = Boolean(
+        (tmpl?.findings || '').trim() || (tmpl?.impression || '').trim() || (tmpl?.content || '').trim(),
+      );
+      const useFresh = (fresh: DocTemplate) => {
+        const body = parseTemplateBody(fresh.findings || '', fresh.impression || '', fresh.content);
+        commitTemplateBody(part, currentFindings, currentImpression, 'stored_' + fresh.id, fresh.title || '', body.findings, body.impression);
+      };
+      if (tmpl && hasBody) {
+        useFresh(tmpl);
+        return;
+      }
+      if (tmpl) {
+        ApiClient.getTemplates()
+          .then((list) => {
+            const fresh = list?.find((t) => t.id === id);
+            if (fresh) {
+              RadiologyStore.saveTemplate(fresh);
+              setStoredTemplates((prev) => {
+                const byId = new Map(prev.map((t) => [t.id, t]));
+                byId.set(fresh.id, fresh);
+                return Array.from(byId.values());
+              });
+              useFresh(fresh);
+            } else {
+              useFresh(tmpl);
+            }
+          })
+          .catch(() => useFresh(tmpl));
+        return;
+      }
+      setStatusToast('Template not found in the loaded list. Try Show all, or reopen the case.');
+      setTimeout(() => setStatusToast(null), 4000);
+      return;
+    }
+    const sys = RADIOLOGY_TEMPLATES.find((t) => t.id === tId);
+    if (sys) {
+      const body = parseTemplateBody(sys.findings, sys.impression);
+      commitTemplateBody(part, currentFindings, currentImpression, tId, sys.title, body.findings, body.impression);
+      return;
+    }
+    setStatusToast('Template not found.');
+    setTimeout(() => setStatusToast(null), 3500);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -2250,7 +2323,7 @@ export default function DicomViewerModal({
                         setImgSizes((prev) => ({ ...prev, [vIdx]: { w, h } }));
                       }}
                       style={{
-                        filter: `brightness(${100 + (state.wl - 200) / 20}%) contrast(${Math.max(50, 100 * ((2000 - state.ww) / 500 + 1))}%) ${state.invert ? 'invert(100%)' : ''}`,
+                        filter: viewportCssFilter(state, series),
                       }}
                       className="w-full h-full object-cover select-none pointer-events-none block"
                     />
@@ -2435,7 +2508,7 @@ export default function DicomViewerModal({
                         alt="Magnified View"
                         style={{
                           transform: `scale(${state.zoom * 2.5}) translate(${state.pan.x - (magnifierPos.x - 150) / 2}px, ${state.pan.y - (magnifierPos.y - 150) / 2}px)`,
-                          filter: `brightness(${100 + (state.wl - 200) / 20}%) contrast(${Math.max(50, 100 * ((2000 - state.ww) / 500 + 1))}%) ${state.invert ? 'invert(100%)' : ''}`,
+                          filter: viewportCssFilter(state, series),
                         }}
                         className="max-w-none max-h-none absolute w-full h-full object-cover"
                       />
@@ -2504,150 +2577,7 @@ export default function DicomViewerModal({
                 <Sparkles className={`w-3.5 h-3.5 shrink-0 ${theme === 'dark' ? 'text-cyan-400' : 'text-blue-600'}`} />
                 <select
                   value={selectedTemplateId || 'blank'}
-                  onChange={(e) => {
-                    const tId = e.target.value;
-                    templateManualRef.current = true;
-                    setSelectedTemplateId(tId === 'blank' ? 'blank' : tId);
-
-                    const htmlToPlain = (html: string) =>
-                      html
-                        .replace(/<br\s*\/?>/gi, '\n')
-                        .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
-                        .replace(/<[^>]+>/g, '')
-                        .replace(/&nbsp;/gi, ' ')
-                        .replace(/&amp;/gi, '&')
-                        .replace(/&lt;/gi, '<')
-                        .replace(/&gt;/gi, '>')
-                        .replace(/\r\n/g, '\n')
-                        .replace(/\n{3,}/g, '\n\n')
-                        .trim();
-
-                    const applyFindingsImpression = (rawFindings: string, rawImpression: string, content?: string) => {
-                      let findings = (rawFindings || '').trim();
-                      let impression = (rawImpression || '').trim();
-                      // Always try content HTML when either body field is empty (templates often
-                      // store the full report only in `content`).
-                      if ((!findings || !impression) && content) {
-                        const plain = htmlToPlain(content);
-                        const parts = plain.split(/\bIMPRESSION(?:\s*&\s*CONCLUSION)?\s*:?/i);
-                        if (parts.length >= 2) {
-                          if (!findings) {
-                            findings = parts[0]
-                              .replace(/^(?:RADIOLOGICAL\s+)?FINDINGS\s*:?/i, '')
-                              .replace(/^[\s\S]*?\bFINDINGS\s*:?/i, '')
-                              .trim();
-                          }
-                          if (!impression) {
-                            impression = parts.slice(1).join('\n').trim();
-                          }
-                        } else if (!findings) {
-                          findings = plain
-                            .replace(/^(?:RADIOLOGICAL\s+)?FINDINGS\s*:?/i, '')
-                            .replace(/^[\s\S]*?\bFINDINGS\s*:?/i, '')
-                            .trim();
-                        }
-                      }
-                      const parts = report?.bodyParts?.length ? report.bodyParts : ['GENERAL'];
-                      // Apply body maps first, then text + remount key in one turn so the
-                      // A4 editor mounts already holding the template body.
-                      setBodyPartReports((prev) => {
-                        const next = { ...prev };
-                        parts.forEach((part) => { next[part] = findings; });
-                        return next;
-                      });
-                      setBodyPartImpressions((prev) => {
-                        const next = { ...prev };
-                        parts.forEach((part) => { next[part] = impression; });
-                        return next;
-                      });
-                      setFindingText(findings);
-                      setImpressionText(impression);
-                      setTemplateApplyKey((k) => k + 1);
-                      if (!findings && !impression) {
-                        setStatusToast('This template has no findings/impression text saved.');
-                        setTimeout(() => setStatusToast(null), 4000);
-                      }
-                    };
-
-                    if (tId === 'blank' || !tId) {
-                      setFindingText('');
-                      setImpressionText('');
-                      const parts = report?.bodyParts?.length ? report.bodyParts : ['GENERAL'];
-                      setBodyPartReports((prev) => {
-                        const next = { ...prev };
-                        parts.forEach((part) => { next[part] = ''; });
-                        return next;
-                      });
-                      setBodyPartImpressions((prev) => {
-                        const next = { ...prev };
-                        parts.forEach((part) => { next[part] = ''; });
-                        return next;
-                      });
-                      setTemplateApplyKey((k) => k + 1);
-                      return;
-                    }
-
-                    if (tId.startsWith('stored_')) {
-                      const id = tId.replace('stored_', '');
-                      const tmpl =
-                        pacsTemplates.find((t) => t.id === id) ||
-                        storedTemplates.find((t) => t.id === id);
-                      const hasBody = Boolean(
-                        (tmpl?.findings || '').trim() ||
-                          (tmpl?.impression || '').trim() ||
-                          (tmpl?.content || '').trim()
-                      );
-                      if (tmpl && hasBody) {
-                        setReportTitle(tmpl.title);
-                        applyFindingsImpression(tmpl.findings || '', tmpl.impression || '', tmpl.content);
-                      } else if (tmpl) {
-                        // Stale/local copy missing body — refresh from API then apply
-                        setReportTitle(tmpl.title);
-                        ApiClient.getTemplates()
-                          .then((list) => {
-                            const fresh = list?.find((t) => t.id === id);
-                            if (fresh) {
-                              RadiologyStore.saveTemplate(fresh);
-                              setStoredTemplates((prev) => {
-                                const byId = new Map(prev.map((t) => [t.id, t]));
-                                byId.set(fresh.id, fresh);
-                                return Array.from(byId.values());
-                              });
-                              applyFindingsImpression(
-                                fresh.findings || '',
-                                fresh.impression || '',
-                                fresh.content
-                              );
-                            } else {
-                              applyFindingsImpression(
-                                tmpl.findings || '',
-                                tmpl.impression || '',
-                                tmpl.content
-                              );
-                            }
-                          })
-                          .catch(() => {
-                            applyFindingsImpression(
-                              tmpl.findings || '',
-                              tmpl.impression || '',
-                              tmpl.content
-                            );
-                          });
-                      } else {
-                        setStatusToast('Template not found in the loaded list. Try Show all, or reopen the case.');
-                        setTimeout(() => setStatusToast(null), 4000);
-                      }
-                    } else {
-                      const tmpl = RADIOLOGY_TEMPLATES.find((t) => t.id === tId);
-                      if (tmpl) {
-                        setReportTitle(tmpl.title);
-                        applyFindingsImpression(tmpl.findings, tmpl.impression);
-                      } else {
-                        setStatusToast('Template not found.');
-                        setTimeout(() => setStatusToast(null), 3500);
-                      }
-                    }
-                  }}
+                  onChange={(e) => requestTemplateSelection(e.target.value)}
                   className={`min-w-0 w-0 flex-1 truncate px-2 py-1.5 text-[13px] border font-semibold rounded cursor-pointer transition-all ${
                     theme === 'dark'
                       ? 'bg-slate-950 border-cyan-500/50 text-cyan-300 hover:border-cyan-400 focus:ring-1 focus:ring-cyan-400'
@@ -2721,6 +2651,15 @@ export default function DicomViewerModal({
                 </button>
                 )}
               </div>
+
+              {templateMatchNote ? (
+                <p
+                  data-testid="template-match-note"
+                  className={`basis-full m-0 px-1 text-[11px] leading-4 font-medium ${theme === 'dark' ? 'text-amber-200' : 'text-slate-600'}`}
+                >
+                  {templateMatchNote}
+                </p>
+              ) : null}
 
               <div className={`h-4 w-px mx-0.5 ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-300'}`} />
 
@@ -3065,6 +3004,40 @@ export default function DicomViewerModal({
       {statusToast && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[80] bg-slate-900 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-xl print:hidden no-print">
           {statusToast}
+        </div>
+      )}
+      {pendingReplace && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4 print:hidden no-print" data-testid="template-replace-dialog">
+          <div className="bg-white text-slate-900 rounded-xl shadow-2xl max-w-md w-full p-5">
+            <h3 className="text-lg font-bold mb-2">{pendingReplace.templateId === 'blank' ? 'Clear this study?' : 'Replace this study?'}</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              {pendingReplace.templateId === 'blank'
+                ? `Clear the findings and impression for ${pendingReplace.part} only? Other studies stay as they are.`
+                : `Replace the findings and impression for ${pendingReplace.part} only? Other studies stay as they are.`}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                data-testid="template-replace-cancel"
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm font-semibold hover:bg-slate-50"
+                onClick={() => setPendingReplace(null)}
+              >
+                Keep current text
+              </button>
+              <button
+                type="button"
+                data-testid="template-replace-confirm"
+                className="px-3 py-2 rounded-lg bg-[#009ef7] text-white text-sm font-semibold hover:bg-[#008be0]"
+                onClick={() => {
+                  const pending = pendingReplace;
+                  setPendingReplace(null);
+                  if (pending) applyBodyToPart(pending.part, pending.findings, pending.impression, pending.templateId, pending.title);
+                }}
+              >
+                {pendingReplace.templateId === 'blank' ? 'Clear this study' : 'Replace this study'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {leaveGuardOpen && (
