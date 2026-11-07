@@ -229,7 +229,7 @@ export default function SuperAdminInvoicesPage() {
                 Monthly settlement (IST) ·{' '}
                 {pricing?.variesByCenter ? 'Default: ' : ''}
                 Center ₹{pricing?.center?.firstStudy ?? 30}/+{pricing?.center?.additionalStudy ?? 15} · Doctor ₹
-                {pricing?.doctor?.firstStudy ?? 20}/+{pricing?.doctor?.additionalStudy ?? 10}
+                {pricing?.doctor?.firstStudy ?? 20}/+{pricing?.doctor?.additionalStudy ?? 10} per view
               </p>
             </div>
           </div>

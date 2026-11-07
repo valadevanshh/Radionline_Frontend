@@ -361,7 +361,7 @@ export default function RadiologyCentersPage() {
                       <div className="col-resizer" onMouseDown={(e) => startResizing('headerBanner', e.clientX, widths.headerBanner)} />
                     </th>
                     {isSuperAdmin && (
-                      <th title="Pricing (first / each additional study)" style={{ width: widths.pricing, position: 'relative' }}>
+                      <th title="Pricing (first / each additional view)" style={{ width: widths.pricing, position: 'relative' }}>
                         <span>Pricing</span>
                         <div className="col-resizer" onMouseDown={(e) => startResizing('pricing', e.clientX, widths.pricing)} />
                       </th>
@@ -422,7 +422,7 @@ export default function RadiologyCentersPage() {
                         const p = pricingById[c.id];
                         const r = p || defaultRates;
                         return (
-                          <td className="p-3.5" title="Centre charge and doctor payout: first study / each additional study">
+                          <td className="p-3.5" title="Centre charge and doctor payout: first view / each additional view">
                             {r ? (
                               <button
                                 type="button"

@@ -556,7 +556,7 @@ export const ApiClient = {
 
   async saveReport(
     report: Partial<XRayReport> & {
-      studyUploads?: { bodyPart: string; images: string[]; studyDate?: string; studyTime?: string }[];
+      studyUploads?: { bodyPart: string; images: string[]; views?: string[]; studyDate?: string; studyTime?: string }[];
     },
   ) {
     return fetchJson<XRayReport & Partial<PendingApprovalResult>>('/reports', {

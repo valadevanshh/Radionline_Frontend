@@ -95,7 +95,7 @@ export default function DoctorEarningsPage() {
               <p className="text-[11px] text-slate-500 font-mono">
                 Monthly payouts (IST) · {formatPeriodLabel(periodFilter)} ·{' '}
                 {pricing?.variesByCenter ? 'Default: ' : ''}₹{pricing?.doctor?.firstStudy ?? 20} first · ₹
-                {pricing?.doctor?.additionalStudy ?? 10} additional
+                {pricing?.doctor?.additionalStudy ?? 10} additional per view
               </p>
             </div>
           </div>

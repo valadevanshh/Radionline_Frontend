@@ -27,11 +27,12 @@ import { bodyPartChoices, findPart, viewsFor, composeStudyName } from '@/lib/bod
 import { BODY_PARTS_DATA, VIEWS_DATA } from '@/lib/body-parts-data';
 import Autocomplete from '@/components/ui/Autocomplete';
 import { viewsForBodyPart } from '@/lib/body-view-map';
+import { explicitStudyViews } from '@/lib/study-views';
 import { cleanDr, hasDrPrefix, stripDr, withDr, DR_HINT } from '@/lib/doctor-name';
 
 /** Payload handed to the page on create (same contract as before, plus the case id the files were stored under). */
 export type NewCasePayload = Omit<XRayReport, 'createdAt'> & {
-  studyUploads?: { bodyPart: string; images: string[]; studyDate?: string; studyTime?: string }[];
+  studyUploads?: { bodyPart: string; images: string[]; views?: string[]; studyDate?: string; studyTime?: string }[];
 };
 
 interface NewXRayReportModalProps {
@@ -734,7 +735,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
       const done = { n: 0 };
       if (total > 0) setUploadPct(0);
 
-      const studyUploads: { bodyPart: string; images: string[]; studyDate?: string; studyTime?: string }[] = [];
+      const studyUploads: { bodyPart: string; images: string[]; views?: string[]; studyDate?: string; studyTime?: string }[] = [];
       for (const s of readyStudies) {
         const paths = await uploadAll(
           s.views,
@@ -756,7 +757,13 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
           done,
           total || 1,
         );
-        studyUploads.push({ bodyPart: resolvedBodyPart(s), images: paths, studyDate: isoToDDMMYYYY(s.studyDate), studyTime: s.studyTime || undefined });
+        studyUploads.push({
+          bodyPart: resolvedBodyPart(s),
+          images: paths,
+          views: explicitStudyViews(s),
+          studyDate: isoToDDMMYYYY(s.studyDate),
+          studyTime: s.studyTime || undefined,
+        });
       }
       const slipPaths = await uploadAll(
         slips,

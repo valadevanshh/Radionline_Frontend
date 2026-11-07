@@ -31,7 +31,7 @@ interface CenterPricingModalProps {
   onSaved: (p: CenterPricing) => void;
 }
 
-/** Super Admin: edit one centre's charge and doctor payout (first / each additional study). */
+/** Super Admin: edit one centre's charge and doctor payout (first / each additional view). */
 export default function CenterPricingModal({ pricing, defaults, onClose, onSaved }: CenterPricingModalProps) {
   const [values, setValues] = useState<Values | null>(null);
   const [saving, setSaving] = useState(false);
@@ -128,20 +128,20 @@ export default function CenterPricingModal({ pricing, defaults, onClose, onSaved
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <fieldset className="rounded-lg border border-slate-200 p-3 space-y-3">
             <legend className="px-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Centre is charged</legend>
-            {field('centerFirst', 'First study')}
-            {field('centerAdditional', 'Each additional study')}
+            {field('centerFirst', 'First view')}
+            {field('centerAdditional', 'Each additional view')}
           </fieldset>
           <fieldset className="rounded-lg border border-slate-200 p-3 space-y-3">
             <legend className="px-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Doctor is paid</legend>
-            {field('doctorFirst', 'First study')}
-            {field('doctorAdditional', 'Each additional study')}
+            {field('doctorFirst', 'First view')}
+            {field('doctorAdditional', 'Each additional view')}
           </fieldset>
         </div>
 
         <div className="text-xs text-slate-600 space-y-1">
           {example && (
             <p data-testid="pricing-example">
-              A 3-study case: centre {RS}{example.center}, doctor {RS}{example.doctor}.
+              A 3-view case: centre {RS}{example.center}, doctor {RS}{example.doctor}.
             </p>
           )}
           {defaults && (

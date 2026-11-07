@@ -125,7 +125,7 @@ export default function CenterInvoicesPage() {
             <span>Center Invoices & Billing</span>
           </div>
         }
-        subtitle={`Monthly invoices (IST) · ₹${pricing?.center?.firstStudy ?? 30} first · ₹${pricing?.center?.additionalStudy ?? 15} additional · ${formatPeriodLabel(periodFilter)}`}
+        subtitle={`Monthly invoices (IST) · ₹${pricing?.center?.firstStudy ?? 30} first · ₹${pricing?.center?.additionalStudy ?? 15} additional per view · ${formatPeriodLabel(periodFilter)}`}
         actions={
           <div className="flex items-center gap-2 flex-wrap">
             <select
