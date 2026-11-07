@@ -869,6 +869,10 @@ export const ApiClient = {
   },
 
 
+  /**
+   * Newest exact modality + bodyPart row (created_at desc). Not for PACS auto-fill:
+   * the viewer lists alias matches and lets the doctor choose. See lib/template-match.ts.
+   */
   async matchTemplate(modality: string, bodyPart: string): Promise<DocTemplate | null> {
     const params = new URLSearchParams({
       modality: modality.trim(),
