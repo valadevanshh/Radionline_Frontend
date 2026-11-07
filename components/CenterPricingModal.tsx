@@ -159,3 +159,119 @@ export default function CenterPricingModal({ pricing, defaults, onClose, onSaved
     </Modal>
   );
 }
+
+/** Same rate fields as the centre card, for one doctor's payout only. */
+export function DoctorPayoutModal({
+  doctorId,
+  doctorName,
+  firstView,
+  additionalView,
+  isCustom,
+  defaultFirst,
+  defaultAdditional,
+  onClose,
+  onSaved,
+}: {
+  doctorId: string;
+  doctorName: string;
+  firstView: number | null;
+  additionalView: number | null;
+  isCustom: boolean;
+  defaultFirst: number;
+  defaultAdditional: number;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [first, setFirst] = useState(String(firstView ?? defaultFirst));
+  const [additional, setAdditional] = useState(String(additionalView ?? defaultAdditional));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const clean = (v: string) => /^\d+$/.test(v.trim()) && Number(v) <= MAX_RATE;
+  const valid = clean(first) && clean(additional);
+
+  const save = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!valid || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await ApiClient.updateDoctorPricing(doctorId, { firstView: Number(first), additionalView: Number(additional) });
+      onSaved();
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Could not save the payout.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clearTariff = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await ApiClient.updateDoctorPricing(doctorId, { clear: true });
+      onSaved();
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Could not clear the payout.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Payout - ${doctorName}`}
+      size="md"
+      footer={
+        <div className="flex w-full flex-wrap items-center justify-between gap-2">
+          <button
+            type="button"
+            className="text-xs font-semibold text-[#009ef7] hover:underline disabled:text-slate-400 disabled:no-underline"
+            disabled={!isCustom || saving}
+            onClick={clearTariff}
+            data-testid="doctor-payout-clear"
+          >
+            Clear personal tariff
+          </button>
+          <div className="flex gap-2">
+            <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button type="submit" form="doctor-payout-form" disabled={!valid || saving} data-testid="doctor-payout-save">
+              {saving ? 'Saving...' : 'Save payout'}
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      <form id="doctor-payout-form" onSubmit={save} className="space-y-4" data-testid="doctor-payout-form">
+        <fieldset className="rounded-lg border border-slate-200 p-3 space-y-3">
+          <legend className="px-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Doctor is paid</legend>
+          <label className="block">
+            <span className="block text-xs font-semibold text-slate-600 mb-1">First view</span>
+            <TextInput value={first} onChange={(e) => setFirst(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" maxLength={6} leftIcon={<span className="text-sm">{RS}</span>} data-testid="doctor-payout-first" aria-label="First view" />
+          </label>
+          <label className="block">
+            <span className="block text-xs font-semibold text-slate-600 mb-1">Each additional view</span>
+            <TextInput value={additional} onChange={(e) => setAdditional(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" maxLength={6} leftIcon={<span className="text-sm">{RS}</span>} data-testid="doctor-payout-additional" aria-label="Each additional view" />
+          </label>
+        </fieldset>
+        <div className="text-xs text-slate-600 space-y-1">
+          {valid && (
+            <p data-testid="doctor-payout-example">
+              A 3-view case pays {RS}{Number(first) + 2 * Number(additional)}.
+            </p>
+          )}
+          <p className="text-slate-500">
+            {isCustom
+              ? `Saved tariff. It overrides every centre doctor payout for new sign-offs, including ${formatRates(defaultFirst, defaultAdditional)}.`
+              : `Not saved. This doctor is paid from each centre's doctor payout, or ${formatRates(defaultFirst, defaultAdditional)} where that centre has none. Saving any amount, including ${formatRates(defaultFirst, defaultAdditional)}, stores a personal tariff.`}
+          </p>
+          <p className="text-slate-500">Clear personal tariff is the only reset. New sign-offs only.</p>
+          {!valid && <p className="text-rose-600">Enter whole rupees from 0 to {MAX_RATE}.</p>}
+          {error && <p className="text-rose-600" role="alert">{error}</p>}
+        </div>
+      </form>
+    </Modal>
+  );
+}

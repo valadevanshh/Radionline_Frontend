@@ -227,9 +227,10 @@ export default function SuperAdminInvoicesPage() {
               <h1 className="text-base sm:text-lg font-bold text-slate-900">Invoices & Billing</h1>
               <p className="text-[11px] text-slate-500 font-mono">
                 Monthly settlement (IST) ·{' '}
-                {pricing?.variesByCenter ? 'Default: ' : ''}
-                Center ₹{pricing?.center?.firstStudy ?? 30}/+{pricing?.center?.additionalStudy ?? 15} · Doctor ₹
-                {pricing?.doctor?.firstStudy ?? 20}/+{pricing?.doctor?.additionalStudy ?? 10} per view
+                Centre fallback ₹{pricing?.default?.center?.firstStudy ?? pricing?.center?.firstStudy ?? 30}/+
+                {pricing?.default?.center?.additionalStudy ?? pricing?.center?.additionalStudy ?? 15} · Doctor fallback ₹
+                {pricing?.default?.doctor?.firstStudy ?? 30}/+{pricing?.default?.doctor?.additionalStudy ?? 15} per view
+                {' '}when neither the doctor nor the centre has a saved doctor payout
               </p>
             </div>
           </div>

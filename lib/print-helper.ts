@@ -64,7 +64,7 @@ export type PrintReportPayload = {
  * Every rule is scoped under .rn-sheet.
  */
 export const REPORT_SHEET_CSS = `
-.rn-sheet { font-family: Georgia, "Times New Roman", Times, serif; font-size: 11pt; line-height: 1.55; color: #000; background: #fff; }
+.rn-sheet { font-family: Georgia, "Times New Roman", Times, serif; font-size: 11pt; line-height: 1.35; color: #000; background: #fff; }
 .rn-sheet * { box-sizing: border-box; }
 .rn-sheet .letterhead { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; }
 .rn-sheet .lh-row { display: flex; gap: 12px; align-items: flex-start; }
@@ -96,18 +96,19 @@ export const REPORT_SHEET_CSS = `
 .rn-sheet .rn-note { margin-top: 4px; font-family: system-ui, sans-serif; font-size: 8pt; line-height: 1.4; color: #222; }
 .rn-sheet h2.study-title { font-family: system-ui, sans-serif; font-size: 12pt; line-height: 1.4; font-weight: 700; text-align: center; text-transform: uppercase; text-decoration: underline; margin: 18px 0 10px; }
 .rn-sheet h3.sec { font-family: system-ui, sans-serif; font-size: 10pt; line-height: 1.4; font-weight: 700; font-style: normal; text-decoration: none; text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 4px; border: none; }
-.rn-sheet p.body { margin: 0 0 8px; white-space: pre-wrap; word-wrap: break-word; }
+.rn-sheet p.body, .rn-sheet .rn-body-copy { margin: 0 0 0.45em; line-height: 1.35; white-space: pre-wrap; word-wrap: break-word; font-size: inherit; }
+.rn-sheet .rn-body-copy { margin: 0; display: block; width: 100%; }
 .rn-sheet p.study-intro { margin: 0 0 6px; }
 .rn-sheet p.findings, .rn-sheet p.impression { border: none !important; outline: none !important; background: transparent !important; padding: 0 !important; }
 .rn-sheet .study { margin-bottom: 8px; }
 .rn-sheet .clinical { margin-bottom: 12px; }
 .rn-sheet .sig-block { margin-top: 28px; font-family: system-ui, sans-serif; }
 .rn-sheet .sig-row { display: flex; justify-content: flex-end; align-items: flex-end; gap: 14px; }
-.rn-sheet .sig-inner { text-align: right; min-height: 70px; }
+.rn-sheet .sig-inner { text-align: right; min-height: 28mm; }
 .rn-sheet .sig-qr { width: 23mm; flex-shrink: 0; text-align: center; font-family: system-ui, sans-serif; font-size: 7pt; line-height: 1.25; color: #444; }
 .rn-sheet .sig-qr svg { display: block; width: 23mm; height: 23mm; }
 .rn-sheet .sig-qr-cap { margin-top: 3px; }
-.rn-sheet .sig-img { height: 52px; max-width: 220px; object-fit: contain; margin-bottom: 4px; display: inline-block; }
+.rn-sheet.rn-page img.sig-img { display: inline-block; height: auto; width: auto; max-height: 26mm; max-width: 68mm; object-fit: contain; object-position: right center; margin: 0 0 2mm 0; background: transparent; vertical-align: bottom; }
 .rn-sheet .sig-name { font-weight: 700; font-size: 11pt; }
 .rn-sheet .sig-meta { font-size: 9.5pt; color: #222; }
 .rn-sheet .disclaimer { margin-top: 22px; padding-top: 10px; border-top: 1px solid #666; font-size: 8.5pt; color: #444; font-style: italic; }

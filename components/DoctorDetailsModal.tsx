@@ -130,9 +130,9 @@ export default function DoctorDetailsModal({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <div className="mb-1.5 text-[12px] font-semibold text-slate-700">Signature</div>
-              <div className="flex h-20 w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-white">
+              <div className="flex h-28 w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-white">
                 {sig ? (
-                  <img src={sig} alt={`${doctor.fullName} signature`} className="max-h-16 max-w-[90%] object-contain" />
+                  <img src={sig} alt={`${doctor.fullName} signature`} className="max-h-24 max-w-[92%] bg-transparent object-contain" />
                 ) : (
                   <span className="text-[12px] text-slate-400">No signature uploaded</span>
                 )}

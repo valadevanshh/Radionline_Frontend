@@ -12,6 +12,7 @@ import { useConfirm, Modal } from '@/components/ui';
 import DoctorSignatureForm from '@/components/DoctorSignatureForm';
 import DoctorAvatar from '@/components/DoctorAvatar';
 import DoctorDetailsModal from '@/components/DoctorDetailsModal';
+import { DoctorPayoutModal, formatRates } from '@/components/CenterPricingModal';
 import { experienceLabel } from '@/lib/doctor-profile';
 import { managerCan } from '@/lib/access';
 
@@ -34,6 +35,9 @@ export default function DoctorsPage() {
   const [editDoctor, setEditDoctor] = useState<Doctor | null>(null);
   // Super Admin: reset a doctor's login password
   const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
+  const [payoutDoctor, setPayoutDoctor] = useState<Doctor | null>(null);
+  const [payoutDefaults, setPayoutDefaults] = useState({ firstView: 30, additionalView: 15 });
+  const [payoutById, setPayoutById] = useState<Record<string, { firstView: number | null; additionalView: number | null; isCustom: boolean }>>({});
 
   useEffect(() => {
     const checkAuth = () => {
@@ -59,6 +63,22 @@ export default function DoctorsPage() {
   const canManageDoctors = session?.role === 'SUPER_ADMIN' || managerCan(session, 'doctors', 'write');
   const canDeleteDoctors = session?.role === 'SUPER_ADMIN' || managerCan(session, 'doctors', 'delete');
   const canEditSignature = session?.role === 'SUPER_ADMIN';
+  const loadPayouts = useCallback(async () => {
+    if (session?.role !== 'SUPER_ADMIN') return;
+    try {
+      const data = await ApiClient.getDoctorPricing();
+      setPayoutDefaults(data.default);
+      const map: Record<string, { firstView: number | null; additionalView: number | null; isCustom: boolean }> = {};
+      for (const row of data.doctors) map[row.doctorId] = row;
+      setPayoutById(map);
+    } catch {
+      /* payout editor stays on the defaults */
+    }
+  }, [session?.role]);
+
+  useEffect(() => {
+    if (authorized && session?.role === 'SUPER_ADMIN') loadPayouts();
+  }, [authorized, session?.role, loadPayouts]);
   const isManager = session?.role === 'MANAGER';
 
   const loadDoctors = useCallback(async () => {
@@ -392,6 +412,23 @@ export default function DoctorsPage() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
+                              setPayoutDoctor(doc);
+                            }}
+                            className="px-1.5 py-1 -mt-1.5 text-[10px] font-bold text-slate-500 hover:text-[#009ef7] cursor-pointer rounded hover:bg-sky-50 shrink-0"
+                            title="Doctor payout"
+                            aria-label={`Set payout for ${doc.fullName}`}
+                            data-testid={`doctor-payout-${doc.id}`}
+                          >
+                            {payoutById[doc.id]?.isCustom
+                              ? formatRates(payoutById[doc.id].firstView || 0, payoutById[doc.id].additionalView || 0)
+                              : 'Uses centre'}
+                          </button>
+                        )}
+                        {canEditSignature && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setResetTarget({ ref: `doctor:${doc.id}`, name: doc.fullName, detail: doc.email });
                             }}
                             className="p-1.5 -mt-1.5 text-slate-400 hover:text-[#009ef7] transition-colors cursor-pointer rounded hover:bg-sky-50 shrink-0"
@@ -514,6 +551,22 @@ export default function DoctorsPage() {
         onSave={handleAddDoctor}
       />
       <ResetPasswordModal target={resetTarget} onClose={() => setResetTarget(null)} />
+      {payoutDoctor && (
+        <DoctorPayoutModal
+          doctorId={payoutDoctor.id}
+          doctorName={payoutDoctor.fullName}
+          firstView={payoutById[payoutDoctor.id]?.isCustom ? payoutById[payoutDoctor.id].firstView : null}
+          additionalView={payoutById[payoutDoctor.id]?.isCustom ? payoutById[payoutDoctor.id].additionalView : null}
+          isCustom={Boolean(payoutById[payoutDoctor.id]?.isCustom)}
+          defaultFirst={payoutDefaults.firstView}
+          defaultAdditional={payoutDefaults.additionalView}
+          onClose={() => setPayoutDoctor(null)}
+          onSaved={() => {
+            setPayoutDoctor(null);
+            loadPayouts();
+          }}
+        />
+      )}
     </div>
   );
 }

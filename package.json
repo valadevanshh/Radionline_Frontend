@@ -7,7 +7,7 @@
                     "build":  "next build",
                     "start":  "next start",
                     "lint":  "next lint",
-                    "test":  "tsx --test lib/template-match.test.ts lib/study-views.test.ts"
+                    "test":  "tsx --test lib/template-match.test.ts lib/study-views.test.ts lib/report-layout.test.ts"
                 },
     "dependencies":  {
                          "exceljs":  "^4.4.0",

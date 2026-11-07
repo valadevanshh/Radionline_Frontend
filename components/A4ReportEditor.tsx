@@ -25,7 +25,7 @@ type Slice = { s: number; dispEnd: number; value: string };
 
 /** Editor-only rules (the paginated measure uses <p>; the editor uses a div around a textarea) */
 const EDITOR_PAGES_CSS = `
-.rn-page .rn-edit { margin: 0 0 8px; }
+.rn-page .rn-edit { margin: 0 0 0.45em; line-height: 1.35; }
 .rn-page.rn-compact .rn-edit { margin-bottom: 4px; }
 .rn-page .rn-edit.rn-split-head { margin-bottom: 0; }
 .rn-page textarea, .rn-page input[type="text"] { font: inherit; letter-spacing: inherit; padding: 0; min-height: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
@@ -218,7 +218,7 @@ export default function A4ReportEditor({
         rows={1}
         minHeightPx={0}
         value={sl.value}
-        fontClass=""
+        fontClass="rn-body-copy"
         textareaRef={(el) => {
           const key = `${k}#${j}`;
           if (el) areas.current.set(key, el);

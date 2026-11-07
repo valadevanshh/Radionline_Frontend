@@ -298,17 +298,11 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
         </p>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div
-            className="h-20 w-full sm:w-56 rounded-lg border border-dashed border-slate-300 flex items-center justify-center overflow-hidden"
-            style={{
-              backgroundImage:
-                'linear-gradient(45deg,#f1f5f9 25%,transparent 25%),linear-gradient(-45deg,#f1f5f9 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#f1f5f9 75%),linear-gradient(-45deg,transparent 75%,#f1f5f9 75%)',
-              backgroundSize: '12px 12px',
-              backgroundPosition: '0 0,0 6px,6px -6px,-6px 0',
-              backgroundColor: '#fff',
-            }}
+            className="flex h-28 w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-white sm:w-72"
+            data-testid="signature-preview-frame"
           >
             {sigPreview ? (
-              <img src={sigPreview} alt="Signature" className="max-h-16 max-w-[90%] object-contain" data-testid="signature-preview" />
+              <img src={sigPreview} alt="Signature" className="max-h-24 max-w-[92%] bg-transparent object-contain" data-testid="signature-preview" />
             ) : (
               <span className="text-[12px] text-slate-400">No signature uploaded</span>
             )}
@@ -414,7 +408,7 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
       <section className="rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">On the report</div>
         <div className="text-right text-[12px] text-slate-900" data-testid="signature-block-preview">
-          {sigPreview ? <img src={sigPreview} alt="" className="inline-block h-10 object-contain mb-1" /> : null}
+          {sigPreview ? <img src={sigPreview} alt="" className="mb-1 inline-block h-16 max-w-[70%] bg-transparent object-contain" /> : null}
           <div className="font-bold text-[13px]">{doctor.fullName}</div>
           {degree.trim() ? <div>{degree.trim()}</div> : null}
           {regNo.trim() ? <div>{formatRegNo(regNo)}</div> : null}

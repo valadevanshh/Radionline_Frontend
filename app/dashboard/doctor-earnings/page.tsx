@@ -94,8 +94,18 @@ export default function DoctorEarningsPage() {
               <h1 className="text-base font-bold text-slate-900">Doctor Earnings</h1>
               <p className="text-[11px] text-slate-500 font-mono">
                 Monthly payouts (IST) · {formatPeriodLabel(periodFilter)} ·{' '}
-                {pricing?.variesByCenter ? 'Default: ' : ''}₹{pricing?.doctor?.firstStudy ?? 20} first · ₹
-                {pricing?.doctor?.additionalStudy ?? 10} additional per view
+                {pricing?.doctorRateSource === 'doctor' ? (
+                  <>
+                    Your payout ₹{pricing?.doctor?.firstStudy ?? 30} first · ₹
+                    {pricing?.doctor?.additionalStudy ?? 15} additional per view
+                  </>
+                ) : (
+                  <>
+                    No personal tariff. A centre&apos;s saved doctor payout is used; otherwise ₹
+                    {pricing?.default?.doctor?.firstStudy ?? 30} first · ₹
+                    {pricing?.default?.doctor?.additionalStudy ?? 15} additional per view
+                  </>
+                )}
               </p>
             </div>
           </div>

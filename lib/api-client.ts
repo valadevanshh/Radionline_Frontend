@@ -946,6 +946,11 @@ export const ApiClient = {
       doctor: { firstStudy: number; additionalStudy: number };
       isDefault?: boolean;
       variesByCenter?: boolean;
+      doctorRateSource?: 'default' | 'doctor' | 'unset';
+      default?: {
+        center: { firstStudy: number; additionalStudy: number };
+        doctor: { firstStudy: number; additionalStudy: number };
+      };
       allowedModalities: string[];
     }>(`/billing/pricing${centerId ? `?centerId=${encodeURIComponent(centerId)}` : ''}`);
   },
@@ -961,6 +966,31 @@ export const ApiClient = {
       method: 'PUT',
       body: JSON.stringify(body),
     });
+  },
+
+  /** Super Admin: each doctor's payout. No saved tariff means the default. */
+  async getDoctorPricing() {
+    return fetchJson<{
+      default: { firstView: number; additionalView: number };
+      doctors: Array<{
+        doctorId: string;
+        doctorName: string;
+        firstView: number | null;
+        additionalView: number | null;
+        isCustom: boolean;
+        source: string;
+        fallbackFirstView: number;
+        fallbackAdditionalView: number;
+      }>;
+    }>('/billing/doctor-pricing');
+  },
+
+  /** Super Admin: set one doctor's payout for new sign-offs. Matches the default to clear it. */
+  async updateDoctorPricing(doctorId: string, body: { firstView?: number; additionalView?: number; clear?: boolean }) {
+    return fetchJson<{ doctorId: string; doctorName: string; firstView: number; additionalView: number; isCustom: boolean; source: string }>(
+      `/billing/doctor-pricing/${encodeURIComponent(doctorId)}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+    );
   },
 
   async getBillingPeriods() {

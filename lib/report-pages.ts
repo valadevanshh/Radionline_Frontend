@@ -46,7 +46,7 @@ export const REPORT_PAGES_CSS = `
 .rn-sheet .rn-foot-last.sig-block { margin-top: 18px; }
 .rn-page.rn-compact h2.study-title { margin: 8px 0 5px; }
 .rn-page.rn-compact h3.sec { margin: 5px 0 2px; }
-.rn-page.rn-compact p.body { margin-bottom: 4px; }
+.rn-page.rn-compact p.body, .rn-page.rn-compact .rn-edit { margin-bottom: 0.25em; }
 .rn-page.rn-compact .demo { margin-bottom: 8px; }
 .rn-page.rn-compact .demo td { padding: 4px 7px; }
 .rn-page.rn-compact .rn-foot-last.sig-block { margin-top: 10px; }
