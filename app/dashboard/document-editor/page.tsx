@@ -14,8 +14,9 @@ import {
   Layers,
 } from 'lucide-react';
 import { RadiologyStore, DocTemplate, RadiologyCenter, isSystemStandardTemplate } from '@/lib/radiology-store';
-import { ApiClient, apiErrorMessage } from '@/lib/api-client';
-import { canWriteTemplates, useSession } from '@/lib/access';
+import { ApiClient, apiErrorMessage, isPendingApproval } from '@/lib/api-client';
+import DoctorPicker, { DoctorOption, doctorOptionsFrom } from '@/components/DoctorPicker';
+import { canManageTemplatesForDoctors, canViewTemplatesPage, canWriteTemplates, useSession } from '@/lib/access';
 import { toast } from '@/components/ui/Toast';
 
 import { PageShell, PageHeader } from '@/components/ui';
@@ -31,13 +32,43 @@ export default function DocumentEditorStudioPage() {
   const [editingTemplate, setEditingTemplate] = useState<DocTemplate | null>(null);
   const router = useRouter();
   const session = useSession();
-  const canSaveTemplate = canWriteTemplates(session);
+  const isAdminView = !!session && session.role !== 'DOCTOR';
+  const canSaveTemplate = canWriteTemplates(session) || canManageTemplatesForDoctors(session);
+  const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState('');
 
   useEffect(() => {
-    if (session && session.role !== 'DOCTOR') {
+    if (session && !canViewTemplatesPage(session)) {
       router.replace('/dashboard');
     }
   }, [session, router]);
+
+  useEffect(() => {
+    if (!isAdminView) return;
+    ApiClient.getDoctors()
+      .then((d) => setDoctorOptions(doctorOptionsFrom(d)))
+      .catch(() => setDoctorOptions(doctorOptionsFrom(RadiologyStore.getDoctors())));
+  }, [isAdminView]);
+
+  const doctorFilterOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    savedTemplates.forEach((t) => {
+      if (t.doctorId) counts.set(String(t.doctorId), (counts.get(String(t.doctorId)) || 0) + 1);
+    });
+    const known = new Set(doctorOptions.map((d) => d.id));
+    const extra: DoctorOption[] = [];
+    savedTemplates.forEach((t) => {
+      const id = t.doctorId ? String(t.doctorId) : '';
+      if (id && !known.has(id)) { known.add(id); extra.push({ id, name: t.doctorName || id }); }
+    });
+    return [...doctorOptions, ...extra].map((d) => ({ ...d, count: counts.get(d.id) || 0 }));
+  }, [doctorOptions, savedTemplates]);
+
+  const selectedDoctorName = doctorFilterOptions.find((d) => d.id === selectedDoctorId)?.name;
+  const modalPrefill = useMemo(
+    () => (selectedDoctorId ? { doctorId: selectedDoctorId } : undefined),
+    [selectedDoctorId],
+  );
 
   const loadData = async () => {
     try {
@@ -82,7 +113,11 @@ export default function DocumentEditorStudioPage() {
   const handleDeleteTemplate = async (tmpl: DocTemplate) => {
     if (!window.confirm(`Are you sure you want to delete template "${tmpl.title}"?`)) return;
     try {
-      await ApiClient.deleteTemplate(tmpl.id);
+      const res = await ApiClient.deleteTemplate(tmpl.id);
+      if (isPendingApproval(res)) {
+        toast.info(res.message || 'Delete request sent to the Super Admin for approval.');
+        return;
+      }
       RadiologyStore.deleteTemplate(tmpl.id);
       toast.success('Template deleted successfully');
       loadData();
@@ -102,6 +137,7 @@ export default function DocumentEditorStudioPage() {
 
   const filteredTemplates = useMemo(() => {
     return savedTemplates.filter((t) => {
+      if (selectedDoctorId && String(t.doctorId || '') !== selectedDoctorId) return false;
       if (selectedModality !== 'ALL' && t.modality.trim().toLowerCase() !== selectedModality.trim().toLowerCase()) {
         return false;
       }
@@ -118,9 +154,11 @@ export default function DocumentEditorStudioPage() {
       }
       return true;
     });
-  }, [savedTemplates, selectedModality, searchQuery]);
+  }, [savedTemplates, selectedModality, searchQuery, selectedDoctorId]);
 
-  if (session && session.role !== 'DOCTOR') {
+  const hasFilters = !!(searchQuery || selectedModality !== 'ALL' || selectedDoctorId);
+
+  if (session && !canViewTemplatesPage(session)) {
     return null;
   }
 
@@ -142,7 +180,9 @@ export default function DocumentEditorStudioPage() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-sans mt-0.5">
-                Standardized master report templates for radiological findings and impressions
+                {isAdminView
+                  ? 'Create and manage report templates on behalf of doctors \u2014 each doctor sees only their own in PACS'
+                  : 'Standardized master report templates for radiological findings and impressions'}
               </p>
             </div>
           </div>
@@ -155,7 +195,7 @@ export default function DocumentEditorStudioPage() {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#009ef7] hover:bg-[#008be0] text-xs font-bold text-white shadow-xs hover:shadow transition-all cursor-pointer font-mono uppercase tracking-wider"
             >
               <Plus className="w-4 h-4" />
-              <span>Create Template</span>
+              <span>{isAdminView ? 'Add Template for Doctor' : 'Create Template'}</span>
             </button>
           ) : undefined
         }
@@ -178,6 +218,17 @@ export default function DocumentEditorStudioPage() {
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto">
+              {isAdminView && (
+                <div className="w-full sm:w-60">
+                  <DoctorPicker
+                    compact
+                    options={doctorFilterOptions}
+                    value={selectedDoctorId}
+                    onChange={setSelectedDoctorId}
+                    allLabel="All doctors"
+                  />
+                </div>
+              )}
               <select
                 value={selectedModality}
                 onChange={(e) => setSelectedModality(e.target.value)}
@@ -189,12 +240,13 @@ export default function DocumentEditorStudioPage() {
                 ))}
               </select>
 
-              {(searchQuery || selectedModality !== 'ALL') && (
+              {hasFilters && (
                 <button
                   type="button"
                   onClick={() => {
                     setSearchQuery('');
                     setSelectedModality('ALL');
+                    setSelectedDoctorId('');
                   }}
                   className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors font-medium cursor-pointer"
                 >
@@ -210,11 +262,19 @@ export default function DocumentEditorStudioPage() {
               <div className="p-3 bg-slate-100 rounded-full text-slate-400">
                 <BookmarkPlus className="w-8 h-8" />
               </div>
-              <h3 className="font-bold text-sm text-slate-900">No Templates Found</h3>
+              <h3 className="font-bold text-sm text-slate-900">
+                {selectedDoctorName && !searchQuery && selectedModality === 'ALL'
+                  ? `${withDr(selectedDoctorName)} has no templates yet`
+                  : 'No Templates Found'}
+              </h3>
               <p className="text-xs text-slate-500 max-w-sm">
                 {searchQuery || selectedModality !== 'ALL'
-                  ? 'No templates match your current search and modality filter.'
-                  : 'No report templates are currently available.'}
+                  ? 'No templates match your current search and filters.'
+                  : isAdminView
+                    ? selectedDoctorName
+                      ? 'Add one now and it will show up in their PACS template dropdown.'
+                      : 'Add a template for a doctor - it will appear in their PACS template dropdown.'
+                    : 'No report templates are currently available.'}
               </p>
               {canSaveTemplate && (
                 <button
@@ -223,7 +283,11 @@ export default function DocumentEditorStudioPage() {
                   className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#009ef7] hover:bg-[#008be0] text-xs font-bold text-white shadow-xs transition-all cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>Create Template</span>
+                  <span>
+                    {isAdminView
+                      ? selectedDoctorName ? `Add Template for ${withDr(selectedDoctorName)}` : 'Add Template for Doctor'
+                      : 'Create Template'}
+                  </span>
                 </button>
               )}
             </div>
@@ -256,7 +320,12 @@ export default function DocumentEditorStudioPage() {
 
                     {/* Creator Tag */}
                     <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                      {tmpl.doctorName ? (
+                      {isAdminView && !tmpl.doctorName ? (
+                        <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1" title="Not assigned to a doctor - visible to all doctors">
+                          <Layers className="w-3 h-3" />
+                          <span>Shared (no doctor)</span>
+                        </span>
+                      ) : tmpl.doctorName ? (
                         <span className="text-[10px] text-purple-700 font-semibold bg-purple-50 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
                           <Stethoscope className="w-3 h-3" />
                           <span>{withDr(tmpl.doctorName)}</span>
@@ -329,6 +398,7 @@ export default function DocumentEditorStudioPage() {
             setEditingTemplate(null);
           }}
           initialTemplate={editingTemplate}
+          prefill={editingTemplate ? undefined : modalPrefill}
           onSaved={() => loadData()}
         />
       )}

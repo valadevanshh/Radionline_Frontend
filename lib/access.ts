@@ -123,6 +123,19 @@ export function canWriteTemplates(session: UserAccount | null | undefined): bool
   return session.role === 'DOCTOR';
 }
 
+/** Super Admin / Manager (Doctors -> write) can add or edit templates on behalf of a doctor.
+ *  Manager saves are staged for Super Admin approval by the API. */
+export function canManageTemplatesForDoctors(session: UserAccount | null | undefined): boolean {
+  if (!session) return false;
+  return session.role === 'SUPER_ADMIN' || managerCan(session, 'doctors', 'write');
+}
+
+/** Who may open the Templates page. */
+export function canViewTemplatesPage(session: UserAccount | null | undefined): boolean {
+  if (!session) return false;
+  return session.role === 'DOCTOR' || session.role === 'SUPER_ADMIN' || managerCan(session, 'doctors', 'read');
+}
+
 /** Refresh the stored session from /auth/me (centre links / permissions may have changed). */
 export async function refreshSession(fetchMe: () => Promise<UserAccount>): Promise<void> {
   try {

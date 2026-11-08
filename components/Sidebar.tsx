@@ -127,6 +127,7 @@ export default function Sidebar({
           ...(managerCan(session, 'reports', 'read') ? [{ href: '/dashboard/all-reports', label: 'All Reports', icon: FileText }] : []),
           ...(managerCan(session, 'doctors', 'read') ? [{ href: '/dashboard/doctors', label: 'Doctors', icon: Users }] : []),
           ...(managerCan(session, 'centers', 'read') ? [{ href: '/dashboard/radiology', label: 'Centers', icon: Building }] : []),
+          ...(managerCan(session, 'doctors', 'read') ? [{ href: '/dashboard/document-editor', label: 'Templates', icon: BookmarkPlus }] : []),
           { href: '/dashboard/approvals', label: 'My Submissions', icon: Shield },
         ];
       case 'DOCTOR':
@@ -161,6 +162,7 @@ export default function Sidebar({
           { href: '/dashboard/invoices', label: 'Invoices', icon: Receipt },
           { href: '/dashboard/doctors', label: 'Doctors', icon: Users },
           { href: '/dashboard/radiology', label: 'Centers', icon: Building },
+          { href: '/dashboard/document-editor', label: 'Templates', icon: BookmarkPlus },
           { href: '/dashboard/center-users', label: 'Center Users', icon: UserCog },
           { href: '/dashboard/managers', label: 'Managers', icon: UserCog },
           { href: '/dashboard/payees', label: 'Payee Accounts', icon: Landmark },
