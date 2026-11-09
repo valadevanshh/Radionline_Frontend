@@ -137,14 +137,16 @@ export default function DoctorsPage() {
       const saved = await ApiClient.saveDoctor(doctor);
       if (isPendingApproval(saved)) {
         toast.info(saved.message || 'Doctor request sent to the Super Admin for approval.');
-        return;
+        return true;
       }
       RadiologyStore.saveDoctor(saved);
       toast.success(`Doctor saved: ${saved.fullName || doctor.fullName}`);
     } catch (err) {
       toast.error(apiErrorMessage(err, 'Could not save the doctor'));
+      return false;
     }
     loadDoctors();
+    return true;
   };
 
   // Delete doctor: Super Admin deletes; a Manager's delete becomes a request for approval.
@@ -506,6 +508,11 @@ export default function DoctorsPage() {
 
       <DoctorDetailsModal
         doctor={viewDoctor}
+        onResizeSignature={canEditSignature ? async (doctor, signatureScale) => {
+          const updated = await ApiClient.updateDoctorProfile(doctor.id, { signatureScale });
+          setViewDoctor(updated);
+          await loadDoctors();
+        } : undefined}
         onClose={() => setViewDoctor(null)}
         showCredentials={canManageDoctors}
         onEdit={

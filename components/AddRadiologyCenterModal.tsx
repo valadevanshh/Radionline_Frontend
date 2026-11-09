@@ -1,5 +1,7 @@
 'use client';
 
+import ProfileDocuments from '@/components/ProfileDocuments';
+import type { ProfileDocument } from '@/lib/profile-documents';
 import React, { useState, useEffect } from 'react';
 import { X, Building, Check, FileImage, Key, Lock, Eye, EyeOff, Wand2 } from 'lucide-react';
 import { RadiologyCenter } from '@/lib/radiology-store';
@@ -7,7 +9,7 @@ import { RadiologyCenter } from '@/lib/radiology-store';
 interface AddRadiologyCenterModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (center: Omit<RadiologyCenter, 'id' | 'createdAt'> & { id?: string }) => void;
+  onSave: (center: Omit<RadiologyCenter, 'id' | 'createdAt'> & { id?: string }) => void | boolean | Promise<void | boolean>;
   /** Edit mode: prefill from this centre; blank password keeps the current one. */
   initial?: RadiologyCenter | null;
 }
@@ -19,6 +21,9 @@ export default function AddRadiologyCenterModal({
   initial = null,
 }: AddRadiologyCenterModalProps) {
   const isEdit = !!initial;
+  const [documents, setDocuments] = useState<ProfileDocument[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [readingDocuments, setReadingDocuments] = useState(false);
   const [centerName, setCenterName] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -32,6 +37,7 @@ export default function AddRadiologyCenterModal({
 
   useEffect(() => {
     if (!isOpen) return;
+    setDocuments(initial?.documents || []);
     setCenterName(initial?.centerName || '');
     setFirstName(initial?.firstName || '');
     setLastName(initial?.lastName || '');
@@ -54,57 +60,65 @@ export default function AddRadiologyCenterModal({
     setPassword(pass);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (readingDocuments || submitting) return;
     if (!centerName || !email || !contactNumber) {
       alert('Please fill in all required fields (Center Name, Email, Contact Number).');
       return;
     }
 
-    const finalUsername = username.trim() || email.trim();
-    if (initial) {
-      // Edit: keep letterhead / logo; password only when a new one is typed
-      onSave({
-        id: initial.id,
+    setSubmitting(true);
+    try {
+      const finalUsername = username.trim() || email.trim();
+      if (initial) {
+        // Edit: keep letterhead / logo; password only when a new one is typed
+        const success = await onSave({
+          id: initial.id,
+          documents,
+          centerName: centerName.toUpperCase(),
+          firstName,
+          lastName,
+          email,
+          username: finalUsername,
+          ...(password.trim() ? { password: password.trim() } : {}),
+          contactNumber,
+          address,
+          headerTemplateUrl: initial.headerTemplateUrl,
+        } as Omit<RadiologyCenter, 'id' | 'createdAt'> & { id?: string });
+        if (success === false) return;
+        onClose();
+        return;
+      }
+      const finalPassword = password.trim() || 'center@123';
+
+      const success = await onSave({
+        documents,
         centerName: centerName.toUpperCase(),
         firstName,
         lastName,
         email,
         username: finalUsername,
-        ...(password.trim() ? { password: password.trim() } : {}),
+        password: finalPassword,
         contactNumber,
         address,
-        headerTemplateUrl: initial.headerTemplateUrl,
-      } as Omit<RadiologyCenter, 'id' | 'createdAt'> & { id?: string });
+        headerTemplateUrl: headerFileName
+          ? `https://placehold.co/1000x200/009ef7/ffffff.png?text=${encodeURIComponent(centerName)}`
+          : 'https://placehold.co/1000x200/009ef7/ffffff.png?text=RADIOLOGY+CENTER',
+      });
+
+      if (success === false) return;
+      setCenterName('');
+      setFirstName('');
+      setLastName('');
+      setEmail('');
+      setUsername('');
+      setPassword('');
+      setContactNumber('');
+      setAddress('');
+      setHeaderFileName('');
       onClose();
-      return;
-    }
-    const finalPassword = password.trim() || 'center@123';
-
-    onSave({
-      centerName: centerName.toUpperCase(),
-      firstName,
-      lastName,
-      email,
-      username: finalUsername,
-      password: finalPassword,
-      contactNumber,
-      address,
-      headerTemplateUrl: headerFileName
-        ? `https://placehold.co/1000x200/009ef7/ffffff.png?text=${encodeURIComponent(centerName)}`
-        : 'https://placehold.co/1000x200/009ef7/ffffff.png?text=RADIOLOGY+CENTER',
-    });
-
-    setCenterName('');
-    setFirstName('');
-    setLastName('');
-    setEmail('');
-    setUsername('');
-    setPassword('');
-    setContactNumber('');
-    setAddress('');
-    setHeaderFileName('');
-    onClose();
+    } finally { setSubmitting(false); }
   };
 
   return (
@@ -277,6 +291,8 @@ export default function AddRadiologyCenterModal({
             </div>
           </div>
 
+          <ProfileDocuments title="Center Documents" value={documents} onChange={setDocuments} onBusyChange={setReadingDocuments} disabled={submitting} />
+
           {/* Footer Actions */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <button
@@ -288,6 +304,7 @@ export default function AddRadiologyCenterModal({
             </button>
             <button
               type="submit"
+              disabled={readingDocuments || submitting}
               className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-[#009ef7] hover:bg-[#0095e8] transition-colors cursor-pointer shadow-xs"
             >
               <Check className="w-3.5 h-3.5" />

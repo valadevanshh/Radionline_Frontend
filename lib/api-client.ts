@@ -1,8 +1,9 @@
+import type { ProfileDocument } from './profile-documents';
 import { cleanDr } from '@/lib/doctor-name';
 import { XRayReport, Doctor, RadiologyCenter, DocTemplate, UserAccount } from './radiology-store';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
-/** Origin without /api suffix — used for /api/files/... media URLs */
+/** Origin without /api suffix â€” used for /api/files/... media URLs */
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 
 // Live-updates socket. Uses NEXT_PUBLIC_WS_URL when set; otherwise derives it from the API origin
@@ -102,6 +103,7 @@ export interface PublicReport {
     degree?: string | null;
     registrationNumber?: string | null;
     signatureUrl?: string | null;
+    signatureScale?: number;
     signedAt?: string | null;
   };
 }
@@ -193,9 +195,11 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
 }
 
 export interface DoctorProfileUpdate {
+  certificates?: ProfileDocument[];
   degree?: string;
   registrationNumber?: string;
   signatureUrl?: string;
+  signatureScale?: number;
   /** data: URL = new upload, '' = remove, omit = keep */
   photoUrl?: string;
   /** number = set, null = clear, omit = keep */
@@ -505,6 +509,7 @@ export const ApiClient = {
   },
 
   async saveStudyDraft(caseId: string, studyId: string, payload: {
+    title?: string;
     findings?: string;
     impression?: string;
     technique?: string;

@@ -47,12 +47,14 @@ import NewXRayReportModal, { NewCasePayload } from '@/components/NewXRayReportMo
 import ReviewSignReportModal from '@/components/ReviewSignReportModal';
 import { STUDY_MODALITY_OPTIONS } from '@/components/NewXRayReportModal';
 import { useResizableColumns } from '@/lib/use-resizable-columns';
+import ColumnResizeHandle from '@/components/ui/ColumnResizeHandle';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { UrgentBadge, PortableBadge } from '@/components/ui/CaseFlags';
 import StudyThumbsRow from '@/components/StudyThumbsRow';
 import { isReportReady } from '@/lib/report-status';
 import { printLabels } from '@/lib/print-label';
+import { compareReportsByStudyDateDesc } from '@/lib/report-sort';
 
 function AllPatientReportsContent() {
   const searchParams = useSearchParams();
@@ -74,15 +76,13 @@ function AllPatientReportsContent() {
   const [filterBodyPart, setFilterBodyPart] = useState('ALL');
   const [filterDoctorId, setFilterDoctorId] = useState('ALL');
 
-  const { widths, startResizing } = useResizableColumns({
+  const { widths, minimums, resizeColumn, startResizing, tableWidth } = useResizableColumns({
     idx: 64,
     center: 150,
     patientId: 96,
     patient: 170,
     genderAge: 72,
     bodyParts: 130,
-    radiologist: 140,
-    status: 92,
     studyDate: 90,
     actions: 180,
   });
@@ -265,7 +265,7 @@ function AllPatientReportsContent() {
       return true;
     });
 
-    list.sort((a, b) => { const au=a.isUrgent?0:1, bu=b.isUrgent?0:1; if(au!==bu) return au-bu; const ap=(a.isPartial||((a.signedStudyCount||0)>0&&(a.signedStudyCount||0)<(a.studyCount||a.bodyParts?.length||0)))?0:1; const bp=(b.isPartial||((b.signedStudyCount||0)>0&&(b.signedStudyCount||0)<(b.studyCount||b.bodyParts?.length||0)))?0:1; if(ap!==bp) return ap-bp; return 0; }); return list;
+    return list.sort(compareReportsByStudyDateDesc);
   }, [reports, filterName, filterGender, filterCenterId, filterPatientNo, filterBodyPart, filterDoctorId, session]);
 
   const handleResetFilters = () => {
@@ -650,12 +650,12 @@ function AllPatientReportsContent() {
           ))}
         </RowCardList>
 
-        {/* Tablet + desktop: table (tablets hide low-priority columns, see ResponsiveTable) */}
+        {/* Tablet + desktop: full table with horizontal scrolling and visible resize handles */}
         <div className={`${RT_TABLE_ONLY} ${RT_CONTAINER} data-table-container flex-1 h-full overflow-y-auto bg-white`}>
-          <table className="data-table">
+          <table className="data-table" style={{ width: tableWidth - (showCenter ? 0 : widths.center), minWidth: '100%' }}>
             <thead>
               <tr>
-                <th title="Select" style={{ width: widths.idx, position: 'relative' }}>
+                <th data-column-key="idx" title="Select" style={{ width: widths.idx, position: 'relative' }}>
                   <span className="inline-block w-5 -ml-1 mr-1 align-middle" aria-hidden="true" />
                   <input
                     type="checkbox"
@@ -665,48 +665,44 @@ function AllPatientReportsContent() {
                     className="w-3.5 h-3.5 accent-[#009ef7] align-middle"
                     data-testid="select-all"
                   />
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('idx', e.clientX, widths.idx)} />
+                  <ColumnResizeHandle columnKey="idx" label="Idx" width={widths.idx} minimum={minimums.idx} onResizeStart={startResizing} onResize={resizeColumn} />
                 </th>
                 {showCenter && (
-                  <th title="Diagnostic Center" className={RT_TABLET_HIDE} style={{ width: widths.center, position: 'relative' }}>
+                  <th data-column-key="center" title="Diagnostic Center" className={RT_TABLET_HIDE} style={{ width: widths.center, position: 'relative' }}>
                     <span>Diagnostic Center</span>
-                    <div className="col-resizer" onMouseDown={(e) => startResizing('center', e.clientX, widths.center)} />
+                    <ColumnResizeHandle columnKey="center" label="Center" width={widths.center} minimum={minimums.center} onResizeStart={startResizing} onResize={resizeColumn} />
                   </th>
                 )}
-                <th title="Patient Information" style={{ width: widths.patient, position: 'relative' }}>
+                <th data-column-key="patient" title="Patient Information" style={{ width: widths.patient, position: 'relative' }}>
                   <span>Patient Information</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('patient', e.clientX, widths.patient)} />
+                  <ColumnResizeHandle columnKey="patient" label="Patient" width={widths.patient} minimum={minimums.patient} onResizeStart={startResizing} onResize={resizeColumn} />
                 </th>
-                <th title="Patient ID" style={{ width: widths.patientId, position: 'relative' }}>
+                <th data-column-key="patientId" title="Patient ID" style={{ width: widths.patientId, position: 'relative' }}>
                   <span>Patient ID</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('patientId', e.clientX, widths.patientId)} />
+                  <ColumnResizeHandle columnKey="patientId" label="Patient Id" width={widths.patientId} minimum={minimums.patientId} onResizeStart={startResizing} onResize={resizeColumn} />
                 </th>
-                <th title="Gender / Age" className={RT_TABLET_HIDE} style={{ width: widths.genderAge, position: 'relative' }}>
+                <th data-column-key="genderAge" title="Gender / Age" className={RT_TABLET_HIDE} style={{ width: widths.genderAge, position: 'relative' }}>
                   <span>Sex / Age</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('genderAge', e.clientX, widths.genderAge)} />
+                  <ColumnResizeHandle columnKey="genderAge" label="Gender Age" width={widths.genderAge} minimum={minimums.genderAge} onResizeStart={startResizing} onResize={resizeColumn} />
                 </th>
-                <th title="Body Parts" style={{ width: widths.bodyParts, position: 'relative' }}>
+                <th data-column-key="bodyParts" title="Body Parts" style={{ width: widths.bodyParts, position: 'relative' }}>
                   <span>Body Parts</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('bodyParts', e.clientX, widths.bodyParts)} />
+                  <ColumnResizeHandle columnKey="bodyParts" label="Body Parts" width={widths.bodyParts} minimum={minimums.bodyParts} onResizeStart={startResizing} onResize={resizeColumn} />
                 </th>
-                <th title={isDoctor ? 'Referred By' : 'Assigned Radiologist'} style={{ width: widths.radiologist, position: 'relative' }}>
-                  <span>{isDoctor ? 'Referred By' : 'Radiologist'}</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('radiologist', e.clientX, widths.radiologist)} />
-                </th>
-                <th title="Study Date" className={RT_TABLET_HIDE} style={{ width: widths.studyDate, position: 'relative' }}>
+                <th data-column-key="studyDate" title="Study Date" className={RT_TABLET_HIDE} style={{ width: widths.studyDate, position: 'relative' }}>
                   <span>Study Date</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('studyDate', e.clientX, widths.studyDate)} />
+                  <ColumnResizeHandle columnKey="studyDate" label="Study Date" width={widths.studyDate} minimum={minimums.studyDate} onResizeStart={startResizing} onResize={resizeColumn} />
                 </th>
-                <th title="Actions" style={{ width: widths.actions, minWidth: 180, textAlign: 'right', position: 'sticky', right: 0 }} className="bg-slate-50 shadow-2xs z-10">
+                <th data-column-key="actions" title="Actions" style={{ width: widths.actions, minWidth: 180, textAlign: 'right', position: 'sticky', right: 0 }} className="bg-slate-50 shadow-2xs z-10">
                   <span>Actions</span>
-                  <div className="col-resizer" onMouseDown={(e) => startResizing('actions', e.clientX, widths.actions)} />
+                  <ColumnResizeHandle columnKey="actions" label="Actions" width={widths.actions} minimum={minimums.actions} onResizeStart={startResizing} onResize={resizeColumn} />
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredReports.length === 0 ? (
                 <tr>
-                  <td colSpan={showCenter ? 9 : 8} className="text-center p-8 text-slate-500 italic font-sans">
+                  <td colSpan={showCenter ? 8 : 7} className="text-center p-8 text-slate-500 italic font-sans">
                     No matching radiology reports found.
                   </td>
                 </tr>
@@ -777,16 +773,6 @@ function AllPatientReportsContent() {
                         ))}
                       </div>
                     </td>
-                    {isDoctor ? (
-                      <td title={report.referringPhysicianName} className="p-2">
-                        <div className="font-medium text-slate-800 truncate">{report.referringPhysicianName || '-'}</div>
-                      </td>
-                    ) : (
-                    <td title={`${report.assignedDoctorName ? withDr(report.assignedDoctorName) : 'Unassigned'} | Ref: ${cleanDr(report.referringPhysicianName)}`} className="p-2">
-                      <div className="font-bold text-slate-900 truncate">{report.assignedDoctorName}</div>
-                      <div className="text-[10px] text-slate-500 truncate">Ref: {report.referringPhysicianName}</div>
-                    </td>
-                    )}
                     <td title={formatDateDDMMYYYY(report.studyDate)} className={`p-2 font-mono text-slate-500 text-[11px] ${RT_TABLET_HIDE}`}>
                       {formatDateDDMMYYYY(report.studyDate)}
                       {report.studies?.[0]?.studyTime ? <div className="text-[10px] text-slate-400">{report.studies[0].studyTime}</div> : null}
@@ -828,7 +814,7 @@ function AllPatientReportsContent() {
                   </tr>
                   {expandedIds.has(report.id) && (
                     <tr>
-                      <td colSpan={showCenter ? 9 : 8} className="p-0">
+                      <td colSpan={showCenter ? 8 : 7} className="p-0">
                         <StudyThumbsRow report={report} />
                       </td>
                     </tr>

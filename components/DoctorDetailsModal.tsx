@@ -1,6 +1,10 @@
 'use client';
 
-import React from 'react';
+import ProfileDocuments from '@/components/ProfileDocuments';
+import React, { useEffect, useState } from 'react';
+import SignatureSizeControl from '@/components/SignatureSizeControl';
+import { signatureScale } from '@/lib/doctor-profile';
+import { apiErrorMessage } from '@/lib/api-client';
 import { Mail, Phone, FileText, Eye, Download, PenLine, Trash2, Briefcase, Award, Hash } from 'lucide-react';
 import { Doctor } from '@/lib/radiology-store';
 import { resolveMediaUrl } from '@/lib/api-client';
@@ -12,6 +16,7 @@ import { downloadFile, experienceLabel, isPdfName, openFileInNewTab } from '@/li
 interface DoctorDetailsModalProps {
   doctor: Doctor | null;
   onClose: () => void;
+  onResizeSignature?: (doctor: Doctor, scale: number) => Promise<void>;
   /** Show login details (Super Admin / Manager) */
   showCredentials?: boolean;
   onEdit?: (doctor: Doctor) => void;
@@ -35,11 +40,27 @@ function Detail({ icon: Icon, label, children }: { icon: typeof Mail; label: str
 export default function DoctorDetailsModal({
   doctor,
   onClose,
+  onResizeSignature,
   showCredentials,
   onEdit,
   onDelete,
   deleteLabel = 'Delete',
 }: DoctorDetailsModalProps) {
+  const [scale, setScale] = useState(100);
+  const [savingSize, setSavingSize] = useState(false);
+  const [sizeError, setSizeError] = useState('');
+  useEffect(() => {
+    setScale(signatureScale(doctor?.signatureScale));
+    setSizeError('');
+  }, [doctor?.id, doctor?.signatureScale]);
+  const saveSize = async () => {
+    if (!doctor || !onResizeSignature) return;
+    setSavingSize(true);
+    setSizeError('');
+    try { await onResizeSignature(doctor, scale); }
+    catch (err) { setSizeError(apiErrorMessage(err, 'Could not save signature size. Please try again.')); }
+    finally { setSavingSize(false); }
+  };
   const sig = doctor ? resolveMediaUrl(usableSignatureUrl(doctor.signatureUrl)) : '';
   const cvUrl = doctor ? resolveMediaUrl(doctor.cvUrl || '') : '';
   const cvName = doctor?.cvFileName || 'CV';
@@ -130,13 +151,23 @@ export default function DoctorDetailsModal({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <div className="mb-1.5 text-[12px] font-semibold text-slate-700">Signature</div>
-              <div className="flex h-28 w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-white">
+              <div className="flex h-56 w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-white">
                 {sig ? (
-                  <img src={sig} alt={`${doctor.fullName} signature`} className="max-h-24 max-w-[92%] bg-transparent object-contain" />
+                  <img src={sig} alt={`${doctor.fullName} signature`} style={{ width: `${68 * scale / 100}mm`, maxHeight: `${26 * scale / 100}mm`, maxWidth: `min(92%, ${68 * scale / 100}mm)` }} className="bg-transparent object-contain" />
                 ) : (
                   <span className="text-[12px] text-slate-400">No signature uploaded</span>
                 )}
               </div>
+              {sig && onResizeSignature && (
+                <>
+                  <SignatureSizeControl value={scale} onChange={setScale} disabled={savingSize} />
+                  <p className="mt-2 text-[11px] text-slate-500">Applies to future signed reports.</p>
+                  <Button size="sm" onClick={saveSize} disabled={savingSize || scale === signatureScale(doctor.signatureScale)}>
+                    {savingSize ? 'Saving...' : 'Save signature size'}
+                  </Button>
+                  {sizeError && <p role="alert" className="mt-2 text-[12px] text-rose-600">{sizeError}</p>}
+                </>
+              )}
             </div>
             <div>
               <div className="mb-1.5 text-[12px] font-semibold text-slate-700">CV</div>
@@ -168,6 +199,8 @@ export default function DoctorDetailsModal({
               )}
             </div>
           </div>
+
+          <ProfileDocuments title="Certificates" value={doctor.certificates || []} />
 
           {showCredentials && (
             <div>

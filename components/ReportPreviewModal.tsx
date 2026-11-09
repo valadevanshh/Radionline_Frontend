@@ -4,7 +4,7 @@ import { formatAgeShort } from '@/lib/age-format';
 import React, { useState } from 'react';
 import { X, Printer, CheckCircle, AlertTriangle } from 'lucide-react';
 import { XRayReport, RadiologyStore, RadiologyCenter, formatDateDDMMYYYY } from '@/lib/radiology-store';
-import { formatPatientDisplayId } from '@/lib/uuid';
+import { formatReportPatientId } from '@/lib/report-patient-id';
 import { printReportElement, type PrintReportPayload, formatReportAge, shortReportId } from '@/lib/print-helper';
 import PaginatedReport from '@/components/PaginatedReport';
 import { ApiClient, publicReportLink, resolveMediaUrl } from '@/lib/api-client';
@@ -117,7 +117,7 @@ export default function ReportPreviewModal({
     withHeader: letterheadMode !== 'preprinted',
     letterheadMode,
     patientName: report.fullName,
-    patientId: formatPatientDisplayId(report.patientNumber) || '—',
+    patientId: formatReportPatientId(report.centerPatientId),
     ageSex: `${formatAgeShort(report)} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,
     gender: report.gender || '',
     age: formatReportAge(report.age, report.ageUnit, report),
@@ -139,6 +139,7 @@ export default function ReportPreviewModal({
     doctorDegree: docDegree,
     doctorRegNo: docRegNo,
     doctorSignatureUrl: docSignature,
+    doctorSignatureScale: frozen ? frozen.signatureScale : doctor?.signatureScale,
     reportedAt: activeStudy?.signedAt ? formatDateDDMMYYYY(activeStudy.signedAt) : formatDateDDMMYYYY(report.studyDate),
     reportId: shortReportId(activeStudy?.id || report.id),
     isPortable: !!report.isPortable,
@@ -148,7 +149,7 @@ export default function ReportPreviewModal({
     const qrSvg = verificationUrl
       ? document.querySelector('[data-testid="report-preview-pages"] [data-rn-qr] svg')?.outerHTML || ''
       : '';
-    printReportElement(null, `X-Ray Report - ${report.patientNumber} (${activeBodyPart})`, {
+    printReportElement(null, `X-Ray Report - ${formatReportPatientId(report.centerPatientId)} (${activeBodyPart})`, {
       ...payload,
       qrSvg,
       qrLink: verificationUrl || undefined,
@@ -163,7 +164,7 @@ export default function ReportPreviewModal({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <h3 className="text-xs font-bold text-slate-100 break-words min-w-0">
-                Report Preview — {formatPatientDisplayId(report.patientNumber) ? `${report.patientNumber} (${report.fullName})` : report.fullName}
+                Report Preview — {report.centerPatientId?.trim() ? `${formatReportPatientId(report.centerPatientId)} (${report.fullName})` : report.fullName}
               </h3>
             </div>
 

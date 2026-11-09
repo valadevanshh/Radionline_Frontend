@@ -25,6 +25,7 @@ import CenterPricingModal, { formatRates } from '@/components/CenterPricingModal
 import { managerCan } from '@/lib/access';
 
 import { useResizableColumns } from '@/lib/use-resizable-columns';
+import ColumnResizeHandle from '@/components/ui/ColumnResizeHandle';
 import { RowCard, RowCardList, RT_CONTAINER, RT_TABLET_HIDE } from '@/components/ui/ResponsiveTable';
 
 export default function RadiologyCentersPage() {
@@ -43,14 +44,14 @@ export default function RadiologyCentersPage() {
   const [canWrite, setCanWrite] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
 
-  const { widths, startResizing } = useResizableColumns({
-    centerName: 200,
-    contact: 190,
-    credentials: 230,
-    headerBanner: 120,
-    pricing: 150,
-    status: 90,
-    actions: 80,
+  const { widths, minimums, resizeColumn, startResizing, tableWidth } = useResizableColumns({
+    centerName: 260,
+    contact: 240,
+    credentials: 260,
+    headerBanner: 160,
+    pricing: 180,
+    status: 110,
+    actions: 200,
   });
 
   const loadPricing = async () => {
@@ -123,15 +124,17 @@ export default function RadiologyCentersPage() {
       const saved = await ApiClient.saveCenter(center);
       if (isPendingApproval(saved)) {
         toast.info(saved.message || 'Centre request sent to the Super Admin for approval.');
-        return;
+        return true;
       }
       RadiologyStore.saveCenter(saved);
       toast.success(`Centre saved: ${saved.centerName || center.centerName}`);
       window.dispatchEvent(new Event('radionline_centers_changed'));
     } catch (err) {
       toast.error(apiErrorMessage(err, 'Could not save the centre'));
+      return false;
     }
     loadCenters();
+    return true;
   };
 
   // Delete centre: Super Admin deletes; a Manager's delete becomes a request for approval.
@@ -197,8 +200,8 @@ export default function RadiologyCentersPage() {
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 text-slate-900">
-      <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-4 space-y-3 max-w-7xl w-full mx-auto">
-        
+      <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-4 space-y-3 w-full min-w-0">
+
         {/* Page Top Action Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-xs">
           <div>
@@ -220,7 +223,7 @@ export default function RadiologyCentersPage() {
 
         {/* Filter Toolbar & Data Card */}
         <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col min-h-0">
-          
+
           {/* Search Filter Strip */}
           <div className="p-3 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between gap-4 flex-wrap shrink-0">
             <div className="relative flex-1 min-w-[240px] max-w-md">
@@ -327,6 +330,15 @@ export default function RadiologyCentersPage() {
                             <Pencil className="w-3.5 h-3.5" />
                             <span>Edit</span>
                           </button>)}
+                          {canWrite && (<button
+                            type="button"
+                            onClick={() => handleFreezeCenter(c)}
+                            className="px-3 py-1.5 text-slate-700 hover:bg-sky-50 border border-slate-300 rounded-lg text-xs font-bold inline-flex items-center gap-1"
+                            data-testid={`center-freeze-card-${c.id}`}
+                          >
+                            {c.frozenAt ? <Sun className="w-3.5 h-3.5" /> : <Snowflake className="w-3.5 h-3.5" />}
+                            <span>{c.frozenAt ? 'Unfreeze' : 'Freeze'}</span>
+                          </button>)}
                           {canDelete && (<button
                             type="button"
                             onClick={() => handleDeleteCenter(c.id)}
@@ -341,38 +353,38 @@ export default function RadiologyCentersPage() {
                   );
                 })}
               </RowCardList>
-              <table className="data-table hidden md:table">
+              <table className="data-table hidden md:table" style={{ width: tableWidth - (isSuperAdmin ? 0 : widths.pricing), minWidth: '100%' }}>
                 <thead>
                   <tr>
-                    <th title="Center Name" style={{ width: widths.centerName, position: 'relative' }}>
+                    <th data-column-key="centerName" title="Center Name" style={{ width: widths.centerName, position: 'relative' }}>
                       <span>Center Name</span>
-                      <div className="col-resizer" onMouseDown={(e) => startResizing('centerName', e.clientX, widths.centerName)} />
+                      <ColumnResizeHandle columnKey="centerName" label="Center Name" width={widths.centerName} minimum={minimums.centerName} onResizeStart={startResizing} onResize={resizeColumn} />
                     </th>
-                    <th title="Contact Info" style={{ width: widths.contact, position: 'relative' }}>
+                    <th data-column-key="contact" title="Contact Info" style={{ width: widths.contact, position: 'relative' }}>
                       <span>Contact Info</span>
-                      <div className="col-resizer" onMouseDown={(e) => startResizing('contact', e.clientX, widths.contact)} />
+                      <ColumnResizeHandle columnKey="contact" label="Contact" width={widths.contact} minimum={minimums.contact} onResizeStart={startResizing} onResize={resizeColumn} />
                     </th>
-                    <th title="Login Credentials" style={{ width: widths.credentials, position: 'relative' }}>
+                    <th data-column-key="credentials" title="Login Credentials" style={{ width: widths.credentials, position: 'relative' }}>
                       <span>Login Credentials</span>
-                      <div className="col-resizer" onMouseDown={(e) => startResizing('credentials', e.clientX, widths.credentials)} />
+                      <ColumnResizeHandle columnKey="credentials" label="Credentials" width={widths.credentials} minimum={minimums.credentials} onResizeStart={startResizing} onResize={resizeColumn} />
                     </th>
-                    <th title="Header Banner" className={RT_TABLET_HIDE} style={{ width: widths.headerBanner, position: 'relative' }}>
+                    <th data-column-key="headerBanner" title="Header Banner" className={RT_TABLET_HIDE} style={{ width: widths.headerBanner, position: 'relative' }}>
                       <span>Header Banner</span>
-                      <div className="col-resizer" onMouseDown={(e) => startResizing('headerBanner', e.clientX, widths.headerBanner)} />
+                      <ColumnResizeHandle columnKey="headerBanner" label="Header Banner" width={widths.headerBanner} minimum={minimums.headerBanner} onResizeStart={startResizing} onResize={resizeColumn} />
                     </th>
                     {isSuperAdmin && (
-                      <th title="Pricing (first / each additional view)" style={{ width: widths.pricing, position: 'relative' }}>
+                      <th data-column-key="pricing" title="Pricing (first / each additional view)" style={{ width: widths.pricing, position: 'relative' }}>
                         <span>Pricing</span>
-                        <div className="col-resizer" onMouseDown={(e) => startResizing('pricing', e.clientX, widths.pricing)} />
+                        <ColumnResizeHandle columnKey="pricing" label="Pricing" width={widths.pricing} minimum={minimums.pricing} onResizeStart={startResizing} onResize={resizeColumn} />
                       </th>
                     )}
-                    <th title="Status" className={RT_TABLET_HIDE} style={{ width: widths.status, position: 'relative' }}>
+                    <th data-column-key="status" title="Status" className={RT_TABLET_HIDE} style={{ width: widths.status, position: 'relative' }}>
                       <span>Status</span>
-                      <div className="col-resizer" onMouseDown={(e) => startResizing('status', e.clientX, widths.status)} />
+                      <ColumnResizeHandle columnKey="status" label="Status" width={widths.status} minimum={minimums.status} onResizeStart={startResizing} onResize={resizeColumn} />
                     </th>
-                    <th title="Actions" style={{ width: widths.actions, textAlign: 'right', position: 'relative' }}>
+                    <th data-column-key="actions" title="Actions" style={{ width: widths.actions, textAlign: 'right', position: 'relative' }}>
                       <span>Actions</span>
-                      <div className="col-resizer" onMouseDown={(e) => startResizing('actions', e.clientX, widths.actions)} />
+                      <ColumnResizeHandle columnKey="actions" label="Actions" width={widths.actions} minimum={minimums.actions} onResizeStart={startResizing} onResize={resizeColumn} />
                     </th>
                   </tr>
                 </thead>
@@ -408,7 +420,7 @@ export default function RadiologyCentersPage() {
                         <div className="font-mono text-[11px] text-slate-500">{c.contactNumber}</div>
                       </td>
                       <td title={`User: ${c.username || c.email} | Pass: ${c.password || 'N/A'}`} className="p-3.5">
-                        <div className="font-mono text-[11px] bg-slate-100 border border-slate-200 px-2.5 py-1 rounded inline-flex gap-3 text-slate-700">
+                        <div className="font-mono text-[11px] bg-slate-100 border border-slate-200 px-2.5 py-1 rounded inline-flex flex-wrap gap-x-3 gap-y-1 max-w-full text-slate-700">
                           <span>USER: <strong>{c.username || c.email}</strong></span>
                           <span>PASS: <strong>{c.password || 'N/A'}</strong></span>
                         </div>
@@ -464,6 +476,7 @@ export default function RadiologyCentersPage() {
                         )}
                       </td>
                       <td className="p-3.5 text-right whitespace-nowrap">
+                        <div className="rt-actions">
                         {isSuperAdmin && (
                           <button
                             type="button"
@@ -516,6 +529,8 @@ export default function RadiologyCentersPage() {
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>)}
+
+                        </div>
                       </td>
                     </tr>
                   ))}

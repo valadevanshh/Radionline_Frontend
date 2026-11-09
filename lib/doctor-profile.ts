@@ -1,5 +1,10 @@
 /** Shared helpers for the doctor profile (My Profile) and the Doctors directory. */
 
+/** Percentage of the default signature size. */
+export function signatureScale(value?: number | null): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(200, Math.max(25, value)) : 100;
+}
+
 export const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 export const PHOTO_ACCEPT = 'image/png,image/jpeg,image/webp';
 

@@ -13,13 +13,10 @@ import {
   Eye,
   FileEdit,
   ShieldAlert,
-  Info,
 } from 'lucide-react';
 import { DocTemplate, RadiologyStore, RadiologyCenter } from '@/lib/radiology-store';
-import DoctorPicker, { DoctorOption, doctorOptionsFrom } from '@/components/DoctorPicker';
-import { withDr } from '@/lib/doctor-name';
 import { ApiClient, apiErrorMessage, isPendingApproval, resolveMediaUrl } from '@/lib/api-client';
-import { canManageTemplatesForDoctors, canWriteTemplates, useSession } from '@/lib/access';
+import { canWriteTemplates, useSession } from '@/lib/access';
 import { STUDY_MODALITY_OPTIONS } from '@/components/NewXRayReportModal';
 import { RADIOLOGY_TEMPLATES } from '@/lib/radiology-templates';
 import { toast } from '@/components/ui/Toast';
@@ -55,6 +52,7 @@ interface ReportTemplateModalProps {
     bodyPart?: string;
     findings?: string;
     impression?: string;
+    /** Accepted for compatibility with callers; server template permissions remain doctor-only. */
     doctorId?: string;
   };
   onSaved?: (savedTemplate: DocTemplate) => void;
@@ -69,10 +67,6 @@ export default function ReportTemplateModal({
 }: ReportTemplateModalProps) {
   const session = useSession();
   const isDoctor = canWriteTemplates(session);
-  // Super Admin / Manager save on behalf of a selected doctor (Manager -> SA approval)
-  const onBehalf = !isDoctor && canManageTemplatesForDoctors(session);
-  const isManager = session?.role === 'MANAGER';
-  const canEdit = isDoctor || onBehalf;
 
   const [centers, setCenters] = useState<RadiologyCenter[]>(() => RadiologyStore.getCenters());
   const [title, setTitle] = useState('');
@@ -84,39 +78,6 @@ export default function ReportTemplateModal({
   const [impression, setImpression] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
-  const [doctorId, setDoctorId] = useState('');
-  const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>([]);
-  const [doctorsLoading, setDoctorsLoading] = useState(false);
-  const [triedSubmit, setTriedSubmit] = useState(false);
-
-  // Doctors list for the on-behalf picker
-  useEffect(() => {
-    if (!isOpen || !onBehalf) return;
-    let alive = true;
-    setDoctorsLoading(true);
-    ApiClient.getDoctors()
-      .then((d) => { if (alive) setDoctorOptions(doctorOptionsFrom(d)); })
-      .catch(() => { if (alive) setDoctorOptions(doctorOptionsFrom(RadiologyStore.getDoctors())); })
-      .finally(() => { if (alive) setDoctorsLoading(false); });
-    return () => { alive = false; };
-  }, [isOpen, onBehalf]);
-
-  const selectedDoctor = useMemo(() => {
-    const hit = doctorOptions.find((d) => d.id === doctorId);
-    if (hit) return hit;
-    if (doctorId && initialTemplate?.doctorId === doctorId && initialTemplate.doctorName) {
-      return { id: doctorId, name: initialTemplate.doctorName };
-    }
-    return null;
-  }, [doctorOptions, doctorId, initialTemplate]);
-  const pickerOptions = useMemo(
-    () => (selectedDoctor && !doctorOptions.some((d) => d.id === selectedDoctor.id) ? [selectedDoctor, ...doctorOptions] : doctorOptions),
-    [selectedDoctor, doctorOptions],
-  );
-  const doctorMissing = onBehalf && !doctorId;
-  const signerName = onBehalf
-    ? (selectedDoctor ? withDr(selectedDoctor.name) : 'Select a doctor')
-    : (session?.name || session?.email || 'Dr. Reporting Radiologist');
 
   // Load available centers
   useEffect(() => {
@@ -138,8 +99,6 @@ export default function ReportTemplateModal({
   // Initialize or reset form state
   useEffect(() => {
     if (!isOpen) return;
-    setTriedSubmit(false);
-    setDoctorId(String(initialTemplate?.doctorId || prefill?.doctorId || ''));
 
     if (initialTemplate) {
       setTitle(initialTemplate.title || '');
@@ -149,7 +108,7 @@ export default function ReportTemplateModal({
       setFindings(initialTemplate.findings || '');
       setImpression(initialTemplate.impression || '');
       setTechnique(`Standard digital ${initialTemplate.modality || 'radiography'} examination evaluated.`);
-    } else if (prefill && (prefill.title || prefill.modality || prefill.bodyPart || prefill.findings || prefill.impression)) {
+    } else if (prefill) {
       setTitle(prefill.title || (prefill.bodyPart ? `${prefill.bodyPart} — Master Template` : ''));
       setCenterId(prefill.centerId || 'ALL');
       setModality(prefill.modality || 'X-Ray');
@@ -173,7 +132,8 @@ export default function ReportTemplateModal({
       );
       setImpression('NO SIGNIFICANT CARDIOPULMONARY ABNORMALITY DETECTED.');
     }
-  }, [isOpen, initialTemplate, prefill]);
+  }, [isOpen, initialTemplate, prefill?.title, prefill?.centerId, prefill?.modality,
+    prefill?.bodyPart, prefill?.findings, prefill?.impression]);
 
   // Selected center details
   const selectedCenter = useMemo(() => {
@@ -217,14 +177,8 @@ export default function ReportTemplateModal({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    setTriedSubmit(true);
-    if (!canEdit) {
-      toast.error('You do not have permission to create or edit templates.');
-      return;
-    }
-
-    if (doctorMissing) {
-      toast.error('Please select the doctor this template belongs to.');
+    if (!isDoctor) {
+      toast.error('Only doctors can create and manage templates.');
       return;
     }
 
@@ -275,8 +229,8 @@ export default function ReportTemplateModal({
       findings: findings.trim(),
       impression: impression.trim(),
       content: contentHtml,
-      doctorId: onBehalf ? doctorId : session?.doctorId || String(session?.userId || ''),
-      doctorName: onBehalf ? selectedDoctor?.name : session?.name,
+      doctorId: session?.doctorId || String(session?.userId || ''),
+      doctorName: session?.name,
     };
 
     setIsSaving(true);
@@ -286,11 +240,7 @@ export default function ReportTemplateModal({
         toast.info(saved.message || 'Sent to the Super Admin for approval.');
       } else {
         RadiologyStore.saveTemplate(saved);
-        toast.success(
-          onBehalf && selectedDoctor
-            ? `Template "${saved.title}" saved for ${withDr(selectedDoctor.name)}`
-            : `Template "${saved.title}" saved successfully!`,
-        );
+        toast.success(`Template "${saved.title}" saved successfully!`);
         if (onSaved) onSaved(saved);
       }
       onClose();
@@ -320,11 +270,6 @@ export default function ReportTemplateModal({
                 <span className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 font-mono font-bold text-[10px] rounded-full uppercase flex items-center gap-1">
                   <Stethoscope className="w-3 h-3" /> Doctor Report Format
                 </span>
-                {onBehalf && (
-                  <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 font-mono font-bold text-[10px] rounded-full uppercase">
-                    On behalf of doctor
-                  </span>
-                )}
               </div>
               <p className="text-[11px] text-slate-500 font-sans hidden sm:block truncate">
                 Design and preview your master template directly in actual A4 radiology report layout
@@ -369,51 +314,15 @@ export default function ReportTemplateModal({
         </div>
 
         {/* Non-doctor Guard Notice */}
-        {!canEdit && (
+        {!isDoctor && (
           <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2 text-xs font-semibold text-amber-800 shrink-0">
             <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
             <span>Read-only: Template creation and modifications are restricted to verified reporting doctors only.</span>
           </div>
         )}
 
-        {onBehalf && (
-          <div className="bg-sky-50 border-b border-sky-100 px-4 sm:px-6 py-1.5 flex items-center gap-2 text-[11px] text-sky-800 shrink-0">
-            <Info className="w-3.5 h-3.5 shrink-0 text-[#009ef7]" />
-            <span className="truncate">
-              {selectedDoctor ? (
-                <>Will appear in <b>{withDr(selectedDoctor.name)}</b>&apos;s PACS template list.</>
-              ) : (
-                <>Pick the doctor who will use this template in PACS.</>
-              )}
-              {isManager && <> Changes are sent to the Super Admin for approval.</>}
-            </span>
-          </div>
-        )}
-
         {/* Configuration Ribbon */}
-        <div className={`bg-white border-b border-slate-200 px-4 sm:px-6 py-3 grid grid-cols-1 sm:grid-cols-2 ${onBehalf ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-x-4 gap-y-3 text-xs shrink-0 shadow-2xs`}>
-          {/* Doctor (owner) - Super Admin / Manager only */}
-          {onBehalf && (
-            <div className="flex flex-col gap-1.5 min-w-0">
-              <label htmlFor="tmpl-doctor" className="font-bold text-slate-700 font-mono text-[11px] uppercase">
-                Doctor <span className="text-rose-500">*</span>
-              </label>
-              <DoctorPicker
-                id="tmpl-doctor"
-                compact
-                options={pickerOptions}
-                value={doctorId}
-                onChange={setDoctorId}
-                loading={doctorsLoading}
-                invalid={triedSubmit && doctorMissing}
-                placeholder="Select doctor..."
-              />
-              {triedSubmit && doctorMissing && (
-                <span className="text-[10px] font-semibold text-rose-600">Choose who this template belongs to</span>
-              )}
-            </div>
-          )}
-
+        <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3 text-xs shrink-0 shadow-2xs">
           {/* Template Name */}
           <div className="flex flex-col gap-1.5 min-w-0">
             <label className="font-bold text-slate-700 font-mono text-[11px] uppercase">
@@ -422,7 +331,7 @@ export default function ReportTemplateModal({
             <input
               type="text"
               required
-              disabled={!canEdit}
+              disabled={!isDoctor}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Chest PA/AP Normal..."
@@ -436,7 +345,7 @@ export default function ReportTemplateModal({
               Modality <span className="text-rose-500">*</span>
             </label>
             <select
-              disabled={!canEdit}
+              disabled={!isDoctor}
               value={modality}
               onChange={(e) => setModality(e.target.value)}
               className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:bg-white focus:border-[#009ef7] focus:outline-none"
@@ -458,7 +367,7 @@ export default function ReportTemplateModal({
               <input
                 type="text"
                 required
-                disabled={!canEdit}
+                disabled={!isDoctor}
                 list="bodyPartOptionsList"
                 value={bodyPart}
                 onChange={(e) => setBodyPart(e.target.value)}
@@ -476,10 +385,10 @@ export default function ReportTemplateModal({
           {/* Target Center */}
           <div className="flex flex-col gap-1.5 min-w-0">
             <label className="font-bold text-slate-700 font-mono text-[11px] uppercase">
-              Assign to Center <span className="text-slate-400 normal-case font-medium">(optional)</span>
+              Assign to Center
             </label>
             <select
-              disabled={!canEdit}
+              disabled={!isDoctor}
               value={centerId}
               onChange={(e) => setCenterId(e.target.value)}
               className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:bg-white focus:border-[#009ef7] focus:outline-none"
@@ -501,7 +410,7 @@ export default function ReportTemplateModal({
               <Sparkles className="w-3.5 h-3.5 text-purple-600" /> Presets:
             </span>
             <select
-              disabled={!canEdit}
+              disabled={!isDoctor}
               onChange={handleLoadPreset}
               defaultValue=""
               className="px-2.5 py-1 bg-white border border-slate-300 rounded-md text-[11px] font-semibold text-slate-700 focus:outline-none focus:border-[#009ef7] cursor-pointer"
@@ -516,7 +425,7 @@ export default function ReportTemplateModal({
 
             <button
               type="button"
-              disabled={!canEdit}
+              disabled={!isDoctor}
               onClick={handleResetToStandard}
               className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-md text-[11px] font-semibold text-slate-600 transition-colors cursor-pointer"
               title="Reset findings to standard normal baseline"
@@ -653,7 +562,7 @@ export default function ReportTemplateModal({
               </div>
               <input
                 type="text"
-                disabled={!canEdit}
+                disabled={!isDoctor}
                 value={technique}
                 onChange={(e) => setTechnique(e.target.value)}
                 placeholder="Enter radiographic technique description..."
@@ -680,7 +589,7 @@ export default function ReportTemplateModal({
                   <textarea
                     rows={10}
                     required
-                    disabled={!canEdit}
+                    disabled={!isDoctor}
                     value={findings}
                     onChange={(e) => setFindings(e.target.value)}
                     placeholder="Enter standard radiological findings here (e.g. lung fields, heart size, osseous structures, soft tissues)..."
@@ -713,7 +622,7 @@ export default function ReportTemplateModal({
                   <textarea
                     rows={3}
                     required
-                    disabled={!canEdit}
+                    disabled={!isDoctor}
                     value={impression}
                     onChange={(e) => setImpression(e.target.value)}
                     placeholder="Enter diagnostic impression & final conclusion..."
@@ -744,7 +653,7 @@ export default function ReportTemplateModal({
                     <span className="text-[8px] font-mono text-slate-400">Authenticated Teleradiologist</span>
                   </div>
                   <div className="font-bold text-sm text-black">
-                    {signerName}
+                    {session?.name || session?.email || 'Dr. Reporting Radiologist'}
                   </div>
                   <div className="text-xs text-slate-700">M.D. (Radiodiagnosis)</div>
                   <div className="text-[11px] text-slate-500 font-mono">MCI Reg. No. 48291</div>
@@ -772,7 +681,7 @@ export default function ReportTemplateModal({
               Cancel
             </button>
 
-            {canEdit && (
+            {isDoctor && (
               <button
                 type="submit"
                 disabled={isSaving}
@@ -786,15 +695,7 @@ export default function ReportTemplateModal({
                 ) : (
                   <>
                     <Check className="w-4 h-4" />
-                    <span>
-                      {isManager
-                        ? 'Submit for Approval'
-                        : initialTemplate
-                          ? 'Update Template'
-                          : onBehalf
-                            ? 'Save for Doctor'
-                            : 'Save & Publish Template'}
-                    </span>
+                    <span>{initialTemplate ? 'Update Master Template' : 'Save & Publish Template'}</span>
                   </>
                 )}
               </button>

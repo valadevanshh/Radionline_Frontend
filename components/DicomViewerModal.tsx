@@ -65,6 +65,7 @@ import {
 } from 'lucide-react';
 import { XRayReport, RadiologyStore, DocTemplate, RadiologyCenter, Doctor } from '@/lib/radiology-store';
 import { formatPatientDisplayId } from '@/lib/uuid';
+import { formatReportPatientId } from '@/lib/report-patient-id';
 import { AUTOCOMPLETE_SUGGESTIONS } from '@/lib/radiology-autocomplete';
 import { STUDY_MODALITY_OPTIONS } from '@/components/NewXRayReportModal';
 import { printReportElement, type PrintReportPayload, A4_PAGE, formatReportAge, shortReportId } from '@/lib/print-helper';
@@ -76,11 +77,11 @@ import { stackedPagesHeightPx, useQrSvgMarkup } from '@/components/PaginatedRepo
 // On-screen A4 page geometry (CSS px at 96 dpi) and body font stacks shared with the PDF
 const MM_PX = 96 / 25.4;
 const SHEET_FONT_STACKS: Record<string, string> = {
-  'font-serif': 'Georgia, "Times New Roman", Times, serif',
+  'font-serif': '"Times New Roman", Times, serif',
   'font-sans': 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif',
   'font-mono': 'ui-monospace, Menlo, Consolas, monospace',
 };
-const SHEET_FONT_PT: Record<string, number> = { 'text-xs': 10, 'text-sm': 11, 'text-base': 12 };
+const SHEET_FONT_PT: Record<string, number> = { 'text-xs': 11, 'text-sm': 13, 'text-base': 15 };
 import { ApiClient, resolveMediaUrl, apiErrorMessage, publicReportLink, getAccessToken, WS_BASE_URL, type ImageAnnotation } from '@/lib/api-client';
 import { canWriteTemplates } from '@/lib/access';
 import {
@@ -380,6 +381,8 @@ export default function DicomViewerModal({
     const field = el.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]');
     if (field && (field.contains(document.activeElement) || hasTextSelection())) return false;
     if (fromTabBar) return true;
+    // Even edge drags on the image are image pans, never navigation swipes.
+    if (el.closest('[data-pacs-image-viewport]')) return false;
     // Image area: only edge swipes, so pan / window-level / zoom / measure are untouched
     if (viewerPaneRef.current && viewerPaneRef.current.contains(el)) {
       return x <= TAB_SWIPE_EDGE_PX || x >= window.innerWidth - TAB_SWIPE_EDGE_PX;
@@ -504,11 +507,6 @@ export default function DicomViewerModal({
 
   const handleOpenSaveTemplate = () => {
     if (!canWriteTemplates(RadiologyStore.getSession())) return;
-    if (!findingText.trim() && !impressionText.trim()) {
-      setStatusToast('Write findings or impression first, then save as a new template.');
-      setTimeout(() => setStatusToast(null), 3500);
-      return;
-    }
     const activePart =
       report?.bodyParts?.[activeBodyPartIdx] || report?.bodyParts?.[0] || '';
     setSaveTmplTitle(
@@ -536,7 +534,13 @@ export default function DicomViewerModal({
       byId.set(saved.id, saved);
       return Array.from(byId.values());
     });
-    setSelectedTemplateId(`stored_${saved.id}`);
+    // Creating a template is explicit. Patient-only edits never update its source template.
+    // Apply a newly authored template to this patient only after confirming replacement.
+    const body = parseTemplateBody(saved.findings, saved.impression, saved.content);
+    if (!reportLocked) {
+      commitTemplateBody(activePartRef.current, findingText, impressionText,
+        `stored_${saved.id}`, saved.title, body.findings, body.impression);
+    }
     setSaveTemplateSuccess(true);
     setStatusToast(`Template “${saved.title}” saved — available in your list.`);
     setTimeout(() => setSaveTemplateSuccess(false), 3000);
@@ -583,7 +587,7 @@ export default function DicomViewerModal({
     setActiveBodyPartIdx(newIdx);
     setFindingText(next.editorFindings);
     setImpressionText(next.editorImpression);
-    setReportTitle(`X-RAY ${newPart.toUpperCase()} EXAMINATION`);
+    setReportTitle(report.studies?.find((study) => study.bodyPart === newPart)?.title || `X-RAY ${newPart.toUpperCase()} EXAMINATION`);
     setSelectedTemplateId('blank');
   };
 
@@ -635,7 +639,7 @@ export default function DicomViewerModal({
       setActiveBodyPartIdx(startIdx);
 
       const firstPart = parts[startIdx];
-      setReportTitle(`X-RAY ${firstPart.toUpperCase()} EXAMINATION`);
+      setReportTitle(caseStudies.find((study) => study.bodyPart === firstPart)?.title || `X-RAY ${firstPart.toUpperCase()} EXAMINATION`);
       setFindingText(saved.findings[firstPart] || '');
       setImpressionText(saved.impressions[firstPart] || '');
       setSelectedTemplateId('blank');
@@ -784,6 +788,22 @@ export default function DicomViewerModal({
   const [currentDraw, setCurrentDraw] = useState<Partial<AnnotationLine> | null>(null);
   const [magnifierPos, setMagnifierPos] = useState<{ x: number; y: number } | null>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+
+  // Touch navigation belongs to a viewport, not the toolbar's mouse drag state.
+  const touchPoints = useRef(new Map<number, { x: number; y: number; viewport: number }>());
+  const touchNavigation = useRef(new Set<number>());
+  const viewportStatesRef = useRef(viewportStates);
+  viewportStatesRef.current = viewportStates;
+  const touchPinches = useRef(new Map<number, {
+    distance: number; midpoint: { x: number; y: number };
+    zoom: number; pan: { x: number; y: number };
+    width: number; height: number; center: { x: number; y: number };
+  }>());
+  useEffect(() => {
+    touchPoints.current.clear();
+    touchNavigation.current.clear();
+    touchPinches.current.clear();
+  }, [isOpen, report?.id, gridLayout]);
 
   // Width of the report pane (right side) in % of the workspace; the image viewer gets the rest.
   const [reportWidthPercent, setReportWidthPercent] = useState<number>(() => {
@@ -935,7 +955,7 @@ export default function DicomViewerModal({
       findings: findingText,
       impression: impressionText,
       technique: finalTechniqueMap[currentPart],
-      templateId: selectedTemplateId || undefined,
+      templateId: selectedTemplateId.startsWith('stored_') ? selectedTemplateId.slice(7) : undefined,
       clinicalNotes: report.clinicalNotes,
       dicomSnapshots: [],
       // saved so the public QR view shows the same title as the page / PDF
@@ -1039,13 +1059,20 @@ export default function DicomViewerModal({
       currentPart,
       { findings: findingText, impression: impressionText },
     );
-    const techText = techniqueByPart[currentPart] || `${report.modality || 'X-Ray'} — ${currentPart}`;
+    const techText = techniqueText || techniqueByPart[currentPart] || `${report.modality || 'X-Ray'} — ${currentPart}`;
     const studies = report.studies || [];
     const matchedStudy = studies.find((s) => s.bodyPart === currentPart) || studies[activeBodyPartIdx];
-    const studyId = matchedStudy?.id || `${report.id}-st-${activeBodyPartIdx}`;
+    const studyId = matchedStudy?.id;
+    if (!studyId) {
+      setIsSubmitting(false);
+      setStatusToast('Could not resolve this study. Reopen the patient and try again.');
+      return;
+    }
 
     try {
-      await ApiClient.saveStudyDraft(report.id, studyId, {
+      const result = await ApiClient.saveStudyDraft(report.id, studyId, {
+        title: sheetTitleFor(currentPart),
+        templateId: selectedTemplateId.startsWith('stored_') ? selectedTemplateId.slice(7) : undefined,
         findings: findingText,
         impression: impressionText,
         technique: techText,
@@ -1054,6 +1081,18 @@ export default function DicomViewerModal({
       setBodyPartReports(mergedText.findings);
       setBodyPartImpressions(mergedText.impressions);
       setStudyStatuses((prev) => ({ ...prev, [currentPart]: 'DRAFT' }));
+      const updatedReport: XRayReport = {
+        ...report,
+        ...(result.report || {}),
+        reportsByBodyPart: mergedText.findings,
+        impressionsByBodyPart: mergedText.impressions,
+        techniquesByBodyPart: { ...techniqueByPart, [currentPart]: techText },
+        studies: result.report?.studies || studies.map((study) => study.id === studyId
+          ? { ...study, findings: findingText, impression: impressionText, technique: techText, reportStatus: 'DRAFT' }
+          : study),
+      };
+      RadiologyStore.saveReport(updatedReport);
+      onSaveReport?.(updatedReport);
       setStatusToast(`Draft saved for ${currentPart}`);
       setTimeout(() => setStatusToast(null), 3000);
     } catch (err: any) {
@@ -1254,12 +1293,97 @@ export default function DicomViewerModal({
     }
   };
 
+  const touchPointsIn = (viewport: number) =>
+    Array.from(touchPoints.current.values()).filter((point) => point.viewport === viewport);
+  const usesTouchNavigation = () => ['pan', 'zoom', 'pointer', 'magnifier', 'stack'].includes(activeTool);
+  const startTouchPinch = (vIdx: number, element: HTMLDivElement) => {
+    const points = touchPointsIn(vIdx);
+    if (points.length < 2) return;
+    const [a, b] = points;
+    const state = viewportStatesRef.current[vIdx];
+    const rect = element.getBoundingClientRect();
+    const canvas = svgRefs.current[vIdx]?.parentElement;
+    touchPinches.current.set(vIdx, {
+      distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+      midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      zoom: state.zoom, pan: { ...state.pan },
+      width: canvas?.offsetWidth || rect.width || 1,
+      height: canvas?.offsetHeight || rect.height || 1,
+      center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+    });
+    touchNavigation.current.add(vIdx);
+    tabSwipeRef.current = null;
+    setDraftArrow(null);
+    setIsDrawing(false);
+    setCurrentDraw(null);
+    setDragStart(null);
+  };
+  const moveTouchViewport = (e: React.PointerEvent<HTMLDivElement>, vIdx: number): boolean => {
+    if (e.pointerType !== 'touch') return false;
+    const previous = touchPoints.current.get(e.pointerId);
+    if (!previous) return false;
+    touchPoints.current.set(e.pointerId, { x: e.clientX, y: e.clientY, viewport: vIdx });
+    const points = touchPointsIn(vIdx);
+    const pinch = touchPinches.current.get(vIdx);
+    if (points.length >= 2 && pinch) {
+      const [a, b] = points;
+      const zoom = Math.max(0.4, Math.min(4, pinch.zoom * Math.hypot(b.x - a.x, b.y - a.y) / pinch.distance));
+      const ratio = zoom / pinch.zoom;
+      const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      // Keep the image point under the initial finger midpoint under the new midpoint.
+      const startX = pinch.width * pinch.zoom * pinch.pan.x / 1000;
+      const startY = pinch.height * pinch.zoom * pinch.pan.y / 1000;
+      const pan = {
+        x: (midpoint.x - pinch.center.x - (pinch.midpoint.x - pinch.center.x - startX) * ratio) * 1000 / (pinch.width * zoom),
+        y: (midpoint.y - pinch.center.y - (pinch.midpoint.y - pinch.center.y - startY) * ratio) * 1000 / (pinch.height * zoom),
+      };
+      setViewportStates((states) => {
+        const next = states.map((state, index) => index === vIdx ? { ...state, zoom, pan } : state);
+        viewportStatesRef.current = next;
+        return next;
+      });
+      e.preventDefault();
+      return true;
+    }
+    if (touchNavigation.current.has(vIdx)) {
+      const canvas = svgRefs.current[vIdx]?.parentElement;
+      const width = canvas?.offsetWidth || e.currentTarget.clientWidth || 1;
+      const height = canvas?.offsetHeight || e.currentTarget.clientHeight || 1;
+      const dx = e.clientX - previous.x, dy = e.clientY - previous.y;
+      setViewportStates((states) => {
+        const next = states.map((state, index) => index === vIdx ? { ...state, pan: {
+          x: state.pan.x + dx * 1000 / (width * state.zoom),
+          y: state.pan.y + dy * 1000 / (height * state.zoom),
+        }} : state);
+        viewportStatesRef.current = next;
+        return next;
+      });
+      e.preventDefault();
+      return true;
+    }
+    return false;
+  };
+
   const handleViewportPointerDown = (e: React.PointerEvent<HTMLDivElement>, vIdx: number) => {
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch (err) {}
 
     setActiveViewportIdx(vIdx);
+    if (e.pointerType === 'touch') {
+      touchPoints.current.set(e.pointerId, { x: e.clientX, y: e.clientY, viewport: vIdx });
+      if (touchPointsIn(vIdx).length >= 2) {
+        startTouchPinch(vIdx, e.currentTarget);
+        e.preventDefault();
+        return;
+      }
+      if (usesTouchNavigation()) {
+        touchNavigation.current.add(vIdx);
+        tabSwipeRef.current = null;
+        e.preventDefault();
+        return;
+      }
+    }
     const { x, y } = getCanvasCoords(e, vIdx);
     setDragStart({ x: e.clientX, y: e.clientY });
 
@@ -1294,6 +1418,7 @@ export default function DicomViewerModal({
   };
 
   const handleViewportPointerMove = (e: React.PointerEvent<HTMLDivElement>, vIdx: number) => {
+    if (moveTouchViewport(e, vIdx)) return;
     const { x, y } = getCanvasCoords(e, vIdx);
 
     if (activeTool === 'magnifier') {
@@ -1368,6 +1493,22 @@ export default function DicomViewerModal({
   };
 
   const handleViewportPointerUp = (e: React.PointerEvent<HTMLDivElement>, vIdx: number) => {
+    const wasTouchNavigation = e.pointerType === 'touch' && touchNavigation.current.has(vIdx);
+    if (e.pointerType === 'touch') {
+      touchPoints.current.delete(e.pointerId);
+      touchPinches.current.delete(vIdx);
+      const remaining = touchPointsIn(vIdx);
+      if (remaining.length >= 2) startTouchPinch(vIdx, e.currentTarget);
+      if (!remaining.length) touchNavigation.current.delete(vIdx);
+    }
+    if (wasTouchNavigation || e.type === 'pointercancel') {
+      setDragStart(null);
+      setDraftArrow(null);
+      setIsDrawing(false);
+      setCurrentDraw(null);
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+      return;
+    }
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch (err) {}
@@ -1519,6 +1660,7 @@ export default function DicomViewerModal({
   const patientAge = formatAgeShort(report) || '-';
   const patientGender = report?.gender || '—';
   const patientId = formatPatientDisplayId(report?.patientNumber) || '—';
+  const reportPatientId = formatReportPatientId(report?.centerPatientId);
   const activeStudyRow = (report?.studies || []).find((st) => st.bodyPart === report?.bodyParts?.[activeBodyPartIdx]);
   const studyDate = activeStudyRow?.studyDate || report?.studyDate || '—';
   const reportDate = report?.createdAt
@@ -1545,11 +1687,11 @@ export default function DicomViewerModal({
     const list = report?.studies || [];
     return list.find((s) => s.bodyPart === part) || list[activeBodyPartIdx] || null;
   })();
-  // t81: a signed study of a Completed case is read-only for centre / doctor logins
+  // Doctors edit drafts; signed studies and completed cases stay read-only.
   const reportLocked =
     (viewerSession?.role === 'DOCTOR' || viewerSession?.role === 'CENTER') &&
-    String(report?.status || '') === 'Completed' &&
-    String(activeStudyInfo?.reportStatus || '').toUpperCase() === 'SIGNED';
+    (String(report?.status || '') === 'Completed' ||
+      String(activeStudyInfo?.reportStatus || '').toUpperCase() === 'SIGNED');
   const lockedTitle = 'Report completed - read-only (only Super Admin can edit)';
   const frozenSigner =
     String(activeStudyInfo?.reportStatus || '').toUpperCase() === 'SIGNED' && activeStudyInfo?.signer
@@ -1637,7 +1779,7 @@ export default function DicomViewerModal({
     (part === sheetActivePart && techniqueText) ||
     techniqueByPart[part] ||
     [studyModality || 'Radiograph', part].filter(Boolean).join(' \u2014 ');
-  const sheetFontPt = SHEET_FONT_PT[reportFontSize] || 11;
+  const sheetFontPt = SHEET_FONT_PT[reportFontSize] || 13;
   const sheetFontStack = SHEET_FONT_STACKS[reportFontFamily] || SHEET_FONT_STACKS['font-serif'];
   const findingsCss = [
     isBoldActive ? 'font-weight: 700' : '',
@@ -1674,7 +1816,7 @@ export default function DicomViewerModal({
       letterheadMode: centerRecord?.letterheadMode || 'full-page',
       withHeader: effectiveWithHeader,
       patientName,
-      patientId,
+      patientId: reportPatientId,
       ageSex,
       gender: report?.gender || '',
       age: formatReportAge(report?.age, report?.ageUnit, report),
@@ -1690,6 +1832,7 @@ export default function DicomViewerModal({
       doctorDegree,
       doctorRegNo,
       doctorSignatureUrl,
+      doctorSignatureScale: frozenSigner ? frozenSigner.signatureScale : reportingDoctorRecord?.signatureScale,
       reportedAt: sheetReportedAt,
       reportId: shortReportId(activeStudyInfo?.id || report?.id),
       isPortable: !!report?.isPortable,
@@ -1705,7 +1848,7 @@ export default function DicomViewerModal({
     const payload = buildPrintPayload();
     const safe = (s: string) => (s || '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
     const part = report?.bodyParts?.[activeBodyPartIdx] || 'STUDY';
-    const docTitle = `${safe(patientName)}_${safe(patientId)}_${safe(part)}`;
+    const docTitle = `${safe(patientName)}_${safe(reportPatientId)}_${safe(part)}`;
     printReportElement(null, docTitle, payload);
   };
 
@@ -1749,6 +1892,13 @@ export default function DicomViewerModal({
       setSelectedTemplateId(templateKey);
       if (title && (report?.bodyParts?.length || 0) <= 1) setReportTitle(title);
       setTemplateApplyKey((k) => k + 1);
+      // Show the newly loaded body immediately, including on the PACS mobile layout.
+      setMobileActiveView('report');
+      if (pageVpEl.current) pageVpEl.current.scrollTop = 0;
+      if (templateKey !== 'blank' && (findings || impression)) {
+        setStatusToast('Template loaded. Edit this patient report, then save a draft or sign when ready.');
+        setTimeout(() => setStatusToast(null), 4000);
+      }
     }
     templateManualRef.current = true;
     if (templateKey !== 'blank' && !findings && !impression) {
@@ -1774,6 +1924,7 @@ export default function DicomViewerModal({
   };
 
   const requestTemplateSelection = (tId: string) => {
+    if (reportLocked) return;
     templateManualRef.current = true;
     const part = activeStudyLabel;
     const currentFindings = findingText;
@@ -2290,6 +2441,8 @@ export default function DicomViewerModal({
             return (
               <div
                 key={vIdx}
+                data-pacs-image-viewport="true"
+                data-testid={`pacs-viewport-${vIdx}`}
                 onClick={() => setActiveViewportIdx(vIdx)}
                 onPointerDown={(e) => handleViewportPointerDown(e, vIdx)}
                 onPointerMove={(e) => handleViewportPointerMove(e, vIdx)}
@@ -2308,6 +2461,7 @@ export default function DicomViewerModal({
                     className="relative max-w-full max-h-full flex items-center justify-center transition-transform duration-75 select-none pointer-events-auto"
                     style={{
                       aspectRatio: imgSizes[vIdx] ? `${imgSizes[vIdx].w} / ${imgSizes[vIdx].h}` : '1 / 1',
+                      transition: touchNavigation.current.has(vIdx) ? 'none' : undefined,
                       transform: `scale(${state.zoom}) translate(${state.pan.x / 10}%, ${state.pan.y / 10}%) rotate(${state.rotation}deg) scaleX(${state.flipH ? -1 : 1}) scaleY(${state.flipV ? -1 : 1})`,
                       transformOrigin: 'center center',
                     }}
@@ -2583,6 +2737,7 @@ export default function DicomViewerModal({
                       : 'bg-white border-blue-300 text-blue-800 hover:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-xs'
                   }`}
                   data-testid="template-select"
+                  disabled={reportLocked}
                 >
                   <option value="blank">Blank template — write your own</option>
                   {filteredTemplates.length === 0 && (
@@ -2624,12 +2779,10 @@ export default function DicomViewerModal({
                 <button
                   type="button"
                   onClick={handleOpenSaveTemplate}
-                  title={
-                    showSaveAsNewTemplate
-                      ? 'Save this blank report as a reusable template'
-                      : 'Save current findings as a new reusable template'
-                  }
-                  aria-label="Save as new template"
+                  title={hasReportDraftContent
+                    ? 'Save current findings as a new reusable template'
+                    : 'Create a template for this study'}
+                  aria-label={hasReportDraftContent ? 'Save as new template' : 'Create template'}
                   data-testid="save-as-template"
                   className={`min-h-[32px] min-w-[32px] px-2 text-[11px] sm:text-xs font-bold border rounded flex items-center justify-center gap-1 transition-all cursor-pointer shrink-0 ${
                     saveTemplateSuccess
@@ -2644,13 +2797,16 @@ export default function DicomViewerModal({
                   }`}
                 >
                   {saveTemplateSuccess ? <CheckCircle2 className="w-4 h-4" /> : <BookmarkPlus className="w-4 h-4" />}
-                  <span className="whitespace-nowrap hidden @min-[760px]:inline">
-                    {saveTemplateSuccess ? 'Saved!' : 'Save as new template'}
+                  <span className="whitespace-nowrap">
+                    {saveTemplateSuccess ? 'Saved!' : hasReportDraftContent ? 'Save as template' : 'Create template'}
                   </span>
                 </button>
                 )}
               </div>
 
+              <p className="basis-full m-0 px-1 text-[11px] leading-4 text-slate-500" data-testid="patient-report-edit-note">
+                {reportLocked ? lockedTitle : 'Click Findings or Impression below to edit this patient only. Templates change only when you explicitly save a template.'}
+              </p>
               {templateMatchNote ? (
                 <p
                   data-testid="template-match-note"
@@ -2812,7 +2968,7 @@ export default function DicomViewerModal({
                   theme === 'dark' ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-white border-slate-300 text-slate-800'
                 }`}
               >
-                <option value="font-serif">Serif</option>
+                <option value="font-serif">Times New Roman</option>
                 <option value="font-sans">Sans-Serif</option>
                 <option value="font-mono">Monospace</option>
               </select>
@@ -2907,6 +3063,7 @@ export default function DicomViewerModal({
                 <A4ReportEditor
                   key={`a4-${templateApplyKey}-${selectedTemplateId || 'blank'}`}
                   payload={buildPrintPayload(true)}
+                  readOnly={reportLocked}
                   findings={findingText}
                   impression={impressionText}
                   onFindingsChange={setFindingText}

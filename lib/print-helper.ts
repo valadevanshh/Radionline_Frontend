@@ -1,3 +1,4 @@
+import { signatureScale } from '@/lib/doctor-profile';
 import { cleanDr } from '@/lib/doctor-name';
 /**
  * A4 Print Helper — builds a complete static report document (not a fragile live-DOM clone).
@@ -42,12 +43,13 @@ export type PrintReportPayload = {
   doctorDegree?: string;
   doctorRegNo?: string;
   doctorSignatureUrl?: string;
+  doctorSignatureScale?: number;
   reportedAt: string;
   /** Short report reference printed under the signature ("Report ID: 3F0AE1"), see shortReportId */
   reportId?: string;
   /** Portable study: " (PORTABLE)" is added to the study heading */
   isPortable?: boolean;
-  /** Body text size/family chosen in the editor (defaults: 11pt Georgia) */
+  /** Body text size/family chosen in the editor (defaults: 13pt Times New Roman) */
   bodyFontPt?: number;
   bodyFontFamily?: string;
   /** Extra CSS for the findings text (bold / italic / underline / alignment toggles) */
@@ -64,7 +66,7 @@ export type PrintReportPayload = {
  * Every rule is scoped under .rn-sheet.
  */
 export const REPORT_SHEET_CSS = `
-.rn-sheet { font-family: Georgia, "Times New Roman", Times, serif; font-size: 11pt; line-height: 1.35; color: #000; background: #fff; }
+.rn-sheet { font-family: "Times New Roman", Times, serif; font-size: 13pt; line-height: 1.6; color: #000; background: #fff; }
 .rn-sheet * { box-sizing: border-box; }
 .rn-sheet .letterhead { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 14px; }
 .rn-sheet .lh-row { display: flex; gap: 12px; align-items: flex-start; }
@@ -73,42 +75,39 @@ export const REPORT_SHEET_CSS = `
 .rn-sheet .center-name { font-family: system-ui, sans-serif; font-weight: 700; font-size: 14pt; line-height: 1.25; text-transform: uppercase; letter-spacing: 0.02em; }
 .rn-sheet .center-meta { font-family: system-ui, sans-serif; font-size: 9pt; color: #222; margin-top: 2px; }
 .rn-sheet .accredit { font-family: system-ui, sans-serif; font-size: 8.5pt; color: #555; margin-top: 4px; }
-.rn-sheet .pt-info { margin: 0 0 14px 0; font-family: system-ui, sans-serif; border-top: 1.5px solid #111; border-bottom: 1.5px solid #111; }
-.rn-sheet .pt-info-head { display: flex; align-items: center; gap: 6px; padding: 6px 2px 5px; }
-.rn-sheet .pt-info-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1.25px solid #333; border-radius: 2px; font-size: 10px; font-weight: 700; line-height: 1; color: #222; }
-.rn-sheet .pt-info-title { font-size: 8.5pt; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: #222; }
-.rn-sheet .pt-grid { border-top: 1px solid #111; }
+.rn-sheet .pt-info { margin: 0 0 14px 0; font-family: system-ui, sans-serif; }
+.rn-sheet .pt-grid { border: 1px solid #333; }
 .rn-sheet .pt-row { display: flex; width: 100%; }
-.rn-sheet .pt-row + .pt-row { border-top: 1px solid #c8c8c8; }
-.rn-sheet .pt-cell { flex: 1 1 0; min-width: 0; padding: 8px 10px; text-align: left; white-space: normal; word-break: normal; overflow-wrap: anywhere; border-right: 1px solid #c8c8c8; }
+.rn-sheet .pt-row + .pt-row { border-top: 1px solid #333; }
+.rn-sheet .pt-cell { flex: 1 1 0; min-width: 0; padding: 8px 10px; text-align: left; white-space: normal; word-break: normal; overflow-wrap: anywhere; border-right: 1px solid #333; }
 .rn-sheet .pt-cell:last-child { border-right: none; }
 .rn-sheet .pt-cell .lbl { display: block; color: #6b7280; font-size: 8pt; font-weight: 500; margin-bottom: 3px; }
 .rn-sheet .pt-cell .val { display: block; font-weight: 700; color: #000; font-size: 10.5pt; text-transform: none; }
-/* Last page: QR bottom-left of the content, level with the signature (right); then the footer:
+/* Last page: Signature bottom-left of the content, level with the QR code (right); then the footer:
    one divider, page no. + End of report, NOTE full width */
-.rn-sheet .rn-foot-last .sig-row .sig-inner { margin-left: auto; }
-.rn-sheet .rn-bottom { margin-top: 12px; padding-top: 6px; border-top: 1px solid #999; font-family: system-ui, sans-serif; }
+.rn-sheet .rn-foot-last .sig-row .sig-inner { margin-right: auto; }
+.rn-sheet .rn-bottom { margin-top: 6px; padding-top: 4px; border-top: 1px solid #999; font-family: system-ui, sans-serif; }
 .rn-sheet .rn-foot-last .rn-bottom .foot { display: flex; justify-content: space-between; align-items: baseline; margin: 0; font-size: 8pt; color: #555; }
 .rn-sheet .rn-foot-last .rn-bottom .foot .rn-pageno { font-size: 8pt; font-weight: 400; color: #555; text-align: left; }
 .rn-sheet .rn-qr { flex: none; width: 16mm; display: flex; flex-direction: column; align-items: center; color: #555; text-decoration: none; }
 .rn-sheet .rn-qr svg { display: block; width: 16mm; height: 16mm; }
 .rn-sheet .rn-qr-cap { margin-top: 2px; font-size: 6.5pt; line-height: 1.2; white-space: nowrap; }
 .rn-sheet .rn-note { margin-top: 4px; font-family: system-ui, sans-serif; font-size: 8pt; line-height: 1.4; color: #222; }
-.rn-sheet h2.study-title { font-family: system-ui, sans-serif; font-size: 12pt; line-height: 1.4; font-weight: 700; text-align: center; text-transform: uppercase; text-decoration: underline; margin: 18px 0 10px; }
-.rn-sheet h3.sec { font-family: system-ui, sans-serif; font-size: 10pt; line-height: 1.4; font-weight: 700; font-style: normal; text-decoration: none; text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 4px; border: none; }
-.rn-sheet p.body, .rn-sheet .rn-body-copy { margin: 0 0 0.45em; line-height: 1.35; white-space: pre-wrap; word-wrap: break-word; font-size: inherit; }
+.rn-sheet h2.study-title { font-family: inherit; font-size: 15pt; line-height: 1.4; font-weight: 700; text-align: center; text-transform: uppercase; text-decoration: underline; margin: 24px 0 18px; }
+.rn-sheet h3.sec { font-family: inherit; font-size: 13pt; line-height: 1.4; font-weight: 700; font-style: normal; text-decoration: underline; text-underline-offset: 2px; text-transform: uppercase; letter-spacing: normal; margin: 20px 0 8px; border: none; }
+.rn-sheet p.body, .rn-sheet .rn-body-copy { margin: 0 0 0.75em; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; font-size: inherit; }
 .rn-sheet .rn-body-copy { margin: 0; display: block; width: 100%; }
-.rn-sheet p.study-intro { margin: 0 0 6px; }
+.rn-sheet p.study-intro { margin: 0 0 10px; }
 .rn-sheet p.findings, .rn-sheet p.impression { border: none !important; outline: none !important; background: transparent !important; padding: 0 !important; }
 .rn-sheet .study { margin-bottom: 8px; }
 .rn-sheet .clinical { margin-bottom: 12px; }
 .rn-sheet .sig-block { margin-top: 28px; font-family: system-ui, sans-serif; }
-.rn-sheet .sig-row { display: flex; justify-content: flex-end; align-items: flex-end; gap: 14px; }
-.rn-sheet .sig-inner { text-align: right; min-height: 28mm; }
+.rn-sheet .sig-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; }
+.rn-sheet .sig-inner { text-align: left; min-width: 0; line-height: 1.35; }
 .rn-sheet .sig-qr { width: 23mm; flex-shrink: 0; text-align: center; font-family: system-ui, sans-serif; font-size: 7pt; line-height: 1.25; color: #444; }
 .rn-sheet .sig-qr svg { display: block; width: 23mm; height: 23mm; }
 .rn-sheet .sig-qr-cap { margin-top: 3px; }
-.rn-sheet.rn-page img.sig-img { display: inline-block; height: auto; width: auto; max-height: 26mm; max-width: 68mm; object-fit: contain; object-position: right center; margin: 0 0 2mm 0; background: transparent; vertical-align: bottom; }
+.rn-sheet.rn-page img.sig-img { display: inline-block; height: auto; width: auto; max-height: 26mm; max-width: 68mm; object-fit: contain; object-position: left center; margin: 0 0 2mm 0; background: transparent; vertical-align: bottom; }
 .rn-sheet .sig-name { font-weight: 700; font-size: 11pt; }
 .rn-sheet .sig-meta { font-size: 9.5pt; color: #222; }
 .rn-sheet .disclaimer { margin-top: 22px; padding-top: 10px; border-top: 1px solid #666; font-size: 8.5pt; color: #444; font-style: italic; }
@@ -246,7 +245,7 @@ export function resolveLetterhead(payload: Pick<PrintReportPayload, 'letterheadM
   if (mode === 'preprinted') return { mode, kind: 'none', topMm: 38, bottomMm: 22, sideMm: side, compact: true };
   if (mode === 'none') return { mode, kind: 'none', topMm: A4_PAGE.marginTopMm, bottomMm: A4_PAGE.marginBottomMm, sideMm: side, compact: true };
   if (url && mode === 'full-page') return { mode, kind: 'bg', topMm: 48, bottomMm: 30, sideMm: side, compact: true };
-  if (url && mode === 'header') return { mode, kind: 'crop', topMm: 50, bottomMm: A4_PAGE.marginBottomMm, sideMm: side, compact: true };
+  if (url && mode === 'header') return { mode, kind: 'crop', topMm: 42, bottomMm: 8, sideMm: side, compact: true };
   if (url && mode === 'footer') return { mode, kind: 'footer', topMm: A4_PAGE.marginTopMm, bottomMm: 32, sideMm: side, compact: false };
   // A letterhead mode but no artwork uploaded: the text letterhead
   return { mode, kind: 'text', topMm: A4_PAGE.marginTopMm, bottomMm: A4_PAGE.marginBottomMm, sideMm: side, compact: false };
@@ -314,7 +313,6 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
       : '';
 
   const pageStyle = [
-    lh.compact ? 'font-size: 10pt; line-height: 1.3' : '',
     payload.bodyFontPt ? `font-size: ${payload.bodyFontPt}pt` : '',
     payload.bodyFontFamily ? `font-family: ${payload.bodyFontFamily}` : '',
   ]
@@ -339,10 +337,9 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
     </div>
   </div>`;
 
-  const sigImg = payload.doctorSignatureUrl ? `<img class="sig-img" src="${esc(payload.doctorSignatureUrl)}" alt="Signature" />` : '';
+  const sigImg = payload.doctorSignatureUrl ? `<img class="sig-img" style="width:${68 * signatureScale(payload.doctorSignatureScale) / 100}mm;max-height:${26 * signatureScale(payload.doctorSignatureScale) / 100}mm;max-width:${68 * signatureScale(payload.doctorSignatureScale) / 100}mm" src="${esc(payload.doctorSignatureUrl)}" alt="Signature" />` : '';
   const footLast = `<div class="rn-foot rn-foot-last sig-block" data-rn="foot-last" data-testid="sheet-signature">
     <div class="sig-row">
-      ${qr ? `<${qrTag} class="rn-qr" data-rn-qr data-testid="sheet-qr"${qrHref}>${qr}<span class="rn-qr-cap">Scan to verify</span></${qrTag}>` : ''}
       <div class="sig-inner">
         ${sigImg}
         <div class="sig-name">${esc(cleanDr(payload.doctorName) || 'Reporting Radiologist')}</div>
@@ -350,6 +347,7 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
         ${payload.doctorRegNo ? `<div class="sig-meta">${esc(formatRegNo(payload.doctorRegNo))}</div>` : ''}
         ${payload.reportId ? `<div class="sig-meta" data-testid="sheet-report-id">Report ID: ${esc(payload.reportId)}</div>` : ''}
       </div>
+      ${qr ? `<${qrTag} class="rn-qr" data-rn-qr data-testid="sheet-qr"${qrHref}>${qr}<span class="rn-qr-cap">Scan to verify</span></${qrTag}>` : ''}
     </div>
     <div class="rn-bottom">
       <div class="foot">
@@ -388,27 +386,23 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
       payload.isPortable && !/portable/i.test(st.title || '') ? `${st.title} (PORTABLE)` : st.title
     )}</h2>
     ${studyIntro(st.title)}
-    <h3 class="sec" data-kwn>Findings</h3>
+    <h3 class="sec" data-kwn>Findings:</h3>
     <p class="body findings" data-split data-b="findings-${i}" style="${esc(payload.findingsCss || '')}">${text(st.findings, '\u2014')}</p>
-    <h3 class="sec" data-kwn>Impression</h3>
+    <h3 class="sec" data-kwn>Impression:</h3>
     <p class="body impression" data-split data-b="impression-${i}"><strong>${text(st.impression, '\u2014')}</strong></p>`
     )
     .join('');
 
-  // Patient header: PATIENT INFORMATION — top: ID + Name; bottom: Age/Gender + Ref doctor + Report date
+  // Patient header: top: Name + Age/Gender; bottom: centre Patient ID + Ref doctor + Report date
   const pga = patientGenderAge(payload);
   const ptCell = (label: string, value: string) =>
     `<div class="pt-cell"><span class="lbl">${esc(label)}</span><span class="val">${esc(value || '\u2014')}</span></div>`;
   const ageGender = [pga.age, pga.gender].map((x) => String(x || '').trim()).filter((x) => x && x !== '\u2014').join(' / ');
   const flow = `<div data-rn="flow">
     <div class="pt-info">
-      <div class="pt-info-head">
-        <span class="pt-info-icon" aria-hidden="true">+</span>
-        <span class="pt-info-title">Patient Information</span>
-      </div>
       <div class="pt-grid">
-        <div class="pt-row">${ptCell('Patient ID', payload.patientId)}${ptCell('Patient Name', payload.patientName)}</div>
-        <div class="pt-row">${ptCell('Age / Gender', ageGender)}${ptCell('Referring Doctor', payload.referringDoctor)}${ptCell('Report Date', formatReportDate(payload.reportDate || ''))}</div>
+        <div class="pt-row">${ptCell('Patient Name', payload.patientName)}${ptCell('Age / Gender', ageGender)}</div>
+        <div class="pt-row">${ptCell('Patient ID', payload.patientId)}${ptCell('Referring Doctor', payload.referringDoctor)}${ptCell('Report Date', formatReportDate(payload.reportDate || ''))}</div>
       </div>
     </div>
     ${studies}

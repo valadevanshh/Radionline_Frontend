@@ -1,5 +1,7 @@
 'use client';
 
+import ProfileDocuments from '@/components/ProfileDocuments';
+import type { ProfileDocument } from '@/lib/profile-documents';
 import React, { useState, useEffect } from 'react';
 import { Building2, Mail, Phone, MapPin, Check, Shield, FileText, Edit3 } from 'lucide-react';
 import { ApiClient, apiErrorMessage, resolveMediaUrl } from '@/lib/api-client';
@@ -23,12 +25,15 @@ export default function CenterInfoProfilePage() {
   const [address, setAddress] = useState('');
   const [headerTemplateUrl, setHeaderTemplateUrl] = useState('');
   const [letterheadMode, setLetterheadMode] = useState<'header' | 'footer' | 'full-page' | 'preprinted'>('full-page');
+  const [documents, setDocuments] = useState<ProfileDocument[]>([]);
+  const [readingDocuments, setReadingDocuments] = useState(false);
   const [saving, setSaving] = useState(false);
   // Centre logins linked to several centres pick which one to view
   const [myCenters, setMyCenters] = useState<RadiologyCenter[]>([]);
   const [selectedCenterId, setSelectedCenterId] = useState<string>('');
 
   const fillForm = (c: RadiologyCenter) => {
+    setDocuments(c.documents || []);
     setCenterName(c.centerName || '');
     setContactNumber(c.contactNumber || '');
     setEmail(c.email || '');
@@ -77,7 +82,7 @@ export default function CenterInfoProfilePage() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!center || saving) return;
+    if (!center || saving || readingDocuments) return;
     if (!centerName.trim()) {
       setError('Centre name is required');
       return;
@@ -92,6 +97,7 @@ export default function CenterInfoProfilePage() {
         address: address.trim(),
         headerTemplateUrl: headerTemplateUrl.trim(),
         letterheadMode,
+        documents,
       });
       const next = { ...center, ...saved };
       RadiologyStore.saveCenter(next);
@@ -297,6 +303,8 @@ export default function CenterInfoProfilePage() {
                   </div>
                 </div>
 
+                <ProfileDocuments title="Center Documents" value={documents} onChange={setDocuments} disabled={saving || readingDocuments} onBusyChange={setReadingDocuments} />
+
                 <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                   <button
                     type="button"
@@ -307,7 +315,7 @@ export default function CenterInfoProfilePage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={saving}
+                    disabled={saving || readingDocuments}
                     className="px-4 py-2 rounded-xl bg-[#009ef7] hover:bg-[#008be0] disabled:opacity-60 text-xs font-bold text-white shadow-xs cursor-pointer"
                     data-testid="center-info-save"
                   >
@@ -340,6 +348,8 @@ export default function CenterInfoProfilePage() {
               </div>
             )}
           </div>
+
+          {!isEditing && <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs"><ProfileDocuments title="Center Documents" value={center.documents || []} /></div>}
 
           {/* Letterhead & Pricing Configuration Section */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

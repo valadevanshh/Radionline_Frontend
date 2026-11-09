@@ -1,4 +1,5 @@
 'use client';
+import type { ProfileDocument } from './profile-documents';
 
 import { RADIOLOGY_TEMPLATES } from './radiology-templates';
 import { generateUUID } from './uuid';
@@ -72,7 +73,9 @@ export interface Doctor {
   contactNumber: string;
   address?: string;
   signatureUrl?: string;
+  signatureScale?: number;
   profileFileUrl?: string;
+  certificates?: ProfileDocument[];
   degree?: string;
   registrationNumber?: string;
   createdAt: string;
@@ -100,6 +103,7 @@ export interface RadiologyCenter {
   headerTemplateUrl?: string;
   letterheadMode?: 'header' | 'footer' | 'full-page' | 'preprinted';
   logoUrl?: string;
+  documents?: ProfileDocument[];
   createdAt: string;
   /** ISO timestamp when frozen; null/undefined = active */
   frozenAt?: string | null;
@@ -123,6 +127,7 @@ export interface StudyReportInfo {
   impression?: string | null;
   technique?: string | null;
   templateId?: string | null;
+  title?: string | null;
   signedAt?: string | null;
   /** Reporting date YYYY-MM-DD (doctor-chosen, else the IST date it was signed) */
   reportDate?: string | null;
@@ -145,6 +150,7 @@ export interface StudySigner {
   degree?: string | null;
   registrationNumber?: string | null;
   signatureUrl?: string | null;
+  signatureScale?: number;
   signedAt?: string | null;
 }
 

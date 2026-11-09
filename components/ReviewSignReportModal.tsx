@@ -8,7 +8,7 @@ import { printReportElement, type PrintReportPayload, formatReportAge, shortRepo
 import { MODALITY_OPTIONS } from '@/lib/radiology-templates';
 import { ApiClient, apiErrorMessage, resolveMediaUrl } from '@/lib/api-client';
 import { canWriteTemplates, useSession } from '@/lib/access';
-import { formatPatientDisplayId } from '@/lib/uuid';
+import { formatReportPatientId } from '@/lib/report-patient-id';
 import ReportTemplateModal from '@/components/ReportTemplateModal';
 import { UrgentBadge, PortableBadge } from '@/components/ui/CaseFlags';
 
@@ -172,7 +172,7 @@ export default function ReviewSignReportModal({
                 {report.isPortable && <PortableBadge />}
               </div>
               <p className="text-[10px] text-slate-300 font-mono">
-                {report.fullName}{formatPatientDisplayId(report.patientNumber) ? ` · ${report.patientNumber}` : ''}
+                {report.fullName}{report.centerPatientId?.trim() ? ` · ${formatReportPatientId(report.centerPatientId)}` : ''}
               </p>
             </div>
           </div>
@@ -290,7 +290,7 @@ export default function ReviewSignReportModal({
                     centerHeaderUrl: resolveMediaUrl(centerRec?.headerTemplateUrl || ''),
                     letterheadMode: hasHeader ? (centerRec?.letterheadMode || 'full-page') : 'preprinted',
                     patientName: report.fullName,
-                    patientId: formatPatientDisplayId(report.patientNumber) || '—',
+                    patientId: formatReportPatientId(report.centerPatientId),
                     ageSex: `${formatAgeShort(report)} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,
                     gender: report.gender || '',
                     age: formatReportAge(report.age, report.ageUnit, report),
@@ -314,7 +314,7 @@ export default function ReviewSignReportModal({
                     isPortable: !!report.isPortable,
                     withHeader: hasHeader,
                   };
-                  printReportElement(null, `Radiology Case Review - ${report.patientNumber}`, payload);
+                  printReportElement(null, `Radiology Case Review - ${formatReportPatientId(report.centerPatientId)}`, payload);
                 }}
                 className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-colors cursor-pointer"
               >

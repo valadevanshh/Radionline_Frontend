@@ -87,6 +87,7 @@ export default function PublicReportPage() {
     doctorDegree: signer.degree || '',
     doctorRegNo: signer.registrationNumber || '',
     doctorSignatureUrl: sigUrl,
+    doctorSignatureScale: signer.signatureScale,
     reportedAt,
     reportId: study.reportId || '',
     isPortable: !!study.isPortable,

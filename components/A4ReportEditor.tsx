@@ -25,8 +25,7 @@ type Slice = { s: number; dispEnd: number; value: string };
 
 /** Editor-only rules (the paginated measure uses <p>; the editor uses a div around a textarea) */
 const EDITOR_PAGES_CSS = `
-.rn-page .rn-edit { margin: 0 0 0.45em; line-height: 1.35; }
-.rn-page.rn-compact .rn-edit { margin-bottom: 4px; }
+.rn-page .rn-edit { margin: 0 0 0.75em; line-height: 1.6; }
 .rn-page .rn-edit.rn-split-head { margin-bottom: 0; }
 .rn-page textarea, .rn-page input[type="text"] { font: inherit; letter-spacing: inherit; padding: 0; min-height: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .rn-page textarea { display: block; vertical-align: top; }
@@ -39,6 +38,7 @@ function norm(s: string): string {
 interface A4ReportEditorProps {
   /** Report content; the first study's title / findings / impression come from the props below */
   payload: PrintReportPayload;
+  readOnly?: boolean;
   findings: string;
   impression: string;
   onFindingsChange: (v: string) => void;
@@ -52,6 +52,7 @@ interface A4ReportEditorProps {
 
 export default function A4ReportEditor({
   payload,
+  readOnly = false,
   findings,
   impression,
   onFindingsChange,
@@ -63,7 +64,7 @@ export default function A4ReportEditor({
 }: A4ReportEditorProps) {
   const findingsText = norm(findings);
   const impressionText = norm(impression);
-  const titleEditable = typeof title === 'string' && Boolean(onTitleChange);
+  const titleEditable = !readOnly && typeof title === 'string' && Boolean(onTitleChange);
   const study0 = payload.studies?.[0] || { title: '', technique: '', findings: '', impression: '' };
   const source = buildReportSourceHtml(
     {
@@ -219,18 +220,23 @@ export default function A4ReportEditor({
         minHeightPx={0}
         value={sl.value}
         fontClass="rn-body-copy"
+        readOnly={readOnly}
+        ariaLabel={k === 'findings' ? 'Patient findings' : 'Patient impression'}
+        placeholder={readOnly ? '' : k === 'findings' ? 'Enter findings for this patient...' : 'Enter impression for this patient...'}
         textareaRef={(el) => {
           const key = `${k}#${j}`;
           if (el) areas.current.set(key, el);
           else if (areas.current.get(key)?.isConnected === false) areas.current.delete(key);
         }}
         onChange={(v, caret) => {
+          if (readOnly) return;
           const cur = slicesRef.current[k][j] || sl;
           const text = textOf(k);
           setText(k, text.slice(0, cur.s) + v + text.slice(cur.dispEnd));
           pendingCaret.current = typeof caret === 'number' ? { kind: k, pos: cur.s + caret } : null;
         }}
         onKeyDown={(e) => {
+          if (readOnly) return;
           const ta = e.currentTarget;
           const collapsed = ta.selectionStart === ta.selectionEnd;
           const atStart = collapsed && ta.selectionStart === 0;

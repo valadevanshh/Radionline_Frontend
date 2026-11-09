@@ -533,20 +533,17 @@ export function parseTemplateBody(rawFindings?: string | null, rawImpression?: s
   let impression = String(rawImpression || '').trim();
   if ((!findings || !impression) && content) {
     const plain = plainTextFromTemplateHtml(content);
-    const parts = plain.split(/\bIMPRESSION(?:\s*&\s*CONCLUSION)?\s*:?/i);
-    if (parts.length >= 2) {
-      if (!findings) {
-        findings = parts[0]
-          .replace(/^(?:RADIOLOGICAL\s+)?FINDINGS\s*:?/i, '')
-          .replace(/^[\s\S]*?\bFINDINGS\s*:?/i, '')
-          .trim();
-      }
-      if (!impression) impression = parts.slice(1).join('\n').trim();
-    } else if (!findings) {
-      findings = plain
-        .replace(/^(?:RADIOLOGICAL\s+)?FINDINGS\s*:?/i, '')
-        .replace(/^[\s\S]*?\bFINDINGS\s*:?/i, '')
-        .trim();
+    // Match section labels on their own line (or followed by a colon), never
+    // the words "findings" / "impression" occurring within the report narrative.
+    const findingsHeading = /(?:^|\n)[ \t]*(?:RADIOLOGICAL[ \t]+)?FINDINGS[ \t]*(?::[ \t]*|(?=\n|$))/im.exec(plain);
+    const impressionHeading = /(?:^|\n)[ \t]*IMPRESSION(?:[ \t]*&[ \t]*CONCLUSION)?[ \t]*(?::[ \t]*|(?=\n|$))/im.exec(plain);
+    if (!findings) {
+      const start = findingsHeading ? findingsHeading.index + findingsHeading[0].length : 0;
+      const end = impressionHeading && impressionHeading.index >= start ? impressionHeading.index : plain.length;
+      findings = plain.slice(start, end).trim();
+    }
+    if (!impression && impressionHeading) {
+      impression = plain.slice(impressionHeading.index + impressionHeading[0].length).trim();
     }
   }
   return { findings, impression };

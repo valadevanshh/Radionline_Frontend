@@ -9,9 +9,8 @@ import { cn } from '@/lib/cn';
  *  - Phones (< 768px): each row renders as a compact RowCard inside a RowCardList
  *    (key fields on top, secondary fields in a 2-column grid, actions in one row).
  *  - Tablets (768px - 1279px): the regular table renders inside a container with
- *    RT_CONTAINER. Fixed column widths relax so the table fits, cells marked with
- *    RT_TABLET_HIDE are hidden, and if a horizontal scroll is still needed the
- *    first column stays sticky.
+ *    RT_CONTAINER. All columns remain available; wider tables scroll horizontally
+ *    and resize handles stay visible.
  *  - Desktop (>= 1280px): the table is unchanged.
  *
  * Usage:
@@ -25,10 +24,10 @@ import { cn } from '@/lib/cn';
 
 /** Wrapper class for a table that should adapt on tablets. */
 export const RT_CONTAINER = 'rt-container';
-/** Column (th + td) hidden on tablets, visible on desktop. */
+/** Legacy marker retained for callers; columns are now visible on tablets. */
 export const RT_TABLET_HIDE = 'rt-tablet-hide';
 /** Extra detail line shown only on tablets (inside a visible cell) to replace hidden columns. */
-export const RT_TABLET_ONLY = 'xl:hidden';
+export const RT_TABLET_ONLY = 'hidden';
 /** Action button group: wraps on tablets so the actions column stays narrow. */
 export const RT_ACTIONS = 'rt-actions';
 /** Visibility helpers: the card list shows below 768px, the table from 768px. */

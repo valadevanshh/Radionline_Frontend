@@ -446,3 +446,23 @@ test('a template body part wins over a conflicting title, and GENERAL falls thro
   });
   assert.equal(fromTitle.candidates.length, 1);
 });
+
+
+test('legacy HTML template headings do not swallow narrative words', () => {
+  const html = '<h2>CHEST PA</h2><h3>RADIOLOGICAL FINDINGS:</h3>' +
+    '<p>Legacy HTML findings before signing.</p><p>The impression of the cardiac border is normal.</p>' +
+    '<h3>IMPRESSION &amp; CONCLUSION:</h3><p>Clinical findings should be correlated.</p>';
+  assert.deepEqual(parseTemplateBody('', '', html), {
+    findings: 'Legacy HTML findings before signing.\nThe impression of the cardiac border is normal.',
+    impression: 'Clinical findings should be correlated.',
+  });
+  assert.deepEqual(parseTemplateBody('', '', '<h3>FINDINGS</h3><p>These findings remain complete.</p><h3>IMPRESSION</h3><p>Normal.</p>'), {
+    findings: 'These findings remain complete.', impression: 'Normal.',
+  });
+  assert.deepEqual(parseTemplateBody('', '', '<p>Clinical findings show a preserved impression of the joint.</p>'), {
+    findings: 'Clinical findings show a preserved impression of the joint.', impression: '',
+  });
+  assert.deepEqual(parseTemplateBody('Stored findings stay unchanged.', 'Stored impression.', html), {
+    findings: 'Stored findings stay unchanged.', impression: 'Stored impression.',
+  });
+});

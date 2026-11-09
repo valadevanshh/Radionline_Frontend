@@ -304,63 +304,55 @@ input[type="text"]:focus, input[type="search"]:focus, input[type="password"]:foc
 
 .data-table {
   width: 100%;
-  max-width: 100%;
+  max-width: none;
   min-width: 1100px;
   table-layout: fixed;
   border-collapse: collapse;
 }
 
 .data-table th {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 8px 10px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  white-space: nowrap;
-  user-select: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 10px 24px 10px 12px;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  text-align: left; position: sticky !important; top: 0; z-index: 2;
+  white-space: normal; overflow-wrap: anywhere; user-select: none;
+  overflow: visible; text-overflow: clip;
 }
-
 .data-table td {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--text);
-  vertical-align: middle;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--text); vertical-align: middle;
+  white-space: normal; overflow-wrap: anywhere; overflow: visible; text-overflow: clip;
 }
-
+.data-table :is(td, th) .truncate,
+.rt-container :is(td, th) .truncate {
+  white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
+}
+.data-table td .flex > :not(button):not(a) { min-width: 0; }
 .data-table tr:hover td { background: #F0F0EE; }
 .data-table tr:last-child td { border-bottom: none; }
+.data-table thead th:last-child { right: 0; z-index: 4; }
+.data-table tbody td:last-child:not([colspan]) { position: sticky; right: 0; z-index: 3; background: var(--surface, white); }
+.rt-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.rt-actions > :is(button, a) { flex-shrink: 0; }
+.rt-container { max-width: 100%; min-width: 0; overflow-x: auto; }
+.rt-container :is(th, td) { overflow-wrap: anywhere; }
 
-/* Resizer Handle */
+/* Always-visible column boundary and grip; the full rail is the drag target. */
 .col-resizer {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 6px;
-  cursor: col-resize;
-  user-select: none;
-  touch-action: none;
-  z-index: 10;
-  background: transparent;
-  transition: background 0.15s ease;
+  position: absolute; right: 0; top: 0; bottom: 0; width: 14px;
+  cursor: col-resize; user-select: none; touch-action: none; z-index: 5;
 }
+.col-resizer::before {
+  content: ''; position: absolute; top: 6px; bottom: 6px; right: 6px;
+  width: 1px; background: #64748b; opacity: 0.4;
+  transition: opacity 120ms ease;
+}
+.col-resizer:hover::before, .col-resizer:active::before, .col-resizer:focus-visible::before {
+  opacity: 0.8;
+}
+.col-resizer:focus-visible { outline: 1px solid #94a3b8; outline-offset: -3px; }
 
-.col-resizer:hover, .col-resizer:active {
-  background: #009ef7;
-}
 
 /* Tag & Avatar */
 .tag {
@@ -557,8 +549,8 @@ input[type="text"]:focus, input[type="search"]:focus, input[type="password"]:foc
 ::grammar-error { text-decoration: underline wavy #eab308 !important; }
 
 /* ===== Responsive table / card pattern (components/ui/ResponsiveTable.tsx) =====
-   Phones (< 768px): RowCard list. Tablets (768-1279px): relaxed table with
-   priority columns and a sticky first column. Desktop (>= 1280px): unchanged. */
+   Phones (< 768px): complete RowCards. Tablet/desktop tables keep every column
+   accessible through horizontal scrolling, with visible resize handles. */
 @layer components {
   .rt-cards {
     padding: 12px;
@@ -649,27 +641,10 @@ input[type="text"]:focus, input[type="search"]:focus, input[type="password"]:foc
   }
 }
 
+/* Tables keep every column on tablets; narrower screens scroll horizontally. */
 @media (min-width: 768px) and (max-width: 1279.98px) {
-  .rt-container table { min-width: 0 !important; table-layout: auto !important; }
-  .rt-container th,
-  .rt-container td { width: auto !important; min-width: 0 !important; }
-  .rt-container td { white-space: normal; overflow-wrap: anywhere; }
-  .rt-container td .whitespace-nowrap,
-  .rt-container td button,
-  .rt-container td a { overflow-wrap: normal; white-space: nowrap; }
-  .rt-container .col-resizer { display: none; }
-  .rt-tablet-hide { display: none !important; }
   .rt-container .show-mobile { display: none !important; }
   .rt-container .rt-actions { flex-wrap: wrap; justify-content: flex-end; }
-  /* last resort horizontal scroll: keep the first column in view */
-  .rt-container th:first-child,
-  .rt-container td:first-child {
-    position: sticky;
-    left: 0;
-    z-index: 2;
-    background: var(--rn-surface);
-  }
-  .rt-container thead th:first-child { z-index: 3; background: var(--bg); }
 }
 
 /* icons absolutely placed inside inputs: re-centre when touch inputs grow to 40px */

@@ -1,6 +1,8 @@
 'use client';
 import { hasDrPrefix, stripDr, DR_HINT } from '@/lib/doctor-name';
 
+import ProfileDocuments from '@/components/ProfileDocuments';
+import type { ProfileDocument } from '@/lib/profile-documents';
 import React, { useState } from 'react';
 import { X, Upload, Check, UserPlus, Image as ImageIcon, Key, Lock, Eye, EyeOff, Wand2 } from 'lucide-react';
 import { Doctor } from '@/lib/radiology-store';
@@ -9,10 +11,13 @@ import { processSignatureImage } from '@/lib/signature-process';
 interface AddDoctorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (doctor: Omit<Doctor, 'id' | 'createdAt'>) => void;
+  onSave: (doctor: Omit<Doctor, 'id' | 'createdAt'>) => void | boolean | Promise<void | boolean>;
 }
 
 export default function AddDoctorModal({ isOpen, onClose, onSave }: AddDoctorModalProps) {
+  const [certificates, setCertificates] = useState<ProfileDocument[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [readingDocuments, setReadingDocuments] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -39,42 +44,49 @@ export default function AddDoctorModal({ isOpen, onClose, onSave }: AddDoctorMod
     setPassword(pass);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (readingDocuments || submitting) return;
     if (!firstName || !lastName || !email || !contactNumber) {
       alert('Please fill in all required fields (First Name, Last Name, Email, Contact Number).');
       return;
     }
 
-    const finalUsername = username.trim() || email.trim();
-    const finalPassword = password.trim() || 'doctor@123';
+    setSubmitting(true);
+    try {
+      const finalUsername = username.trim() || email.trim();
+      const finalPassword = password.trim() || 'doctor@123';
 
-    onSave({
-      firstName: stripDr(firstName),
-      lastName: stripDr(lastName),
-      fullName: `DR. ${stripDr(firstName).toUpperCase()} ${stripDr(lastName).toUpperCase()}`,
-      email,
-      username: finalUsername,
-      password: finalPassword,
-      contactNumber,
-      address,
-      degree: degree.trim() || 'M.D. (Radiodiagnosis)',
-      registrationNumber: registrationNumber.trim(),
-      // Real uploaded image, or none (no placeholder image on reports)
-      signatureUrl: signatureData || '',
-    });
+      const success = await onSave({
+        firstName: stripDr(firstName),
+        lastName: stripDr(lastName),
+        fullName: `DR. ${stripDr(firstName).toUpperCase()} ${stripDr(lastName).toUpperCase()}`,
+        email,
+        username: finalUsername,
+        password: finalPassword,
+        contactNumber,
+        address,
+        degree: degree.trim() || 'M.D. (Radiodiagnosis)',
+        registrationNumber: registrationNumber.trim(),
+        // Real uploaded image, or none (no placeholder image on reports)
+        signatureUrl: signatureData || '',
+        certificates,
+      });
 
-    setFirstName('');
-    setLastName('');
-    setEmail('');
-    setUsername('');
-    setPassword('');
-    setContactNumber('');
-    setAddress('');
-    setSignatureName('');
-    setSignatureData('');
-    setProfileName('');
-    onClose();
+      if (success === false) return;
+      setCertificates([]);
+      setFirstName('');
+      setLastName('');
+      setEmail('');
+      setUsername('');
+      setPassword('');
+      setContactNumber('');
+      setAddress('');
+      setSignatureName('');
+      setSignatureData('');
+      setProfileName('');
+      onClose();
+    } finally { setSubmitting(false); }
   };
 
   return (
@@ -294,6 +306,8 @@ export default function AddDoctorModal({ isOpen, onClose, onSave }: AddDoctorMod
             </div>
           </div>
 
+          <ProfileDocuments title="Certificates" value={certificates} onChange={setCertificates} onBusyChange={setReadingDocuments} disabled={submitting} />
+
           {/* Footer Actions */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <button
@@ -305,6 +319,7 @@ export default function AddDoctorModal({ isOpen, onClose, onSave }: AddDoctorMod
             </button>
             <button
               type="submit"
+              disabled={readingDocuments || submitting}
               className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-[#009ef7] hover:bg-[#0095e8] transition-colors cursor-pointer shadow-xs"
             >
               <Check className="w-3.5 h-3.5" />

@@ -11,6 +11,8 @@ interface SpellCheckTextareaProps {
   className?: string;
   placeholder?: string;
   disabled?: boolean;
+  readOnly?: boolean;
+  ariaLabel?: string;
   fontClass?: string;
   /** Smallest height in px (default rows x 20) */
   minHeightPx?: number;
@@ -30,6 +32,8 @@ export default function SpellCheckTextarea({
   className = '',
   placeholder = '',
   disabled = false,
+  readOnly = false,
+  ariaLabel,
   fontClass = 'font-serif text-sm leading-relaxed',
   minHeightPx,
   onKeyDown,
@@ -56,7 +60,7 @@ export default function SpellCheckTextarea({
 
   const replaceWordAtCaret = (suggestion: string) => {
     const ta = textareaRef.current;
-    if (!ta || !suggestion) return;
+    if (!ta || readOnly || disabled || !suggestion) return;
     const pos = ta.selectionStart ?? 0;
     const before = value.slice(0, pos);
     const after = value.slice(pos);
@@ -119,6 +123,8 @@ export default function SpellCheckTextarea({
         }}
         rows={rows}
         disabled={disabled}
+        readOnly={readOnly}
+        aria-label={ariaLabel}
         value={value}
         onChange={(e) => onChange(e.target.value, e.target.selectionStart ?? undefined)}
         onKeyDown={onKeyDown}

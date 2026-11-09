@@ -29,6 +29,8 @@ export const REPORT_PAGES_CSS = `
 .rn-page .rn-page-inner { position: absolute; z-index: 1; display: flex; flex-direction: column; }
 .rn-page .rn-page-inner > .letterhead { flex: none; }
 .rn-page .rn-page-content { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flow-root; padding-top: 6mm; }
+/* Header artwork occupies the first 42 mm; leave only a 2 mm gap below it. */
+.rn-page[data-letterhead="header"] .rn-page-content { padding-top: 2mm; }
 .rn-page .rn-page-foot { flex: none; }
 .rn-sheet .rn-first { margin-top: 0 !important; }
 .rn-sheet .rn-split-head { margin-bottom: 0 !important; }
@@ -43,13 +45,10 @@ export const REPORT_PAGES_CSS = `
 .rn-sheet .rn-foot-qr { display: flex; align-items: center; gap: 6px; color: #444; text-decoration: none; font-size: 7pt; line-height: 1.25; text-align: right; }
 .rn-sheet .rn-foot-qr svg { width: 18mm; height: 18mm; flex: none; }
 .rn-sheet .sig-qr { color: #444; text-decoration: none; }
-.rn-sheet .rn-foot-last.sig-block { margin-top: 18px; }
-.rn-page.rn-compact h2.study-title { margin: 8px 0 5px; }
-.rn-page.rn-compact h3.sec { margin: 5px 0 2px; }
-.rn-page.rn-compact p.body, .rn-page.rn-compact .rn-edit { margin-bottom: 0.25em; }
+.rn-sheet .rn-foot-last.sig-block { margin-top: 8px; }
 .rn-page.rn-compact .demo { margin-bottom: 8px; }
 .rn-page.rn-compact .demo td { padding: 4px 7px; }
-.rn-page.rn-compact .rn-foot-last.sig-block { margin-top: 10px; }
+.rn-page.rn-compact .rn-foot-last.sig-block { margin-top: 8px; }
 .rn-page.rn-compact .disclaimer { margin-top: 8px; padding-top: 5px; }
 `;
 
@@ -84,6 +83,10 @@ export function rnPaginate(src: HTMLElement, out: HTMLElement): number {
     while (slot.firstChild) slot.removeChild(slot.firstChild);
     var f = (last ? footLast : footNormal).cloneNode(true) as HTMLElement;
     f.removeAttribute('data-rn');
+    // Reserve the page-number line before measuring content. Filling an empty label
+    // only after pagination can make the footer taller and clip the last body line.
+    var labels = f.querySelectorAll('[data-rn-pageno]');
+    for (var i = 0; i < labels.length; i++) labels[i].textContent = 'Page 1 of 1';
     slot.appendChild(f);
     page.setAttribute('data-last', last ? '1' : '0');
   }

@@ -21,6 +21,10 @@ import {
   openFileInNewTab,
   readAsDataUrl,
 } from '@/lib/doctor-profile';
+import ProfileDocuments from '@/components/ProfileDocuments';
+import type { ProfileDocument } from '@/lib/profile-documents';
+import SignatureSizeControl from '@/components/SignatureSizeControl';
+import { signatureScale } from '@/lib/doctor-profile';
 import { processSignatureImage } from '@/lib/signature-process';
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -46,11 +50,14 @@ interface DoctorSignatureFormProps {
  * Shared by the doctor's own profile and the Super Admin.
  */
 export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }: DoctorSignatureFormProps) {
+  const [certificates, setCertificates] = useState<ProfileDocument[]>(doctor.certificates || []);
+  const [readingDocuments, setReadingDocuments] = useState(false);
   const [degree, setDegree] = useState(doctor.degree || '');
   const [regNo, setRegNo] = useState(doctor.registrationNumber || '');
   const [years, setYears] = useState(doctor.yearsOfExperience != null ? String(doctor.yearsOfExperience) : '');
   const [expertise, setExpertise] = useState<string[]>(doctor.expertise || []);
   const [sigPreview, setSigPreview] = useState(resolveMediaUrl(usableSignatureUrl(doctor.signatureUrl)));
+  const [scale, setScale] = useState(signatureScale(doctor.signatureScale));
   const [sigUpload, setSigUpload] = useState<string | null>(null); // data URL, '' = remove
   const [photoPreview, setPhotoPreview] = useState(resolveMediaUrl(doctor.photoUrl || ''));
   const [photoUpload, setPhotoUpload] = useState<string | null>(null); // data URL, '' = remove
@@ -66,11 +73,13 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
 
   const expertiseKey = (doctor.expertise || []).join('\u0001');
   useEffect(() => {
+    setCertificates(doctor.certificates || []);
     setDegree(doctor.degree || '');
     setRegNo(doctor.registrationNumber || '');
     setYears(doctor.yearsOfExperience != null ? String(doctor.yearsOfExperience) : '');
     setExpertise(doctor.expertise || []);
     setSigPreview(resolveMediaUrl(usableSignatureUrl(doctor.signatureUrl)));
+    setScale(signatureScale(doctor.signatureScale));
     setSigUpload(null);
     setPhotoPreview(resolveMediaUrl(doctor.photoUrl || ''));
     setPhotoUpload(null);
@@ -79,10 +88,12 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
     setCvUpload(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    JSON.stringify(doctor.certificates || []),
     doctor.id,
     doctor.degree,
     doctor.registrationNumber,
     doctor.signatureUrl,
+    doctor.signatureScale,
     doctor.photoUrl,
     doctor.yearsOfExperience,
     expertiseKey,
@@ -161,6 +172,7 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
 
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (saving || readingDocuments) return;
     setError('');
     const yearsTrim = years.trim();
     const yearsNum = yearsTrim === '' ? null : Number(yearsTrim);
@@ -175,6 +187,8 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
         registrationNumber: regNo.trim(),
         yearsOfExperience: yearsNum,
         expertise,
+        signatureScale: scale,
+        certificates,
       };
       if (sigUpload !== null) body.signatureUrl = sigUpload;
       if (photoUpload !== null) body.photoUrl = photoUpload;
@@ -183,6 +197,7 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
         if (cvUpload) body.cvFileName = cvName;
       }
       const updated = await onSave(body);
+      setCertificates(updated.certificates || []);
       setSigUpload(null);
       setSigPreview(resolveMediaUrl(usableSignatureUrl(updated.signatureUrl)));
       setPhotoUpload(null);
@@ -298,11 +313,11 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
         </p>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div
-            className="flex h-28 w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-white sm:w-72"
+            className="flex h-56 w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-white sm:w-72"
             data-testid="signature-preview-frame"
           >
             {sigPreview ? (
-              <img src={sigPreview} alt="Signature" className="max-h-24 max-w-[92%] bg-transparent object-contain" data-testid="signature-preview" />
+              <img src={sigPreview} alt="Signature" style={{ width: `${68 * scale / 100}mm`, maxHeight: `${26 * scale / 100}mm`, maxWidth: `min(92%, ${68 * scale / 100}mm)` }} className="bg-transparent object-contain" data-testid="signature-preview" />
             ) : (
               <span className="text-[12px] text-slate-400">No signature uploaded</span>
             )}
@@ -338,6 +353,7 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
             }}
           />
         </div>
+        {sigPreview && <SignatureSizeControl value={scale} onChange={setScale} disabled={saving} />}
         <p className="mt-1.5 text-[11px] text-slate-500">PNG, JPG or WEBP, up to 5 MB. A transparent PNG looks best.</p>
       </section>
 
@@ -405,10 +421,12 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
         <p className="mt-1.5 text-[11px] text-slate-500">PDF, DOC or DOCX, up to 5 MB.</p>
       </section>
 
+      <ProfileDocuments title="Certificates" value={certificates} onChange={setCertificates} disabled={saving} onBusyChange={setReadingDocuments} />
+
       <section className="rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">On the report</div>
-        <div className="text-right text-[12px] text-slate-900" data-testid="signature-block-preview">
-          {sigPreview ? <img src={sigPreview} alt="" className="mb-1 inline-block h-16 max-w-[70%] bg-transparent object-contain" /> : null}
+        <div className="text-left text-[12px] text-slate-900" data-testid="signature-block-preview">
+          {sigPreview ? <img src={sigPreview} alt="" style={{ width: `${68 * scale / 100}mm`, maxHeight: `${26 * scale / 100}mm`, maxWidth: `min(100%, ${68 * scale / 100}mm)` }} className="mb-1 inline-block h-auto w-auto bg-transparent object-contain" /> : null}
           <div className="font-bold text-[13px]">{doctor.fullName}</div>
           {degree.trim() ? <div>{degree.trim()}</div> : null}
           {regNo.trim() ? <div>{formatRegNo(regNo)}</div> : null}
@@ -427,7 +445,7 @@ export default function DoctorSignatureForm({ doctor, onSave, onSaved, formId }:
               <CheckCircle2 className="w-4 h-4" /> Saved
             </span>
           )}
-          <Button type="submit" disabled={saving} data-testid="doctor-profile-save">
+          <Button type="submit" disabled={saving || readingDocuments} data-testid="doctor-profile-save">
             {saving ? 'Saving...' : 'Save details'}
           </Button>
         </div>

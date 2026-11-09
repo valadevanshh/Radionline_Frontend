@@ -10,7 +10,7 @@ const genderShort = (g?: string) => {
   return v.startsWith('F') ? 'F' : v.startsWith('O') ? 'O' : v ? 'M' : '-';
 };
 
-const PER_PAGE = 8; // A4 portrait, 2 columns x 4 rows
+const PER_PAGE = 10; // A4 portrait, 2 columns x 5 rows
 
 /** One envelope label: Patient Name / Age | Gender | Date / Study / ID | Ref. By */
 export function labelHtml(r: XRayReport): string {
@@ -23,10 +23,8 @@ export function labelHtml(r: XRayReport): string {
 </table>`;
 }
 
-/** Prints A4 portrait sheets with 8 labels each (2 x 4) straight to the browser print dialog
- * (hidden iframe, no preview window). */
-export function printLabels(reports: XRayReport[]): boolean {
-  if (!reports.length || typeof document === 'undefined') return false;
+/** A4 portrait sheets with ten labels per page, arranged in two columns and five rows. */
+export function buildLabelPrintHtml(reports: XRayReport[]): string {
   const pages: string[] = [];
   for (let i = 0; i < reports.length; i += PER_PAGE) {
     const cells = reports.slice(i, i + PER_PAGE).map((r) => `<div class="cell">${labelHtml(r)}</div>`).join('');
@@ -37,13 +35,20 @@ export function printLabels(reports: XRayReport[]): boolean {
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; color: #000; }
-  .sheet { width: 210mm; height: 297mm; padding: 10mm 8mm; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(4, 1fr); gap: 4mm 8mm; page-break-after: always; break-after: page; overflow: hidden; }
+  .sheet { width: 210mm; height: 297mm; padding: 10mm 8mm; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(5, minmax(0, 1fr)); gap: 4mm 8mm; page-break-after: always; break-after: page; overflow: hidden; }
   .sheet:last-child { page-break-after: auto; break-after: auto; }
   .cell { display: flex; align-items: flex-start; }
   .label { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9.5pt; }
   .label td { border: 1px solid #555; padding: 2.2mm 2mm; height: 9mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style></head><body data-testid="label-sheet">${pages.join('')}</body></html>`;
 
+  return html;
+}
+
+/** Print through a hidden iframe without opening a preview window. */
+export function printLabels(reports: XRayReport[]): boolean {
+  if (!reports.length || typeof document === 'undefined') return false;
+  const html = buildLabelPrintHtml(reports);
   document.getElementById('rn-label-print')?.remove();
   const frame = document.createElement('iframe');
   frame.id = 'rn-label-print';

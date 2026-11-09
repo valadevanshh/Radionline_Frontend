@@ -26,7 +26,7 @@ export default function MyProfilePage() {
         <div>
           <h1 className="text-[18px] font-bold text-slate-900">My Profile</h1>
           <p className="text-[13px] text-slate-500">
-            Add your photo, experience, expertise and CV. Signature details below are printed on every report you sign.
+            Add your photo, experience, expertise, CV and certificates. Signature details below are printed on every report you sign.
           </p>
         </div>
 

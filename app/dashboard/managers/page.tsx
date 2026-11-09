@@ -7,6 +7,8 @@ import { ApiClient, ManagerAccount, ManagerPage, ManagerPermissions, apiErrorMes
 import { RadiologyStore } from '@/lib/radiology-store';
 import { toast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui';
+import { useResizableColumns } from '@/lib/use-resizable-columns';
+import ColumnResizeHandle from '@/components/ui/ColumnResizeHandle';
 
 const PAGES: Array<{ key: ManagerPage; label: string; hint: string }> = [
   { key: 'reports', label: 'All Reports', hint: 'Patient records: upload, edit, delete' },
@@ -28,6 +30,9 @@ const emptyPerms = (): ManagerPermissions => ({
 type FormState = { id?: number; name: string; email: string; password: string; permissions: ManagerPermissions };
 
 export default function ManagersPage() {
+  const { widths, minimums, resizeColumn, startResizing, tableWidth } = useResizableColumns({
+    name: 240, email: 260, access: 320, pending: 110, actions: 160,
+  });
   const router = useRouter();
   const confirm = useConfirm();
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -131,7 +136,7 @@ export default function ManagersPage() {
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 text-slate-900">
-      <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-4 space-y-3 max-w-7xl w-full mx-auto">
+      <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-4 space-y-3 w-full min-w-0">
         {/* Header (same style as Diagnostic Radiology Centers) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-xs">
           <div>
@@ -186,21 +191,30 @@ export default function ManagersPage() {
                 {rows.length === 0 ? 'No managers yet. Use Add Manager to create one.' : 'No managers match your search.'}
               </div>
             ) : (
-              <table className="data-table w-full" style={{ tableLayout: 'fixed', minWidth: 760 }}>
-                <colgroup>
-                  <col style={{ width: '24%' }} />
-                  <col style={{ width: '26%' }} />
-                  <col style={{ width: '30%' }} />
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '10%', minWidth: 96 }} />
-                </colgroup>
+              <table className="data-table w-full" style={{ tableLayout: 'fixed', width: tableWidth, minWidth: '100%' }}>
+
                 <thead>
                   <tr>
-                    <th title="Manager Name">Manager Name</th>
-                    <th title="Login Email">Login Email</th>
-                    <th title="Page Access">Page Access</th>
-                    <th title="Pending Requests">Pending</th>
-                    <th title="Actions" style={{ textAlign: 'right' }}>Actions</th>
+                    <th data-column-key="name" title="Manager Name" style={{ width: widths.name, position: 'relative' }}>
+                      Manager Name
+                      <ColumnResizeHandle columnKey="name" label="Manager Name" width={widths.name} minimum={minimums.name} onResizeStart={startResizing} onResize={resizeColumn} />
+                    </th>
+                    <th data-column-key="email" title="Login Email" style={{ width: widths.email, position: 'relative' }}>
+                      Login Email
+                      <ColumnResizeHandle columnKey="email" label="Login Email" width={widths.email} minimum={minimums.email} onResizeStart={startResizing} onResize={resizeColumn} />
+                    </th>
+                    <th data-column-key="access" title="Page Access" style={{ width: widths.access, position: 'relative' }}>
+                      Page Access
+                      <ColumnResizeHandle columnKey="access" label="Page Access" width={widths.access} minimum={minimums.access} onResizeStart={startResizing} onResize={resizeColumn} />
+                    </th>
+                    <th data-column-key="pending" title="Pending Requests" style={{ width: widths.pending, position: 'relative' }}>
+                      Pending
+                      <ColumnResizeHandle columnKey="pending" label="Pending Requests" width={widths.pending} minimum={minimums.pending} onResizeStart={startResizing} onResize={resizeColumn} />
+                    </th>
+                    <th data-column-key="actions" title="Actions" style={{ width: widths.actions, position: 'relative' }}>
+                      Actions
+                      <ColumnResizeHandle columnKey="actions" label="Actions" width={widths.actions} minimum={minimums.actions} onResizeStart={startResizing} onResize={resizeColumn} />
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -227,7 +241,7 @@ export default function ManagersPage() {
                           {m.pendingRequests}
                         </span>
                       </td>
-                      <td className="p-3.5 text-right whitespace-nowrap">
+                      <td className="p-3.5 text-right whitespace-nowrap"><div className="rt-actions">
                         <button type="button" title="Edit" aria-label={`Edit ${m.name}`}
                           className="p-1.5 text-slate-400 hover:text-[#009ef7] transition-colors cursor-pointer rounded hover:bg-sky-50"
                           onClick={() => setForm({ id: m.id, name: m.name, email: m.email, password: '', permissions: m.permissions })}>
@@ -238,7 +252,7 @@ export default function ManagersPage() {
                           onClick={() => remove(m)}>
                           <Trash2 className="w-4 h-4" />
                         </button>
-                      </td>
+                      </div></td>
                     </tr>
                   ))}
                 </tbody>
