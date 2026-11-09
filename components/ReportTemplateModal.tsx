@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { DocTemplate, RadiologyStore, RadiologyCenter } from '@/lib/radiology-store';
 import { ApiClient, apiErrorMessage, isPendingApproval, resolveMediaUrl } from '@/lib/api-client';
-import { canWriteTemplates, useSession } from '@/lib/access';
+import { canManageTemplatesForDoctors, canWriteTemplates, useSession } from '@/lib/access';
 import { STUDY_MODALITY_OPTIONS } from '@/components/NewXRayReportModal';
 import { RADIOLOGY_TEMPLATES } from '@/lib/radiology-templates';
 import { toast } from '@/components/ui/Toast';
@@ -67,8 +67,12 @@ export default function ReportTemplateModal({
 }: ReportTemplateModalProps) {
   const session = useSession();
   const isDoctor = canWriteTemplates(session);
+  const canManage = canManageTemplatesForDoctors(session);
+  const canEdit = isDoctor || canManage;
 
   const [centers, setCenters] = useState<RadiologyCenter[]>(() => RadiologyStore.getCenters());
+  const [doctors, setDoctors] = useState<Array<{ id: string; fullName: string }>>([]);
+  const [ownerDoctorId, setOwnerDoctorId] = useState('ALL');
   const [title, setTitle] = useState('');
   const [centerId, setCenterId] = useState('ALL');
   const [modality, setModality] = useState<string>('X-Ray');
@@ -94,13 +98,19 @@ export default function ReportTemplateModal({
       }
     };
     loadCenters();
-  }, [isOpen]);
+    if (canManage) {
+      ApiClient.getDoctors()
+        .then((rows) => setDoctors((rows || []).map((d) => ({ id: d.id, fullName: d.fullName }))))
+        .catch(() => setDoctors([]));
+    }
+  }, [isOpen, canManage]);
 
   // Initialize or reset form state
   useEffect(() => {
     if (!isOpen) return;
 
     if (initialTemplate) {
+      setOwnerDoctorId(initialTemplate.doctorId || 'ALL');
       setTitle(initialTemplate.title || '');
       setCenterId(initialTemplate.centerId || 'ALL');
       setModality(initialTemplate.modality || 'X-Ray');
@@ -109,6 +119,7 @@ export default function ReportTemplateModal({
       setImpression(initialTemplate.impression || '');
       setTechnique(`Standard digital ${initialTemplate.modality || 'radiography'} examination evaluated.`);
     } else if (prefill) {
+      setOwnerDoctorId(prefill.doctorId || 'ALL');
       setTitle(prefill.title || (prefill.bodyPart ? `${prefill.bodyPart} — Master Template` : ''));
       setCenterId(prefill.centerId || 'ALL');
       setModality(prefill.modality || 'X-Ray');
@@ -118,6 +129,7 @@ export default function ReportTemplateModal({
       setTechnique(`Standard digital ${prefill.modality || 'radiography'} examination evaluated.`);
     } else {
       // Default initial state
+      setOwnerDoctorId('ALL');
       setTitle('Chest PA/AP — Normal Adult Study');
       setCenterId('ALL');
       setModality('X-Ray');
@@ -177,8 +189,8 @@ export default function ReportTemplateModal({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!isDoctor) {
-      toast.error('Only doctors can create and manage templates.');
+    if (!canEdit) {
+      toast.error('You cannot create templates.');
       return;
     }
 
@@ -229,8 +241,12 @@ export default function ReportTemplateModal({
       findings: findings.trim(),
       impression: impression.trim(),
       content: contentHtml,
-      doctorId: session?.doctorId || String(session?.userId || ''),
-      doctorName: session?.name,
+      doctorId: isDoctor
+        ? (session?.doctorId || String(session?.userId || ''))
+        : (ownerDoctorId === 'ALL' ? undefined : ownerDoctorId),
+      doctorName: isDoctor
+        ? session?.name
+        : (ownerDoctorId === 'ALL' ? undefined : doctors.find((d) => d.id === ownerDoctorId)?.fullName),
     };
 
     setIsSaving(true);
@@ -314,10 +330,10 @@ export default function ReportTemplateModal({
         </div>
 
         {/* Non-doctor Guard Notice */}
-        {!isDoctor && (
+        {!canEdit && (
           <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2 text-xs font-semibold text-amber-800 shrink-0">
             <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>Read-only: Template creation and modifications are restricted to verified reporting doctors only.</span>
+            <span>Read-only: you cannot create or edit templates.</span>
           </div>
         )}
 
@@ -331,7 +347,7 @@ export default function ReportTemplateModal({
             <input
               type="text"
               required
-              disabled={!isDoctor}
+              disabled={!canEdit}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Chest PA/AP Normal..."
@@ -345,7 +361,7 @@ export default function ReportTemplateModal({
               Modality <span className="text-rose-500">*</span>
             </label>
             <select
-              disabled={!isDoctor}
+              disabled={!canEdit}
               value={modality}
               onChange={(e) => setModality(e.target.value)}
               className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:bg-white focus:border-[#009ef7] focus:outline-none"
@@ -367,7 +383,7 @@ export default function ReportTemplateModal({
               <input
                 type="text"
                 required
-                disabled={!isDoctor}
+                disabled={!canEdit}
                 list="bodyPartOptionsList"
                 value={bodyPart}
                 onChange={(e) => setBodyPart(e.target.value)}
@@ -388,7 +404,7 @@ export default function ReportTemplateModal({
               Assign to Center
             </label>
             <select
-              disabled={!isDoctor}
+              disabled={!canEdit}
               value={centerId}
               onChange={(e) => setCenterId(e.target.value)}
               className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:bg-white focus:border-[#009ef7] focus:outline-none"
@@ -401,6 +417,25 @@ export default function ReportTemplateModal({
               ))}
             </select>
           </div>
+
+          {canManage && (
+            <div className="flex flex-col gap-1.5 min-w-0 sm:col-span-2">
+              <label className="font-bold text-slate-700 font-mono text-[11px] uppercase">
+                For doctor
+              </label>
+              <select
+                value={ownerDoctorId}
+                onChange={(e) => setOwnerDoctorId(e.target.value)}
+                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:bg-white focus:border-[#009ef7] focus:outline-none"
+                data-testid="template-owner-doctor"
+              >
+                <option value="ALL">All doctors</option>
+                {doctors.map((d) => (
+                  <option key={d.id} value={d.id}>{d.fullName}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Quick Toolbar Bar: Preset Dropdown & Helper Controls */}
@@ -410,7 +445,7 @@ export default function ReportTemplateModal({
               <Sparkles className="w-3.5 h-3.5 text-purple-600" /> Presets:
             </span>
             <select
-              disabled={!isDoctor}
+              disabled={!canEdit}
               onChange={handleLoadPreset}
               defaultValue=""
               className="px-2.5 py-1 bg-white border border-slate-300 rounded-md text-[11px] font-semibold text-slate-700 focus:outline-none focus:border-[#009ef7] cursor-pointer"
@@ -425,7 +460,7 @@ export default function ReportTemplateModal({
 
             <button
               type="button"
-              disabled={!isDoctor}
+              disabled={!canEdit}
               onClick={handleResetToStandard}
               className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-md text-[11px] font-semibold text-slate-600 transition-colors cursor-pointer"
               title="Reset findings to standard normal baseline"
@@ -562,7 +597,7 @@ export default function ReportTemplateModal({
               </div>
               <input
                 type="text"
-                disabled={!isDoctor}
+                disabled={!canEdit}
                 value={technique}
                 onChange={(e) => setTechnique(e.target.value)}
                 placeholder="Enter radiographic technique description..."
@@ -589,7 +624,7 @@ export default function ReportTemplateModal({
                   <textarea
                     rows={10}
                     required
-                    disabled={!isDoctor}
+                    disabled={!canEdit}
                     value={findings}
                     onChange={(e) => setFindings(e.target.value)}
                     placeholder="Enter standard radiological findings here (e.g. lung fields, heart size, osseous structures, soft tissues)..."
@@ -622,7 +657,7 @@ export default function ReportTemplateModal({
                   <textarea
                     rows={3}
                     required
-                    disabled={!isDoctor}
+                    disabled={!canEdit}
                     value={impression}
                     onChange={(e) => setImpression(e.target.value)}
                     placeholder="Enter diagnostic impression & final conclusion..."
@@ -681,7 +716,7 @@ export default function ReportTemplateModal({
               Cancel
             </button>
 
-            {isDoctor && (
+            {canEdit && (
               <button
                 type="submit"
                 disabled={isSaving}

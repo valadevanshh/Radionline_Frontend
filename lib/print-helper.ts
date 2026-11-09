@@ -75,14 +75,14 @@ export const REPORT_SHEET_CSS = `
 .rn-sheet .center-name { font-family: system-ui, sans-serif; font-weight: 700; font-size: 14pt; line-height: 1.25; text-transform: uppercase; letter-spacing: 0.02em; }
 .rn-sheet .center-meta { font-family: system-ui, sans-serif; font-size: 9pt; color: #222; margin-top: 2px; }
 .rn-sheet .accredit { font-family: system-ui, sans-serif; font-size: 8.5pt; color: #555; margin-top: 4px; }
-.rn-sheet .pt-info { margin: 0 0 14px 0; font-family: system-ui, sans-serif; }
+.rn-sheet .pt-info { margin: 0 0 8px 0; font-family: system-ui, sans-serif; }
 .rn-sheet .pt-grid { border: 1px solid #333; }
 .rn-sheet .pt-row { display: flex; width: 100%; }
 .rn-sheet .pt-row + .pt-row { border-top: 1px solid #333; }
-.rn-sheet .pt-cell { flex: 1 1 0; min-width: 0; padding: 8px 10px; text-align: left; white-space: normal; word-break: normal; overflow-wrap: anywhere; border-right: 1px solid #333; }
+.rn-sheet .pt-cell { flex: 1 1 0; min-width: 0; padding: 3px 8px; text-align: left; white-space: normal; word-break: normal; overflow-wrap: anywhere; border-right: 1px solid #333; display: flex; align-items: baseline; gap: 6px; }
 .rn-sheet .pt-cell:last-child { border-right: none; }
-.rn-sheet .pt-cell .lbl { display: block; color: #6b7280; font-size: 8pt; font-weight: 500; margin-bottom: 3px; }
-.rn-sheet .pt-cell .val { display: block; font-weight: 700; color: #000; font-size: 10.5pt; text-transform: none; }
+.rn-sheet .pt-cell .lbl { display: inline; color: #444; font-size: 8pt; font-weight: 600; margin: 0; white-space: nowrap; }
+.rn-sheet .pt-cell .val { display: inline; font-weight: 700; color: #000; font-size: 10.5pt; text-transform: none; }
 /* Last page: Signature bottom-left of the content, level with the QR code (right); then the footer:
    one divider, page no. + End of report, NOTE full width */
 .rn-sheet .rn-foot-last .sig-row .sig-inner { margin-right: auto; }

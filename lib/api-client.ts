@@ -546,6 +546,7 @@ export const ApiClient = {
       nextStudyId?: string | null;
       nextBodyPart?: string | null;
       caseComplete: boolean;
+      updated?: boolean;
       signedStudyCount: number;
       studyCount: number;
       pendingStudyCount: number;

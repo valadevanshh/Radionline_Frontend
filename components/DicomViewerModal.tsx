@@ -995,7 +995,7 @@ export default function DicomViewerModal({
       setStudyStatuses((prev) => ({ ...prev, [currentPart]: 'SIGNED' }));
 
       RadiologyStore.saveReport(updatedReport);
-      if (allSigned || result.caseComplete) {
+      if (!result.updated && (allSigned || result.caseComplete)) {
         RadiologyStore.updateReportStatus(report.id, 'Completed');
         window.dispatchEvent(
           new CustomEvent('radionline_report_completed', {
@@ -1687,12 +1687,21 @@ export default function DicomViewerModal({
     const list = report?.studies || [];
     return list.find((s) => s.bodyPart === part) || list[activeBodyPartIdx] || null;
   })();
-  // Doctors edit drafts; signed studies and completed cases stay read-only.
-  const reportLocked =
-    (viewerSession?.role === 'DOCTOR' || viewerSession?.role === 'CENTER') &&
-    (String(report?.status || '') === 'Completed' ||
-      String(activeStudyInfo?.reportStatus || '').toUpperCase() === 'SIGNED');
-  const lockedTitle = 'Report completed - read-only (only Super Admin can edit)';
+  // Centre logins cannot change a finished report. Doctor and Super Admin can edit before and after signing.
+  const studyAlreadySigned =
+    String(report?.status || '') === 'Completed' ||
+    String(activeStudyInfo?.reportStatus || '').toUpperCase() === 'SIGNED';
+  const reportLocked = viewerSession?.role === 'CENTER' && studyAlreadySigned;
+  const lockedTitle = 'Report completed - read-only';
+  const submitLabel = reportLocked
+    ? 'Completed (read-only)'
+    : isSubmitting
+      ? 'Submitting...'
+      : reportSavedSuccess
+        ? (studyAlreadySigned ? 'Updated!' : 'Submitted!')
+        : studyAlreadySigned
+          ? 'Update Report'
+          : 'Save & Submit';
   const frozenSigner =
     String(activeStudyInfo?.reportStatus || '').toUpperCase() === 'SIGNED' && activeStudyInfo?.signer
       ? activeStudyInfo.signer
@@ -1890,7 +1899,13 @@ export default function DicomViewerModal({
       setFindingText(findings);
       setImpressionText(impression);
       setSelectedTemplateId(templateKey);
-      if (title && (report?.bodyParts?.length || 0) <= 1) setReportTitle(title);
+      if (templateKey === 'blank') {
+        const modality = (report?.modality || 'X-RAY').toUpperCase();
+        const label = (part || '').trim();
+        setReportTitle(label ? `${modality} ${label.toUpperCase()}` : `${modality} EXAMINATION`);
+      } else if (title && (report?.bodyParts?.length || 0) <= 1) {
+        setReportTitle(title);
+      }
       setTemplateApplyKey((k) => k + 1);
       // Show the newly loaded body immediately, including on the PACS mobile layout.
       setMobileActiveView('report');
@@ -2129,10 +2144,11 @@ export default function DicomViewerModal({
             disabled={isSubmitting || reportLocked}
             data-locked={reportLocked ? "true" : undefined}
             className="flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[13px] font-bold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            title={reportLocked ? lockedTitle : 'Save & Submit Report'}
+            title={reportLocked ? lockedTitle : studyAlreadySigned ? 'Update this report' : 'Save & Submit Report'}
+            data-testid="report-submit"
           >
             {reportSavedSuccess ? <CheckCircle2 className="w-4 h-4" /> : <FileCheck className="w-4 h-4" />}
-            <span>{reportLocked ? 'Completed (read-only)' : isSubmitting ? 'Submitting...' : reportSavedSuccess ? 'Submitted!' : 'Save & Submit'}</span>
+            <span>{submitLabel}</span>
           </button>
         </div>
 
@@ -3130,7 +3146,7 @@ export default function DicomViewerModal({
                 className="flex-1 flex items-center justify-center gap-2 h-11 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[14px] font-bold disabled:opacity-60"
               >
                 {reportSavedSuccess ? <CheckCircle2 className="w-5 h-5" /> : <FileCheck className="w-5 h-5" />}
-                {reportLocked ? 'Completed (read-only)' : isSubmitting ? 'Submitting...' : reportSavedSuccess ? 'Submitted!' : 'Save & Submit'}
+                {submitLabel}
               </button>
             </div>
 

@@ -181,7 +181,7 @@ export default function DocumentEditorStudioPage() {
               </div>
               <p className="text-xs text-slate-500 font-sans mt-0.5">
                 {isAdminView
-                  ? 'Create and manage report templates on behalf of doctors \u2014 each doctor sees only their own in PACS'
+                  ? 'Create a template for one doctor, or for all doctors. Each doctor sees their own plus shared templates in PACS.'
                   : 'Standardized master report templates for radiological findings and impressions'}
               </p>
             </div>
