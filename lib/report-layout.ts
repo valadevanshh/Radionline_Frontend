@@ -2,6 +2,25 @@ export type ReportLetterheadMode = 'header' | 'footer' | 'full-page' | 'preprint
 export type ReportHorizontalPosition = 'left' | 'center' | 'right';
 export type ReportQrPosition = 'left' | 'right';
 
+export interface CenterLetterhead {
+  id: string;
+  name: string;
+  url: string;
+  letterheadMode?: ReportLetterheadMode;
+}
+
+export function centerLetterheads(center: {
+  letterheads?: CenterLetterhead[] | null;
+  headerTemplateUrl?: string | null;
+  letterheadMode?: ReportLetterheadMode;
+}): CenterLetterhead[] {
+  const saved = (center.letterheads || []).filter((item) => item?.id && item?.name?.trim() && item?.url?.trim());
+  if (saved.length) return saved;
+  return center.headerTemplateUrl?.trim()
+    ? [{ id: 'legacy', name: 'Default Letterhead', url: center.headerTemplateUrl, letterheadMode: center.letterheadMode || 'full-page' }]
+    : [];
+}
+
 /** Per-centre print layout. Heights are safe top/bottom spaces in millimetres. */
 export interface CenterReportLayout {
   headerHeightMm: number;

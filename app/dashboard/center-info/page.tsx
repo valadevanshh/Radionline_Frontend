@@ -3,12 +3,13 @@
 import ProfileDocuments from '@/components/ProfileDocuments';
 import type { ProfileDocument } from '@/lib/profile-documents';
 import React, { useState, useEffect } from 'react';
-import { Building2, Mail, Phone, MapPin, Check, Shield, FileText, Edit3 } from 'lucide-react';
+import { Building2, Mail, Phone, MapPin, Check, Shield, FileText, Edit3, Trash2 } from 'lucide-react';
 import { ApiClient, apiErrorMessage, isPendingApproval, resolveMediaUrl } from '@/lib/api-client';
 import { centerIdsWith, hasCenterLevel, managerCan } from '@/lib/access';
 import { RadiologyStore, RadiologyCenter } from '@/lib/radiology-store';
 import { PageShell, PageHeader, StatusBadge } from '@/components/ui';
-import { centerReportLayout, CenterReportLayout } from '@/lib/report-layout';
+import { centerLetterheads, centerReportLayout, CenterLetterhead, CenterReportLayout } from '@/lib/report-layout';
+import { generateUUID } from '@/lib/uuid';
 
 export default function CenterInfoProfilePage() {
   const [session, setSession] = useState<any>(null);
@@ -27,6 +28,10 @@ export default function CenterInfoProfilePage() {
   const [headerTemplateUrl, setHeaderTemplateUrl] = useState('');
   const [letterheadMode, setLetterheadMode] = useState<'header' | 'footer' | 'full-page' | 'preprinted'>('full-page');
   const [reportLayout, setReportLayout] = useState<CenterReportLayout>(centerReportLayout());
+  const [letterheads, setLetterheads] = useState<CenterLetterhead[]>([]);
+  const [newLetterheadName, setNewLetterheadName] = useState('');
+  const [newLetterheadUrl, setNewLetterheadUrl] = useState('');
+  const [newLetterheadMode, setNewLetterheadMode] = useState<CenterLetterhead['letterheadMode']>('full-page');
   const [documents, setDocuments] = useState<ProfileDocument[]>([]);
   const [readingDocuments, setReadingDocuments] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -43,6 +48,10 @@ export default function CenterInfoProfilePage() {
     setHeaderTemplateUrl(c.headerTemplateUrl || '');
     setLetterheadMode(c.letterheadMode || 'full-page');
     setReportLayout(centerReportLayout(c.reportLayout, c.letterheadMode || 'full-page', Boolean(c.headerTemplateUrl)));
+    setLetterheads(centerLetterheads(c));
+    setNewLetterheadName('');
+    setNewLetterheadUrl('');
+    setNewLetterheadMode(c.letterheadMode || 'full-page');
   };
 
   const selectCenter = async (c: RadiologyCenter | null) => {
@@ -101,13 +110,14 @@ export default function CenterInfoProfilePage() {
         headerTemplateUrl: headerTemplateUrl.trim(),
         letterheadMode,
         reportLayout,
+        letterheads,
         documents,
       };
       if (session?.role === 'MANAGER') {
         const result = await ApiClient.saveCenter({ ...center, ...fields });
         if (isPendingApproval(result)) {
           setIsEditing(false);
-          setSuccessNotice('Center print layout sent to Super Admin for approval.');
+          setSuccessNotice('Center letterheads and print layout sent to Super Admin for approval.');
           setTimeout(() => setSuccessNotice(null), 4500);
           return;
         }
@@ -119,7 +129,7 @@ export default function CenterInfoProfilePage() {
       setMyCenters((prev) => prev.map((c) => (c.id === next.id ? next : c)));
       fillForm(next);
       setIsEditing(false);
-      setSuccessNotice('Center details & letterhead updated.');
+      setSuccessNotice('Center details, letterheads & print layout updated.');
       setTimeout(() => setSuccessNotice(null), 3500);
     } catch (err: any) {
       setError(apiErrorMessage(err, 'Could not save the centre profile'));
@@ -128,16 +138,30 @@ export default function CenterInfoProfilePage() {
     }
   };
 
-  const handleBannerFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleNewLetterheadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      setHeaderTemplateUrl(dataUrl);
-    };
+    reader.onload = (event) => setNewLetterheadUrl(String(event.target?.result || ''));
     reader.readAsDataURL(file);
+  };
+
+  const addLetterhead = () => {
+    const name = newLetterheadName.trim();
+    if (!name || !newLetterheadUrl) return;
+    if (letterheads.some((item) => item.name.trim().toLowerCase() === name.toLowerCase())) {
+      setError('Use a different name for each letterhead.');
+      return;
+    }
+    const added: CenterLetterhead = { id: generateUUID(), name, url: newLetterheadUrl, letterheadMode: newLetterheadMode || 'full-page' };
+    setLetterheads((current) => [...current, added]);
+    if (!headerTemplateUrl) {
+      setHeaderTemplateUrl(added.url);
+      setLetterheadMode(added.letterheadMode || 'full-page');
+    }
+    setNewLetterheadName('');
+    setNewLetterheadUrl('');
+    setError(null);
   };
 
   return (
@@ -322,19 +346,48 @@ export default function CenterInfoProfilePage() {
                   </div>
                 </fieldset>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Custom Header Letterhead Banner
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleBannerFile}
-                      className="text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#009ef7]/10 file:text-[#009ef7] hover:file:bg-[#009ef7]/20 cursor-pointer"
-                    />
+                <fieldset className="space-y-3 rounded-xl border border-slate-200 p-4">
+                  <legend className="px-1 text-xs font-bold text-slate-700">Named letterheads</legend>
+                  <p className="text-[11px] text-slate-500">Upload each version with a clear name. They will appear in the All Reports action menu.</p>
+                  <div className="space-y-2">
+                    {letterheads.map((item) => (
+                      <div key={item.id} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={resolveMediaUrl(item.url)} alt="" className="h-10 w-14 rounded border border-slate-200 bg-white object-contain" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-bold text-slate-800">{item.name}</div>
+                          <div className="text-[10px] text-slate-500">{item.letterheadMode || 'full-page'}</div>
+                        </div>
+                        <button type="button" onClick={() => {
+                          const remaining = letterheads.filter((x) => x.id !== item.id);
+                          setLetterheads(remaining);
+                          if (headerTemplateUrl === item.url) {
+                            setHeaderTemplateUrl(remaining[0]?.url || '');
+                            setLetterheadMode(remaining[0]?.letterheadMode || 'full-page');
+                          }
+                        }} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" aria-label={`Remove ${item.name}`} title="Remove letterhead">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                    {!letterheads.length && <p className="rounded-lg border border-dashed border-slate-300 p-3 text-center text-xs text-slate-500">No letterheads added yet.</p>}
                   </div>
-                </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="text-xs font-semibold text-slate-700">Letterhead name *
+                      <input value={newLetterheadName} onChange={(e) => setNewLetterheadName(e.target.value)} placeholder="e.g. Main Branch, Clinic A" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">Letterhead format
+                      <select value={newLetterheadMode || 'full-page'} onChange={(e) => setNewLetterheadMode(e.target.value as CenterLetterhead['letterheadMode'])} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2">
+                        <option value="header">Header image</option><option value="footer">Footer image</option><option value="full-page">Full page</option><option value="preprinted">Preprinted paper</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700 sm:col-span-2">Image file
+                      <input type="file" accept="image/*" onChange={handleNewLetterheadFile} className="mt-1 block w-full text-xs text-slate-600" />
+                    </label>
+                  </div>
+                  {newLetterheadUrl && <p className="text-[11px] font-semibold text-emerald-700">Image selected. Add it to the center’s letterheads before saving.</p>}
+                  <button type="button" disabled={!newLetterheadName.trim() || !newLetterheadUrl} onClick={addLetterhead} className="rounded-lg bg-[#009ef7] px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">Add named letterhead</button>
+                </fieldset>
 
                 <ProfileDocuments title="Center Documents" value={documents} onChange={setDocuments} disabled={saving || readingDocuments} onBusyChange={setReadingDocuments} />
 
@@ -407,6 +460,13 @@ export default function CenterInfoProfilePage() {
               ) : (
                 <div className="p-6 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 text-center text-xs text-slate-400">
                   Standard platform header active. Edit profile to upload a custom diagnostic center letterhead image.
+                </div>
+              )}
+              {centerLetterheads(center).length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {centerLetterheads(center).map((item) => (
+                    <span key={item.id} className="rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold text-sky-800">{item.name}</span>
+                  ))}
                 </div>
               )}
             </div>

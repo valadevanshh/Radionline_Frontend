@@ -9,6 +9,7 @@ import { printReportElement, type PrintReportPayload, formatReportAge, shortRepo
 import PaginatedReport from '@/components/PaginatedReport';
 import { ApiClient, publicReportLink, resolveMediaUrl } from '@/lib/api-client';
 import { usableSignatureUrl } from '@/components/DoctorSignatureForm';
+import { centerLetterheads } from '@/lib/report-layout';
 
 interface ReportPreviewModalProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ interface ReportPreviewModalProps {
   report: XRayReport | null;
   withHeader?: boolean;
   selectedBodyPart?: string;
+  selectedLetterheadId?: string;
 }
 
 export default function ReportPreviewModal({
@@ -24,6 +26,7 @@ export default function ReportPreviewModal({
   report,
   withHeader: initialWithHeader = true,
   selectedBodyPart: initialSelectedBodyPart,
+  selectedLetterheadId,
 }: ReportPreviewModalProps) {
   const [activeBodyPart, setActiveBodyPart] = useState<string>(
     initialSelectedBodyPart || report?.bodyParts?.[0] || 'GENERAL'
@@ -75,12 +78,14 @@ export default function ReportPreviewModal({
       reportLayout: undefined,
     };
 
-  const centerHeaderUrl = resolveMediaUrl(center.headerTemplateUrl || '');
+  const letterheads = centerLetterheads(center);
+  const selectedLetterhead = letterheads.find((item) => item.id === selectedLetterheadId) || letterheads[0];
+  const centerHeaderUrl = resolveMediaUrl(selectedLetterhead?.url || center.headerTemplateUrl || '');
   const centerLogoUrl = resolveMediaUrl(center.logoUrl || '');
   // Without an uploaded letterhead image, "with header" falls back to a broken placeholder — never use it.
   const hasHeaderImage = Boolean((center.headerTemplateUrl || '').trim());
-  const useHeader = Boolean(initialWithHeader && hasHeaderImage);
-  const letterheadMode = useHeader ? (center.letterheadMode || 'full-page') : 'preprinted';
+  const useHeader = Boolean(initialWithHeader && (selectedLetterhead || hasHeaderImage));
+  const letterheadMode = useHeader ? (selectedLetterhead?.letterheadMode || center.letterheadMode || 'full-page') : 'preprinted';
 
   // Signed study: doctor details frozen at signing; otherwise the doctor's current profile
   const activeStudy =

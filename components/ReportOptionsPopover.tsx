@@ -6,13 +6,14 @@ import { FileText, ChevronDown, Printer } from 'lucide-react';
 import { RadiologyStore, XRayReport } from '@/lib/radiology-store';
 import { formatPatientDisplayId } from '@/lib/uuid';
 import { hasDoctorReport, isReportReady } from '@/lib/report-status';
+import { centerLetterheads } from '@/lib/report-layout';
 
 interface ReportOptionsPopoverProps {
   report: XRayReport;
-  onSelectOption: (report: XRayReport, withHeader: boolean, bodyPart?: string) => void;
+  onSelectOption: (report: XRayReport, withHeader: boolean, bodyPart?: string, letterheadId?: string) => void;
 }
 
-function centerHasHeader(report: XRayReport): boolean {
+function centerHeaders(report: XRayReport) {
   const centers = RadiologyStore.getCenters();
   const id = (report.radiologyCenterId || '').trim();
   const name = (report.radiologyCenterName || '').trim().toLowerCase();
@@ -21,7 +22,7 @@ function centerHasHeader(report: XRayReport): boolean {
     (name
       ? centers.find((c) => (c.centerName || '').trim().toLowerCase() === name)
       : undefined);
-  return Boolean((match?.headerTemplateUrl || '').trim());
+  return match ? centerLetterheads(match) : [];
 }
 
 export default function ReportOptionsPopover({ report, onSelectOption }: ReportOptionsPopoverProps) {
@@ -30,7 +31,8 @@ export default function ReportOptionsPopover({ report, onSelectOption }: ReportO
   const popoverRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [mounted, setMounted] = useState(false);
-  const showWithHeader = useMemo(() => centerHasHeader(report), [report]);
+  const letterheads = useMemo(() => centerHeaders(report), [report]);
+  const showWithHeader = letterheads.length > 0;
 
   useEffect(() => {
     setMounted(true);
@@ -39,13 +41,13 @@ export default function ReportOptionsPopover({ report, onSelectOption }: ReportO
   const toggleOpen = () => {
     if (!isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
-      const popoverWidth = 256;
+      const popoverWidth = 288;
       let left = rect.right - popoverWidth;
       if (left < 10) left = rect.left;
       // keep the menu inside the viewport on narrow screens
       left = Math.min(left, window.innerWidth - popoverWidth - 10);
       // open upwards when there is not enough room below the button
-      const estHeight = Math.min(320, 56 + report.bodyParts.length * 84);
+      const estHeight = Math.min(440, 56 + report.bodyParts.length * (88 + Math.max(0, letterheads.length - 1) * 32));
       const openUp = rect.bottom + 4 + estHeight > window.innerHeight - 8 && rect.top - 4 - estHeight >= 8;
       setCoords({
         top: (openUp ? rect.top - 4 - estHeight : rect.bottom + 4) + window.scrollY,
@@ -96,7 +98,7 @@ export default function ReportOptionsPopover({ report, onSelectOption }: ReportO
         <div
           ref={popoverRef}
           style={{ position: 'absolute', top: coords.top, left: coords.left, zIndex: 9999 }}
-          className="w-64 bg-white border border-slate-200 rounded-xl shadow-2xl py-1 text-left animate-in fade-in zoom-in-95 duration-100"
+          className="w-72 max-w-[calc(100vw-20px)] bg-white border border-slate-200 rounded-xl shadow-2xl py-1 text-left animate-in fade-in zoom-in-95 duration-100"
         >
           <div className="px-3 py-2 border-b border-slate-100 bg-slate-50 rounded-t-xl">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Report Options</p>
@@ -122,18 +124,35 @@ export default function ReportOptionsPopover({ report, onSelectOption }: ReportO
                 ) : (
                 <>
                 {showWithHeader ? (
+                  letterheads.length > 1 ? letterheads.map((letterhead) => (
+                  <button
+                    key={letterhead.id}
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      onSelectOption(report, true, part, letterhead.id);
+                    }}
+                    className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 hover:bg-[#009ef7]/10 hover:text-[#009ef7] transition-colors cursor-pointer rounded"
+                    data-testid={`view-report-letterhead-${letterhead.id}`}
+                    title={`View using ${letterhead.name}`}
+                  >
+                    <Printer className="w-3.5 h-3.5 text-[#009ef7] shrink-0" />
+                    <span className="font-medium truncate">View Report ({letterhead.name})</span>
+                  </button>
+                  )) : (
                   <button
                     type="button"
                     onClick={() => {
                       setIsOpen(false);
-                      onSelectOption(report, true, part);
+                      onSelectOption(report, true, part, letterheads[0]?.id);
                     }}
                     className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 hover:bg-[#009ef7]/10 hover:text-[#009ef7] transition-colors cursor-pointer rounded"
                     data-testid="view-report-with-header"
                   >
                     <Printer className="w-3.5 h-3.5 text-[#009ef7]" />
-                    <span className="font-medium">View Report (With Header)</span>
+                    <span className="font-medium">View Report ({letterheads[0]?.name || 'With Header'})</span>
                   </button>
+                  )
                 ) : null}
 
                 <button

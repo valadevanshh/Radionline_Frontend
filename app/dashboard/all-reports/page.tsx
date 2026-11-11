@@ -129,6 +129,7 @@ function AllPatientReportsContent() {
   const [selectedReport, setSelectedReport] = useState<XRayReport | null>(null);
   const [previewWithHeader, setPreviewWithHeader] = useState(true);
   const [previewBodyPart, setPreviewBodyPart] = useState<string | undefined>(undefined);
+  const [previewLetterheadId, setPreviewLetterheadId] = useState<string | undefined>(undefined);
   const [isNewReportModalOpen, setIsNewReportModalOpen] = useState(false);
   const [isReviewSignModalOpen, setIsReviewSignModalOpen] = useState(false);
   // Row actions: Edit (patient details) and Chat (case activity thread)
@@ -315,7 +316,7 @@ function AllPatientReportsContent() {
     setFilterDoctorId('ALL');
   };
 
-  const handleSelectReportOption = (report: XRayReport, withHeader: boolean, bodyPart?: string) => {
+  const handleSelectReportOption = (report: XRayReport, withHeader: boolean, bodyPart?: string, letterheadId?: string) => {
     if (!isReportReady(report, bodyPart)) {
       toast.info('This report is still pending.');
       return;
@@ -323,6 +324,7 @@ function AllPatientReportsContent() {
     setSelectedReport(report);
     setPreviewWithHeader(withHeader);
     setPreviewBodyPart(bodyPart);
+    setPreviewLetterheadId(letterheadId);
     setIsPreviewOpen(true);
   };
 
@@ -877,6 +879,7 @@ function AllPatientReportsContent() {
           report={selectedReport}
           withHeader={previewWithHeader}
           selectedBodyPart={previewBodyPart}
+          selectedLetterheadId={previewLetterheadId}
         />
       )}
 
