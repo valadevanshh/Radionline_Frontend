@@ -1823,6 +1823,7 @@ export default function DicomViewerModal({
       centerLogoUrl,
       centerHeaderUrl,
       letterheadMode: centerRecord?.letterheadMode || 'full-page',
+      reportLayout: centerRecord?.reportLayout,
       withHeader: effectiveWithHeader,
       patientName,
       patientId: reportPatientId,

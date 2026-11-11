@@ -289,6 +289,7 @@ export default function ReviewSignReportModal({
                     centerLogoUrl: resolveMediaUrl(centerRec?.logoUrl || ''),
                     centerHeaderUrl: resolveMediaUrl(centerRec?.headerTemplateUrl || ''),
                     letterheadMode: hasHeader ? (centerRec?.letterheadMode || 'full-page') : 'preprinted',
+                    reportLayout: centerRec?.reportLayout,
                     patientName: report.fullName,
                     patientId: formatReportPatientId(report.centerPatientId),
                     ageSex: `${formatAgeShort(report)} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,

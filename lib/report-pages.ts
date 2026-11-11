@@ -44,6 +44,15 @@ export const REPORT_PAGES_CSS = `
 .rn-sheet .rn-pageno { font-family: system-ui, sans-serif; font-size: 9pt; font-weight: 600; color: #222; white-space: nowrap; text-align: center; }
 .rn-sheet .rn-foot-qr { display: flex; align-items: center; gap: 6px; color: #444; text-decoration: none; font-size: 7pt; line-height: 1.25; text-align: right; }
 .rn-sheet .rn-foot-qr svg { width: 18mm; height: 18mm; flex: none; }
+.rn-sheet .rn-foot-normal[data-custom-layout="1"][data-qr-position="left"] .rn-foot-row > :first-child { grid-column: 3; grid-row: 1; text-align: right; }
+.rn-sheet .rn-foot-normal[data-custom-layout="1"][data-qr-position="left"] .rn-foot-row > :nth-child(2) { grid-column: 2; grid-row: 1; }
+.rn-sheet .rn-foot-normal[data-custom-layout="1"][data-qr-position="left"] .rn-foot-row > :last-child { grid-column: 1; grid-row: 1; justify-self: start; text-align: left; }
+.rn-sheet .rn-foot-last[data-custom-layout="1"] .sig-row { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: end; }
+.rn-sheet .rn-foot-last[data-custom-layout="1"][data-doctor-position="left"] .sig-inner { grid-column: 1; justify-self: start; text-align: left; }
+.rn-sheet .rn-foot-last[data-custom-layout="1"][data-doctor-position="center"] .sig-inner { grid-column: 2; justify-self: center; text-align: center; }
+.rn-sheet .rn-foot-last[data-custom-layout="1"][data-doctor-position="right"] .sig-inner { grid-column: 3; justify-self: end; text-align: right; }
+.rn-sheet .rn-foot-last[data-custom-layout="1"][data-qr-position="left"] .rn-qr { grid-column: 1; grid-row: 1; }
+.rn-sheet .rn-foot-last[data-custom-layout="1"][data-qr-position="right"] .rn-qr { grid-column: 3; grid-row: 1; }
 .rn-sheet .sig-qr { color: #444; text-decoration: none; }
 .rn-sheet .rn-foot-last.sig-block { margin-top: 8px; }
 .rn-page.rn-compact .demo { margin-bottom: 8px; }

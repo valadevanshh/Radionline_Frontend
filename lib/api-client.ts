@@ -1,6 +1,7 @@
 import type { ProfileDocument } from './profile-documents';
 import { cleanDr } from '@/lib/doctor-name';
 import { XRayReport, Doctor, RadiologyCenter, DocTemplate, UserAccount } from './radiology-store';
+import type { CenterReportLayout } from './report-layout';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 /** Origin without /api suffix â€” used for /api/files/... media URLs */
@@ -73,6 +74,7 @@ export interface PublicReport {
     logoUrl?: string | null;
     headerTemplateUrl?: string | null;
     letterheadMode?: 'header' | 'footer' | 'full-page' | 'preprinted';
+    reportLayout?: CenterReportLayout | null;
   };
   patient: {
     name: string;

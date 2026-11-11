@@ -7,6 +7,7 @@ import { cleanDr } from '@/lib/doctor-name';
  * The on-screen pages use the same source and the same paginator (lib/report-pages.ts).
  */
 import { rnPaginate, REPORT_PAGES_CSS } from './report-pages';
+import { centerReportLayout, CenterReportLayout } from './report-layout';
 
 export type PrintStudyBlock = {
   title: string;
@@ -23,6 +24,7 @@ export type PrintReportPayload = {
   centerHeaderUrl?: string;
   withHeader?: boolean;
   letterheadMode?: 'header' | 'footer' | 'full-page' | 'preprinted' | 'none';
+  reportLayout?: CenterReportLayout | null;
   patientName: string;
   patientId: string;
   ageSex: string;
@@ -237,18 +239,19 @@ export type LetterheadLayout = {
  * One rule for every page of every report: which letterhead the centre uses and how much of
  * the page it takes. "No header" (withHeader === false) means pre-printed letterhead paper.
  */
-export function resolveLetterhead(payload: Pick<PrintReportPayload, 'letterheadMode' | 'withHeader' | 'centerHeaderUrl'>): LetterheadLayout {
+export function resolveLetterhead(payload: Pick<PrintReportPayload, 'letterheadMode' | 'withHeader' | 'centerHeaderUrl' | 'reportLayout'>): LetterheadLayout {
   const url = Boolean(payload.centerHeaderUrl);
   const mode: LetterheadMode =
     payload.withHeader === false ? 'preprinted' : payload.letterheadMode || (url ? 'full-page' : 'header');
   const side = A4_PAGE.marginSideMm;
-  if (mode === 'preprinted') return { mode, kind: 'none', topMm: 38, bottomMm: 22, sideMm: side, compact: true };
+  const custom = payload.reportLayout ? centerReportLayout(payload.reportLayout, mode === 'none' ? 'full-page' : mode, url) : null;
+  if (mode === 'preprinted') return { mode, kind: 'none', topMm: custom?.headerHeightMm ?? 38, bottomMm: custom?.footerHeightMm ?? 22, sideMm: side, compact: true };
   if (mode === 'none') return { mode, kind: 'none', topMm: A4_PAGE.marginTopMm, bottomMm: A4_PAGE.marginBottomMm, sideMm: side, compact: true };
-  if (url && mode === 'full-page') return { mode, kind: 'bg', topMm: 48, bottomMm: 30, sideMm: side, compact: true };
-  if (url && mode === 'header') return { mode, kind: 'crop', topMm: 42, bottomMm: 8, sideMm: side, compact: true };
-  if (url && mode === 'footer') return { mode, kind: 'footer', topMm: A4_PAGE.marginTopMm, bottomMm: 32, sideMm: side, compact: false };
+  if (url && mode === 'full-page') return { mode, kind: 'bg', topMm: custom?.headerHeightMm ?? 48, bottomMm: custom?.footerHeightMm ?? 30, sideMm: side, compact: true };
+  if (url && mode === 'header') return { mode, kind: 'crop', topMm: custom?.headerHeightMm ?? 42, bottomMm: custom?.footerHeightMm ?? 8, sideMm: side, compact: true };
+  if (url && mode === 'footer') return { mode, kind: 'footer', topMm: custom?.headerHeightMm ?? A4_PAGE.marginTopMm, bottomMm: custom?.footerHeightMm ?? 32, sideMm: side, compact: false };
   // A letterhead mode but no artwork uploaded: the text letterhead
-  return { mode, kind: 'text', topMm: A4_PAGE.marginTopMm, bottomMm: A4_PAGE.marginBottomMm, sideMm: side, compact: false };
+  return { mode, kind: 'text', topMm: custom?.headerHeightMm ?? A4_PAGE.marginTopMm, bottomMm: custom?.footerHeightMm ?? A4_PAGE.marginBottomMm, sideMm: side, compact: false };
 }
 
 /** Everything the report pages need (screen and print). */
@@ -273,6 +276,7 @@ function qrMarkup(payload: PrintReportPayload): string {
 export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportSourceOptions = {}): string {
   const lh = resolveLetterhead(payload);
   const url = payload.centerHeaderUrl || '';
+  const layout = payload.reportLayout ? centerReportLayout(payload.reportLayout, lh.mode === 'none' ? 'full-page' : lh.mode, Boolean(url)) : null;
   const qr = qrMarkup(payload);
   const qrHref = payload.qrLink ? ` href="${esc(payload.qrLink)}" target="_blank" rel="noreferrer"` : '';
   const qrTag = payload.qrLink ? 'a' : 'div';
@@ -307,9 +311,9 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
     lh.kind === 'bg'
       ? `<img class="rn-page-bg" src="${esc(url)}" alt="" />`
       : lh.kind === 'crop'
-      ? `<div class="rn-page-crop"><img src="${esc(url)}" alt="Letterhead" /></div>`
+      ? `<div class="rn-page-crop" style="height:${lh.topMm}mm"><img src="${esc(url)}" alt="Letterhead" /></div>`
       : lh.kind === 'footer'
-      ? `<div class="rn-page-lhfoot"><img src="${esc(url)}" alt="" /></div>`
+      ? `<div class="rn-page-lhfoot" style="height:${Math.max(0, lh.bottomMm - 5)}mm"><img src="${esc(url)}" alt="" /></div>`
       : '';
 
   const pageStyle = [
@@ -329,7 +333,7 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
     </div>
   </div>`;
 
-  const footNormal = `<div class="rn-foot rn-foot-normal" data-rn="foot-normal">
+  const footNormal = `<div class="rn-foot rn-foot-normal" data-rn="foot-normal"${layout ? ` data-custom-layout="1" data-qr-position="${layout.qrPosition}"` : ''}>
     <div class="rn-foot-row">
       <span>${esc(payload.centerName)}</span>
       <span class="rn-pageno" data-rn-pageno></span>
@@ -338,7 +342,7 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
   </div>`;
 
   const sigImg = payload.doctorSignatureUrl ? `<img class="sig-img" style="width:${68 * signatureScale(payload.doctorSignatureScale) / 100}mm;max-height:${26 * signatureScale(payload.doctorSignatureScale) / 100}mm;max-width:${68 * signatureScale(payload.doctorSignatureScale) / 100}mm" src="${esc(payload.doctorSignatureUrl)}" alt="Signature" />` : '';
-  const footLast = `<div class="rn-foot rn-foot-last sig-block" data-rn="foot-last" data-testid="sheet-signature">
+  const footLast = `<div class="rn-foot rn-foot-last sig-block" data-rn="foot-last" data-testid="sheet-signature"${layout ? ` data-custom-layout="1" data-qr-position="${layout.qrPosition}" data-doctor-position="${layout.doctorDetailsPosition}"` : ''}>
     <div class="sig-row">
       <div class="sig-inner">
         ${sigImg}

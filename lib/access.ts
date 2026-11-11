@@ -22,7 +22,7 @@ export function managerPageForPath(pathname: string | null | undefined): Manager
   if (p === '/dashboard' || p.startsWith('/dashboard/approvals') || p.startsWith('/dashboard/profile')) return null;
   if (p.startsWith('/dashboard/all-reports') || p.startsWith('/dashboard/workspace') || p.startsWith('/dashboard/dicom-viewer')) return 'reports';
   if (p.startsWith('/dashboard/doctors')) return 'doctors';
-  if (p.startsWith('/dashboard/radiology')) return 'centers';
+  if (p.startsWith('/dashboard/radiology') || p.startsWith('/dashboard/center-info')) return 'centers';
   return p.startsWith('/dashboard') ? 'deny' : null;
 }
 

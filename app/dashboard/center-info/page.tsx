@@ -4,10 +4,11 @@ import ProfileDocuments from '@/components/ProfileDocuments';
 import type { ProfileDocument } from '@/lib/profile-documents';
 import React, { useState, useEffect } from 'react';
 import { Building2, Mail, Phone, MapPin, Check, Shield, FileText, Edit3 } from 'lucide-react';
-import { ApiClient, apiErrorMessage, resolveMediaUrl } from '@/lib/api-client';
-import { centerIdsWith, hasCenterLevel } from '@/lib/access';
+import { ApiClient, apiErrorMessage, isPendingApproval, resolveMediaUrl } from '@/lib/api-client';
+import { centerIdsWith, hasCenterLevel, managerCan } from '@/lib/access';
 import { RadiologyStore, RadiologyCenter } from '@/lib/radiology-store';
 import { PageShell, PageHeader, StatusBadge } from '@/components/ui';
+import { centerReportLayout, CenterReportLayout } from '@/lib/report-layout';
 
 export default function CenterInfoProfilePage() {
   const [session, setSession] = useState<any>(null);
@@ -25,6 +26,7 @@ export default function CenterInfoProfilePage() {
   const [address, setAddress] = useState('');
   const [headerTemplateUrl, setHeaderTemplateUrl] = useState('');
   const [letterheadMode, setLetterheadMode] = useState<'header' | 'footer' | 'full-page' | 'preprinted'>('full-page');
+  const [reportLayout, setReportLayout] = useState<CenterReportLayout>(centerReportLayout());
   const [documents, setDocuments] = useState<ProfileDocument[]>([]);
   const [readingDocuments, setReadingDocuments] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -40,6 +42,7 @@ export default function CenterInfoProfilePage() {
     setAddress(c.address || '');
     setHeaderTemplateUrl(c.headerTemplateUrl || '');
     setLetterheadMode(c.letterheadMode || 'full-page');
+    setReportLayout(centerReportLayout(c.reportLayout, c.letterheadMode || 'full-page', Boolean(c.headerTemplateUrl)));
   };
 
   const selectCenter = async (c: RadiologyCenter | null) => {
@@ -78,7 +81,7 @@ export default function CenterInfoProfilePage() {
   }, []);
 
   const canEditProfile =
-    !!center && (session?.role === 'SUPER_ADMIN' || hasCenterLevel(session, 'center_info', 'write', center.id));
+    !!center && (session?.role === 'SUPER_ADMIN' || managerCan(session, 'centers', 'write') || hasCenterLevel(session, 'center_info', 'write', center.id));
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,15 +93,26 @@ export default function CenterInfoProfilePage() {
     setSaving(true);
     setError(null);
     try {
-      const saved = await ApiClient.updateCenterProfile(center.id, {
+      const fields = {
         centerName: centerName.trim(),
         contactNumber: contactNumber.trim(),
         email: email.trim(),
         address: address.trim(),
         headerTemplateUrl: headerTemplateUrl.trim(),
         letterheadMode,
+        reportLayout,
         documents,
-      });
+      };
+      if (session?.role === 'MANAGER') {
+        const result = await ApiClient.saveCenter({ ...center, ...fields });
+        if (isPendingApproval(result)) {
+          setIsEditing(false);
+          setSuccessNotice('Center print layout sent to Super Admin for approval.');
+          setTimeout(() => setSuccessNotice(null), 4500);
+          return;
+        }
+      }
+      const saved = await ApiClient.updateCenterProfile(center.id, fields);
       const next = { ...center, ...saved };
       RadiologyStore.saveCenter(next);
       setCenter(next);
@@ -287,6 +301,25 @@ export default function CenterInfoProfilePage() {
                     ))}
                   </div>
                   <p className="text-[11px] text-slate-500 text-center">Preprinted paper reserves clear space at the top and bottom without adding the uploaded image.</p>
+                </fieldset>
+
+                <fieldset className="space-y-3 rounded-xl border border-slate-200 p-4">
+                  <legend className="px-1 text-xs font-bold text-slate-700">Report layout for this center</legend>
+                  <p className="text-[11px] text-slate-500">These defaults preserve the current report layout. Heights reserve clear space in millimeters.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="text-xs font-semibold text-slate-700">Header space (mm)
+                      <input type="number" min={8} max={100} value={reportLayout.headerHeightMm} onChange={(e) => setReportLayout((v) => ({ ...v, headerHeightMm: Number(e.target.value) }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">Footer space (mm)
+                      <input type="number" min={8} max={70} value={reportLayout.footerHeightMm} onChange={(e) => setReportLayout((v) => ({ ...v, footerHeightMm: Number(e.target.value) }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">QR code position
+                      <select value={reportLayout.qrPosition} onChange={(e) => setReportLayout((v) => ({ ...v, qrPosition: e.target.value as CenterReportLayout['qrPosition'] }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"><option value="left">Left</option><option value="right">Right</option></select>
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">Doctor details position
+                      <select value={reportLayout.doctorDetailsPosition} onChange={(e) => setReportLayout((v) => ({ ...v, doctorDetailsPosition: e.target.value as CenterReportLayout['doctorDetailsPosition'] }))} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+                    </label>
+                  </div>
                 </fieldset>
 
                 <div>

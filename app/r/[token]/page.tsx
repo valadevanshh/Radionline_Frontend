@@ -70,6 +70,7 @@ export default function PublicReportPage() {
     centerLogoUrl: logoUrl,
     centerHeaderUrl: headerUrl,
     letterheadMode: center.letterheadMode || 'full-page',
+    reportLayout: center.reportLayout,
     withHeader: true,
     patientName: patient.name,
     patientId: patient.patientId,

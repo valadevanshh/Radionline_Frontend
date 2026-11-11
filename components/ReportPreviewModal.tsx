@@ -72,6 +72,7 @@ export default function ReportPreviewModal({
       logoUrl: undefined,
       headerTemplateUrl: undefined,
       letterheadMode: undefined,
+      reportLayout: undefined,
     };
 
   const centerHeaderUrl = resolveMediaUrl(center.headerTemplateUrl || '');
@@ -116,6 +117,7 @@ export default function ReportPreviewModal({
     centerHeaderUrl: centerHeaderUrl,
     withHeader: letterheadMode !== 'preprinted',
     letterheadMode,
+    reportLayout: center.reportLayout,
     patientName: report.fullName,
     patientId: formatReportPatientId(report.centerPatientId),
     ageSex: `${formatAgeShort(report)} / ${report.gender ? report.gender.charAt(0).toUpperCase() : 'M'}`,

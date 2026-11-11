@@ -3,6 +3,7 @@ import type { ProfileDocument } from './profile-documents';
 
 import { RADIOLOGY_TEMPLATES } from './radiology-templates';
 import { generateUUID } from './uuid';
+import type { CenterReportLayout } from './report-layout';
 
 export type UserRole = 'SUPER_ADMIN' | 'DOCTOR' | 'MANAGER' | 'CENTER';
 
@@ -102,6 +103,7 @@ export interface RadiologyCenter {
   address?: string;
   headerTemplateUrl?: string;
   letterheadMode?: 'header' | 'footer' | 'full-page' | 'preprinted';
+  reportLayout?: CenterReportLayout | null;
   logoUrl?: string;
   documents?: ProfileDocument[];
   createdAt: string;
