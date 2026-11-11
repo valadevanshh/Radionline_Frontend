@@ -56,6 +56,44 @@ import { isReportReady } from '@/lib/report-status';
 import { printLabels } from '@/lib/print-label';
 import { compareReportsByStudyDateDesc } from '@/lib/report-sort';
 
+function formatPendingAge(createdAt: string, now: number): string | null {
+  const created = Date.parse(createdAt);
+  if (!Number.isFinite(created) || created > now) return null;
+
+  const totalMinutes = Math.floor((now - created) / 60_000);
+  if (totalMinutes < 1) return 'just now';
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+
+  const totalHours = Math.floor(totalMinutes / 60);
+  if (totalHours < 24) return `${totalHours}h ${totalMinutes % 60}m`;
+
+  const days = Math.floor(totalHours / 24);
+  return `${days}d ${totalHours % 24}h`;
+}
+
+function PendingAge({ createdAt }: { createdAt: string }) {
+  const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  if (now === null) return null;
+  const age = formatPendingAge(createdAt, now);
+  if (!age) return null;
+
+  return (
+    <span
+      className="text-[10px] leading-none font-medium text-amber-700 whitespace-nowrap"
+      title={`Pending since ${new Date(createdAt).toLocaleString()}`}
+    >
+      for {age}
+    </span>
+  );
+}
+
 function AllPatientReportsContent() {
   const searchParams = useSearchParams();
   const reportIdParam = searchParams.get('reportId') || searchParams.get('id');
@@ -583,14 +621,17 @@ function AllPatientReportsContent() {
               }
               subtitle={formatPatientDisplayId(report.patientNumber) ? <span className="font-mono font-bold">{report.patientNumber}</span> : undefined}
               aside={
-                <StatusBadge
-                  status={report.status}
-                  isPartial={
-                    report.isPartial ||
-                    ((report.signedStudyCount ?? 0) > 0 &&
-                      (report.signedStudyCount ?? 0) < (report.studyCount ?? report.bodyParts?.length ?? 0))
-                  }
-                />
+                <div className="flex flex-col items-end gap-1">
+                  <StatusBadge
+                    status={report.status}
+                    isPartial={
+                      report.isPartial ||
+                      ((report.signedStudyCount ?? 0) > 0 &&
+                        (report.signedStudyCount ?? 0) < (report.studyCount ?? report.bodyParts?.length ?? 0))
+                    }
+                  />
+                  {report.status === 'Pending' && <PendingAge createdAt={report.createdAt} />}
+                </div>
               }
               tags={
                 <>
