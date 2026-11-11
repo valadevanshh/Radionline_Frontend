@@ -118,7 +118,7 @@ else
 fi
 rm -rf "$STAGE"
 
-if ! command -v node >/dev/null 2>&1 || ! node -v | grep -qE 'v(2[0-9]|[3-9][0-9])'; then
+if ! command -v node >/dev/null 2>&1 || ! node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 20 || (major === 20 && minor >= 9) ? 0 : 1)'; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
   apt-get install -y nodejs
 fi
