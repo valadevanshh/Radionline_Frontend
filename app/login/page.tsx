@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { RadiologyStore } from '@/lib/radiology-store';
-import { ApiClient } from '@/lib/api-client';
+import { ApiClient, apiErrorMessage } from '@/lib/api-client';
 import { TextInput } from '@/components/ui';
 
 export default function LoginPage() {
@@ -26,12 +26,19 @@ export default function LoginPage() {
       RadiologyStore.setSession(result.user);
       // Centre -> All Reports, Doctor -> Live Dashboard, others -> Dashboard
       router.push(result.user?.role === 'CENTER' ? '/dashboard/all-reports' : result.user?.role === 'DOCTOR' ? '/dashboard/live-feed' : '/dashboard');
-    } catch {
+    } catch (err) {
       // Ensure no mock/local session or JWT remains after a failed API login
-      ApiClient.logout();
-      RadiologyStore.logout();
+      try { ApiClient.logout(); } catch { /* Safari private mode may block localStorage */ }
+      try { RadiologyStore.logout(); } catch { /* Safari private mode may block localStorage */ }
       setLoading(false);
-      setError('Invalid username or password. Please check your credentials.');
+      const raw = err instanceof Error ? err.message : String(err ?? '');
+      const isInvalidCredentials = /^API error 401\b/.test(raw);
+      const isStorageError = /localStorage|storage|quota|securityerror/i.test(raw);
+      setError(isInvalidCredentials
+        ? 'Invalid username or password. Please check your credentials.'
+        : isStorageError
+          ? 'Safari could not save your sign-in. Turn off Private Browsing, then reload and try again.'
+          : apiErrorMessage(err, 'Unable to sign in. Please try again.'));
       setErrorKey((k) => k + 1);
     }
   };

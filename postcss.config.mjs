@@ -1,5 +1,7 @@
-import legacySafari from "./postcss-legacy-safari.mjs";
 const config = {
-  plugins: [["@tailwindcss/postcss", {}], legacySafari],
+  plugins: {
+    "@tailwindcss/postcss": {},
+    "./postcss-legacy-safari.cjs": {},
+  },
 };
 export default config;
