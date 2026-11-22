@@ -173,6 +173,15 @@ export default function ReportPreviewModal({
               <h3 className="text-xs font-bold text-slate-100 break-words min-w-0">
                 Report Preview — {report.centerPatientId?.trim() ? `${formatReportPatientId(report.centerPatientId)} (${report.fullName})` : report.fullName}
               </h3>
+              {Boolean((report as any).amendedAt || (activeStudy as any)?.amendedAt) && (
+                <span
+                  className="shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 border border-amber-400/40"
+                  data-testid="amended-label"
+                  title="Patient details were edited after signing"
+                >
+                  Amended
+                </span>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">

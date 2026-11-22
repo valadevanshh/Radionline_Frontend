@@ -543,7 +543,7 @@ export default function ReportTemplateModal({
               <div className="border-t border-slate-900 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-2">
                   <div className="min-w-0 border-b sm:border-b-0 sm:border-r border-slate-300 px-3 py-2">
-                    <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Patient ID</span>
+                    <span className="mb-0.5 block text-[10px] font-medium text-slate-500">ID</span>
                     <span className="block text-sm font-bold text-black font-mono break-all">PID-SAMPLE-TEMPLATE</span>
                   </div>
                   <div className="min-w-0 px-3 py-2">
@@ -557,11 +557,11 @@ export default function ReportTemplateModal({
                     <span className="block text-sm font-bold text-black">45 Yrs / Male</span>
                   </div>
                   <div className="min-w-0 border-b sm:border-b-0 sm:border-r border-slate-300 px-3 py-2">
-                    <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Referring Doctor</span>
+                    <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Ref. By.</span>
                     <span className="block text-sm font-bold text-black">Dr. Attending Physician</span>
                   </div>
                   <div className="min-w-0 px-3 py-2">
-                    <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Report Date</span>
+                    <span className="mb-0.5 block text-[10px] font-medium text-slate-500">Date</span>
                     <span className="block text-sm font-bold text-black font-mono">
                       {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>

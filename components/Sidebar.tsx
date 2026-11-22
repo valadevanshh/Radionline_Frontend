@@ -45,6 +45,7 @@ const FALLBACK_POLL_MS = 10000; // doctors re-check the list this often while th
 // True when a case is still open for this doctor to accept (same rule as the doctor notification list).
 const isReportOpenForDoctor = (r: XRayReport, s: UserAccount | null) => {
   if (r.claimStatus === 'CLAIMED') return false;
+  if (String(r.status || '') !== 'Pending') return false;
   const docId = s?.doctorId || 'doc-1';
   return (
     !r.assignedDoctorIds ||
@@ -53,6 +54,19 @@ const isReportOpenForDoctor = (r: XRayReport, s: UserAccount | null) => {
     r.assignedDoctorId === docId ||
     r.assignedDoctorId === 'ALL'
   );
+};
+
+type NotifFilter = 'action' | 'unread' | 'all' | 'messages' | 'approvals';
+
+/** Match "today" study/created dates used by /reports/stats. */
+const isTodayReport = (r: XRayReport) => {
+  const now = new Date();
+  const dmyDash = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}`;
+  const dmySlash = dmyDash.replace(/-/g, '/');
+  const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const study = String(r.studyDate || '');
+  const created = String(r.createdAt || '');
+  return study === dmyDash || study === dmySlash || study === iso || created.startsWith(iso);
 };
 
 // Styles for the mobile overlays: "More" sheet (slides up) and Notifications panel (drops down).
@@ -260,6 +274,7 @@ export default function Sidebar({
   };
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifFilter, setNotifFilter] = useState<NotifFilter>('action');
   const notifContainerRef = useRef<HTMLDivElement>(null);
 
   // Close notifications popover (and collapse sidebar if open) when clicking anywhere outside
@@ -361,9 +376,27 @@ export default function Sidebar({
 
   // Per-user bell notifications (case reassigned to me, new Case Activity message)
   const [userNotifs, setUserNotifs] = useState<UserNotification[]>([]);
-  const loadUserNotifs = async () => {
+  /** Case ids whose "Signed/Completed today" rows have been seen (leave the badge). */
+  const [seenCaseNotifIds, setSeenCaseNotifIds] = useState<string[]>([]);
+
+  const notifQueryForTab = (tab: NotifFilter): { unreadOnly?: boolean; kind?: string } => {
+    switch (tab) {
+      case 'action':
+      case 'unread':
+        return { unreadOnly: true };
+      case 'messages':
+        return { kind: 'CASE_MESSAGE,CASE_REASSIGNED,REPORT_UPDATED' };
+      case 'approvals':
+        return { kind: 'APPROVAL_REQUEST,APPROVAL_RESULT' };
+      case 'all':
+      default:
+        return {};
+    }
+  };
+
+  const loadUserNotifs = async (tab: NotifFilter = notifFilter) => {
     try {
-      const data = await ApiClient.getMyNotifications();
+      const data = await ApiClient.getMyNotifications(notifQueryForTab(tab));
       setUserNotifs(Array.isArray(data?.items) ? data.items : []);
     } catch {
       // keep the current list; the bell still shows the case list
@@ -371,8 +404,13 @@ export default function Sidebar({
   };
 
   useEffect(() => {
+    loadUserNotifs(notifFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when the tab filter changes
+  }, [notifFilter]);
+
+  useEffect(() => {
     loadBackendReports();
-    loadUserNotifs();
+    loadUserNotifs(notifFilter);
 
     const handleReportsChange = () => loadBackendReports();
     window.addEventListener('radionline_reports_changed', handleReportsChange);
@@ -542,19 +580,45 @@ export default function Sidebar({
         : session?.centerId
         ? [session.centerId]
         : [];
-      return r.status === 'Completed' && (myCenters.length === 0 || myCenters.includes(r.radiologyCenterId));
+      // Only today's signed reports — avoids flooding the bell with old completed cases
+      return (
+        r.status === 'Completed' &&
+        isTodayReport(r) &&
+        (myCenters.length === 0 || myCenters.includes(r.radiologyCenterId))
+      );
     }
     if (session?.role === 'SUPER_ADMIN' || session?.role === 'MANAGER') {
-      return r.status === 'Completed';
+      return r.status === 'Completed' && isTodayReport(r);
     }
     return false;
   });
 
+  // Server already filters by tab; keep a light client pass for unread tabs
+  const filteredUserNotifs =
+    notifFilter === 'unread' || notifFilter === 'action'
+      ? userNotifs.filter((n) => !n.readAt)
+      : userNotifs;
   const unreadUserNotifs = userNotifs.filter((n) => !n.readAt).length;
-  // Bell badge: open cases (using /api/reports/stats when available) + unread personal notifications
-  const countFromStats = session?.role === 'DOCTOR' ? reportsStats?.unclaimed : (session?.role === 'SUPER_ADMIN' || session?.role === 'MANAGER') ? reportsStats?.completed : null;
-  const openCount = countFromStats ?? pendingNotifications.length;
+
+  const showCaseList =
+    notifFilter === 'action' || notifFilter === 'all' || (session?.role === 'DOCTOR' && notifFilter === 'unread');
+
+  const unseenCaseNotifications = pendingNotifications.filter((r) => !seenCaseNotifIds.includes(r.id));
+
+  // Badge: SA/Manager = unread personal only. Doctor = unclaimed + unread.
+  // Centre = unseen "Signed today" + unread (seen rows leave the badge).
+  const openCount =
+    session?.role === 'DOCTOR'
+      ? reportsStats?.unclaimed ?? pendingNotifications.length
+      : session?.role === 'SUPER_ADMIN' || session?.role === 'MANAGER'
+      ? 0
+      : unseenCaseNotifications.length;
   const bellCount = openCount + unreadUserNotifs;
+
+  const markCaseNotifsSeen = (ids: string[]) => {
+    if (!ids.length) return;
+    setSeenCaseNotifIds((prev) => Array.from(new Set([...prev, ...ids])));
+  };
 
   const openUserNotif = (n: UserNotification) => {
     if (!n.readAt) {
@@ -587,8 +651,42 @@ export default function Sidebar({
     return d.toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   };
 
+  const notifFilterTabs: { id: NotifFilter; label: string }[] = [
+    { id: 'action', label: 'Action' },
+    { id: 'unread', label: 'Unread' },
+    { id: 'messages', label: 'Messages' },
+    ...(session?.role === 'SUPER_ADMIN' || session?.role === 'MANAGER'
+      ? [{ id: 'approvals' as NotifFilter, label: 'Approvals' }]
+      : []),
+    { id: 'all', label: 'All' },
+  ];
+
+  const renderNotifFilters = (mobile: boolean) => (
+    <div
+      className={`flex flex-wrap items-center gap-1 ${mobile ? 'px-0.5 pb-1' : 'px-0.5 pb-0.5'}`}
+      data-testid="notif-filters"
+    >
+      {notifFilterTabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          onClick={() => setNotifFilter(tab.id)}
+          className={`${
+            mobile ? 'text-[11px] px-2 py-1' : 'text-[10px] px-1.5 py-0.5'
+          } rounded-md font-bold border transition-colors ${
+            notifFilter === tab.id
+              ? 'bg-[#009ef7] text-white border-[#009ef7]'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+
   const renderUserNotifs = (mobile: boolean) =>
-    userNotifs.length === 0 ? null : (
+    filteredUserNotifs.length === 0 ? null : (
       <div className={mobile ? 'space-y-2' : 'space-y-1.5'} data-testid="user-notifs">
         <div className="flex items-center justify-between px-0.5">
           <span className={mobile ? 'text-[11px] font-bold uppercase tracking-wide text-slate-500' : 'text-[10px] font-bold uppercase tracking-wide text-slate-500'}>
@@ -604,7 +702,7 @@ export default function Sidebar({
             </button>
           )}
         </div>
-        {userNotifs.slice(0, 20).map((n) => (
+        {filteredUserNotifs.slice(0, 20).map((n) => (
           <button
             type="button"
             key={`un-${n.id}`}
@@ -635,41 +733,40 @@ export default function Sidebar({
     );
 
   // Notification list shared by the desktop popover and the mobile notifications panel.
-  // Same data and Accept / Dismiss handlers; the mobile variant only uses larger text and tap targets.
-  const renderNotificationList = (mobile: boolean) => (
-    <>
-      {renderUserNotifs(mobile)}
-      {renderCaseNotificationList(mobile)}
-    </>
-  );
+  const renderNotificationList = (mobile: boolean) => {
+    const empty =
+      filteredUserNotifs.length === 0 && (!showCaseList || pendingNotifications.length === 0);
+    return (
+      <>
+        {renderNotifFilters(mobile)}
+        {renderUserNotifs(mobile)}
+        {showCaseList && renderCaseNotificationList(mobile)}
+        {empty &&
+          (mobile ? (
+            <div className="py-10 flex flex-col items-center gap-2 text-center">
+              <span className="w-11 h-11 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+                <Bell size={20} />
+              </span>
+              <span className="text-[13px] font-semibold text-slate-500">No notifications in this filter</span>
+            </div>
+          ) : (
+            <div className="p-6 text-center text-xs text-slate-400 italic">No notifications in this filter</div>
+          ))}
+      </>
+    );
+  };
 
   const renderCaseNotificationList = (mobile: boolean) =>
-    pendingNotifications.length === 0 ? (
-      userNotifs.length > 0 ? null : (
-      mobile ? (
-        <div className="py-10 flex flex-col items-center gap-2 text-center">
-          <span className="w-11 h-11 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
-            <Bell size={20} />
-          </span>
-          <span className="text-[13px] font-semibold text-slate-500">No active notifications</span>
-        </div>
-      ) : (
-        <div className="p-6 text-center text-xs text-slate-400 italic">
-          No active notifications
-        </div>
-      ))
-    ) : (
+    pendingNotifications.length === 0 ? null : (
       <>
-        {userNotifs.length > 0 && (
-          <div className="flex items-center justify-between px-0.5 pt-1.5">
-            <span className={mobile ? 'text-[11px] font-bold uppercase tracking-wide text-slate-500' : 'text-[10px] font-bold uppercase tracking-wide text-slate-500'}>
-              {session?.role === 'DOCTOR' ? 'Cases to Review' : session?.role === 'CENTER' ? 'Signed Reports' : 'Recent Cases'}
-            </span>
-            <span className="font-mono text-[10px] text-slate-400 font-bold">
-              {pendingNotifications.length}
-            </span>
-          </div>
-        )}
+        <div className="flex items-center justify-between px-0.5 pt-1.5">
+          <span className={mobile ? 'text-[11px] font-bold uppercase tracking-wide text-slate-500' : 'text-[10px] font-bold uppercase tracking-wide text-slate-500'}>
+            {session?.role === 'DOCTOR' ? 'Cases to Review' : session?.role === 'CENTER' ? 'Signed today' : 'Completed today'}
+          </span>
+          <span className="font-mono text-[10px] text-slate-400 font-bold">
+            {pendingNotifications.length}
+          </span>
+        </div>
         {pendingNotifications.map((rep) => {
           const isDoc = session?.role === 'DOCTOR';
           return (
@@ -678,6 +775,7 @@ export default function Sidebar({
               onClick={
                 !isDoc
                   ? () => {
+                      markCaseNotifsSeen([rep.id]);
                       setNotificationsOpen(false);
                       setMobileNotifOpen(false);
                       router.push(`/dashboard/workspace/${rep.id}`);
@@ -905,8 +1003,10 @@ export default function Sidebar({
           <button
             type="button"
             onClick={() => {
-              setNotificationsOpen(!notificationsOpen);
-                          }}
+              const next = !notificationsOpen;
+              setNotificationsOpen(next);
+              if (next) markCaseNotifsSeen(pendingNotifications.map((r) => r.id));
+            }}
             className={`w-full flex items-center gap-2.5 p-2 rounded-lg text-xs font-bold transition-all border ${
               notificationsOpen
                 ? 'bg-sky-50 text-[#009ef7] border-[#009ef7]/40'
@@ -1235,6 +1335,7 @@ export default function Sidebar({
             onClick={() => {
               setMoreOpen(false);
               setMobileNotifOpen(true);
+              markCaseNotifsSeen(pendingNotifications.map((r) => r.id));
             }}
             aria-haspopup="dialog"
             aria-expanded={mobileNotifOpen}

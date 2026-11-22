@@ -32,7 +32,7 @@ import {
   formatDateDDMMYYYY,
 } from '@/lib/radiology-store';
 import { ApiClient, getAccessToken, WS_BASE_URL, apiErrorMessage, isPendingApproval } from '@/lib/api-client';
-import { canDeleteRecords, canEditCase, canUploadCase, canWriteTemplates, showCenterColumn } from '@/lib/access';
+import { canDeleteRecords, canEditCase, canOpenPacsWorkspace, canUploadCase, canWriteTemplates, showCenterColumn } from '@/lib/access';
 import CaseActivityPanel from '@/components/CaseActivityPanel';
 import { RowChatButton, RowEditButton } from '@/components/CaseRowButtons';
 import { toast } from '@/components/ui/Toast';
@@ -235,25 +235,21 @@ function AllPatientReportsContent() {
     setSession(RadiologyStore.getSession());
   };
 
-  // Fetch when page or pageSize changes
+  // Fetch when page, pageSize, or filters change (loadReportsData identity tracks those)
   useEffect(() => {
     loadReportsData(page, pageSize);
   }, [page, pageSize, loadReportsData]);
 
-  // When filters change, reset to page 1 and fetch once
+  // When filters change, reset to page 1. Do NOT depend on loadReportsData here —
+  // that callback is recreated when `page` changes, which would snap pagination
+  // back to page 1 and make Next/Last appear broken.
   useEffect(() => {
     if (isFilterMount.current) {
       isFilterMount.current = false;
       return;
     }
-    setPage((prevPage) => {
-      if (prevPage === 1) {
-        loadReportsData(1, pageSize);
-        return 1;
-      }
-      return 1;
-    });
-  }, [debouncedSearch, filterGender, filterCenterId, filterDoctorId, filterBodyPart, pageSize, loadReportsData]);
+    setPage(1);
+  }, [debouncedSearch, filterGender, filterCenterId, filterDoctorId, filterBodyPart]);
 
   useEffect(() => {
     loadStoreData();
@@ -407,6 +403,7 @@ function AllPatientReportsContent() {
 
   const showCenter = showCenterColumn(session);
   const isDoctor = session?.role === 'DOCTOR';
+  const canPacs = canOpenPacsWorkspace(session);
 
 
 
@@ -739,7 +736,7 @@ function AllPatientReportsContent() {
                     report={report}
                     onSelectOption={handleSelectReportOption}
                   />
-                  {isDoctor && (
+                  {canPacs && (
                     <button
                       type="button"
                       onClick={() => openWorkspace(report)}
@@ -903,7 +900,7 @@ function AllPatientReportsContent() {
                           onSelectOption={handleSelectReportOption}
                         />
 
-                        {isDoctor && (
+                        {canPacs && (
                           <button
                             type="button"
                             onClick={() => openWorkspace(report)}

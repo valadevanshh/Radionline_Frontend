@@ -406,7 +406,7 @@ export function buildReportSourceHtml(payload: PrintReportPayload, opts: ReportS
     <div class="pt-info">
       <div class="pt-grid">
         <div class="pt-row">${ptCell('Patient Name', payload.patientName)}${ptCell('Age / Gender', ageGender)}</div>
-        <div class="pt-row">${ptCell('Patient ID', payload.patientId)}${ptCell('Referring Doctor', payload.referringDoctor)}${ptCell('Report Date', formatReportDate(payload.reportDate || ''))}</div>
+        <div class="pt-row">${ptCell('ID', payload.patientId)}${ptCell('Ref. By.', payload.referringDoctor)}${ptCell('Date', formatReportDate(payload.reportDate || ''))}</div>
       </div>
     </div>
     ${studies}

@@ -110,7 +110,18 @@ export default function PublicReportPage() {
           <ShieldCheck className="w-4 h-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-bold text-slate-900 truncate">Signed radiology report</div>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="text-[13px] font-bold text-slate-900 truncate">Signed radiology report</div>
+            {data.amendedAt && (
+              <span
+                className="shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"
+                data-testid="amended-label"
+                title={`Patient details amended ${new Date(data.amendedAt).toLocaleString()}`}
+              >
+                Amended
+              </span>
+            )}
+          </div>
           <div className="text-[11px] text-slate-500 truncate">{center.name} &middot; read-only</div>
         </div>
         <button

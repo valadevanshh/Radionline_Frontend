@@ -39,7 +39,7 @@ async function main() {
   assert.equal(await render(sample), 1);
   const patientRows = await page.locator('[data-rn-out] .pt-row').evaluateAll(rows => rows.map(row => [...row.querySelectorAll('.pt-cell')].map(cell => ({label:cell.querySelector('.lbl')?.textContent,value:cell.querySelector('.val')?.textContent}))));
   assert.deepEqual(patientRows[0], [{label:'Patient Name',value:'Sample Patient'}, {label:'Age / Gender',value:'35 Y / Female'}]);
-  assert.deepEqual(patientRows[1].map(cell=>cell.label), ['Patient ID', 'Referring Doctor', 'Report Date']);
+  assert.deepEqual(patientRows[1].map(cell=>cell.label), ['ID', 'Ref. By.', 'Date']);
   assert.equal(patientRows[1][0].value, 'CTR-000123');
   assert.equal(await page.locator('[data-rn-out] .pt-info-head').count(),0);
   const border = await page.locator('[data-rn-out] .pt-grid').evaluate(el=>{

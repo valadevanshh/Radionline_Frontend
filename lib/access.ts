@@ -112,6 +112,11 @@ export function canEditCase(
   return false;
 }
 
+/** PACS workspace (eye): doctors and Super Admin may open / edit reports after creation. */
+export function canOpenPacsWorkspace(session: UserAccount | null | undefined): boolean {
+  return session?.role === 'DOCTOR' || session?.role === 'SUPER_ADMIN';
+}
+
 /** Delete: only Super Admin and Manager (Manager's delete waits for Super Admin approval). */
 export function canDeleteRecords(session: UserAccount | null | undefined): boolean {
   return session?.role === 'SUPER_ADMIN' || managerCan(session, 'reports', 'delete');

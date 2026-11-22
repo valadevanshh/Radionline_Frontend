@@ -53,7 +53,7 @@ test('report patient ID preserves centre identifiers and handles missing values'
     const patientId = formatReportPatientId(input);
     assert.equal(patientId, expected);
     const html = buildReportSourceHtml({ ...signaturePayload, patientId });
-    assert.ok(html.includes(`<span class="lbl">Patient ID</span><span class="val">${expected}</span>`));
+    assert.ok(html.includes(`<span class="lbl">ID</span><span class="val">${expected}</span>`));
   }
 });
 

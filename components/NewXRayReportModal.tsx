@@ -698,6 +698,7 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
         setUploadPct(total > 0 ? 100 : null);
         const res = await ApiClient.updateCaseDetails(initialReport.id, {
           fullName: fullName.trim(),
+          centerPatientId: centerPatientId.trim(),
           age: derivedAge,
           ageUnit,
           gender: gender as Gender,
@@ -1325,11 +1326,10 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                     type="text"
                     autoComplete="off"
                     value={centerPatientId}
-                    readOnly={isEdit}
                     onChange={(e) => setCenterPatientId(e.target.value.slice(0, 40))}
                     placeholder="Optional"
                     title="The centre's own patient / registration number"
-                    style={isEdit ? { ...compactField, background: '#f1f5f9', color: '#334155' } : compactField}
+                    style={compactField}
                     className="font-mono"
                     data-testid="center-patient-id-input"
                   />
@@ -1347,21 +1347,12 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                     type="text"
                     autoComplete="off"
                     value={fullName}
-                    readOnly={isEdit}
-                    title={isEdit ? 'Patient name cannot be changed here' : undefined}
                     onChange={(e) => {
-                      if (isEdit) return;
                       setFullName(e.target.value);
                       if (errors.fullName) setErrors((x) => ({ ...x, fullName: '' }));
                     }}
                     placeholder="Patient full name"
-                    style={
-                      isEdit
-                        ? { ...compactField, background: '#f1f5f9', color: '#334155', cursor: 'not-allowed' }
-                        : errors.fullName
-                        ? compactFieldError
-                        : compactField
-                    }
+                    style={errors.fullName ? compactFieldError : compactField}
                     data-testid="patient-name"
                   />
                   <FieldError msg={errors.fullName} />
@@ -1516,7 +1507,6 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                     </div>
                   )}
                 </div>
-                {!isEdit && (
                 <div className="flex items-center gap-2 sm:gap-3 h-8 shrink-0">
                   <label className="inline-flex items-center gap-2 h-7 text-[13px] font-semibold text-slate-800 cursor-pointer" data-testid="urgent-toggle">
                     <input
@@ -1537,7 +1527,6 @@ export default function NewXRayReportModal({ isOpen, onClose, onSave, initialRep
                     Portable
                   </label>
                 </div>
-                )}
               </div>
 
               {!isEdit && (

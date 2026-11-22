@@ -109,6 +109,8 @@ export interface PublicReport {
     signatureScale?: number;
     signedAt?: string | null;
   };
+  /** Latest PATIENT_DETAILS_EDIT time on the signed study, if any */
+  amendedAt?: string | null;
 }
 
 /** Link printed in the report QR code: server base URL when configured, else this site's origin. */
@@ -322,8 +324,13 @@ export interface ReportComment {
   createdAt: string;
 }
 
-// Per-user bell notification (case reassigned to me, new Case Activity message)
-export type UserNotificationKind = 'CASE_REASSIGNED' | 'CASE_MESSAGE';
+// Per-user bell notification kinds from the backend
+export type UserNotificationKind =
+  | 'CASE_REASSIGNED'
+  | 'CASE_MESSAGE'
+  | 'APPROVAL_REQUEST'
+  | 'APPROVAL_RESULT'
+  | 'REPORT_UPDATED';
 
 export interface UserNotification {
   id: number;
@@ -353,6 +360,7 @@ export function isPendingApproval(x: unknown): x is PendingApprovalResult {
 /** Patient details editable after upload (row Edit). Centre / modality / body parts are fixed. */
 export interface CaseDetailsUpdate {
   fullName?: string;
+  centerPatientId?: string;
   age?: number;
   ageUnit?: 'Years' | 'Months' | 'Days';
   gender?: 'Male' | 'Female' | 'Other';
@@ -1291,8 +1299,21 @@ export const ApiClient = {
   },
 
   // Bell notifications for the logged-in user
-  async getMyNotifications() {
-    return fetchJson<{ items: UserNotification[]; unread: number }>('/notifications');
+  async getMyNotifications(params?: {
+    unreadOnly?: boolean;
+    kind?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const q = new URLSearchParams();
+    if (params?.unreadOnly) q.set('unread_only', 'true');
+    if (params?.kind) q.set('kind', params.kind);
+    if (params?.page != null) q.set('page', String(params.page));
+    if (params?.limit != null) q.set('limit', String(params.limit));
+    const qs = q.toString();
+    return fetchJson<{ items: UserNotification[]; unread: number; page?: number; limit?: number }>(
+      `/notifications${qs ? `?${qs}` : ''}`,
+    );
   },
 
   async markNotificationRead(id: number) {
