@@ -89,14 +89,14 @@ export function canUploadCase(session: UserAccount | null | undefined): boolean 
   return false;
 }
 
-/** Row Edit: Super Admin, Manager (approval), centre login with Reports = write on the case's centre. */
-/** t81: a Completed case is read-only for centre and doctor logins (Super Admin can still edit). */
+/** Row Edit: Super Admin, Manager (approval), centre login with Reports = write on the case's centre.
+ *  Centre may edit Completed cases too (staged for Super Admin approval). Doctors stay locked. */
 export function isCompletedLocked(
   session: UserAccount | null | undefined,
   report: { status?: string | null } | null | undefined
 ): boolean {
   if (!session || !report) return false;
-  if (session.role !== 'CENTER' && session.role !== 'DOCTOR') return false;
+  if (session.role !== 'DOCTOR') return false;
   return String(report.status || '') === 'Completed';
 }
 
