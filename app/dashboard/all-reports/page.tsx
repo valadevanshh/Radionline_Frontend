@@ -1,7 +1,7 @@
 'use client';
 
 import { formatAgeShort } from '@/lib/age-format';
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   FileText,
@@ -54,7 +54,6 @@ import { UrgentBadge, PortableBadge } from '@/components/ui/CaseFlags';
 import StudyThumbsRow from '@/components/StudyThumbsRow';
 import { isReportReady } from '@/lib/report-status';
 import { printLabels } from '@/lib/print-label';
-import { compareReportsByStudyDateDesc } from '@/lib/report-sort';
 
 function formatPendingAge(createdAt: string, now: number): string | null {
   const created = Date.parse(createdAt);
@@ -99,6 +98,12 @@ function AllPatientReportsContent() {
   const reportIdParam = searchParams.get('reportId') || searchParams.get('id');
   const searchParam = searchParams.get('search') || searchParams.get('patientNo') || searchParams.get('patientNumber');
   const [reports, setReports] = useState<XRayReport[]>([]);
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(100);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [stats, setStats] = useState<{ total: number; completed: number; pending: number; urgent: number } | null>(null);
+  const [selectAllAcrossPages, setSelectAllAcrossPages] = useState<boolean>(false);
   const [centers, setCenters] = useState<RadiologyCenter[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [session, setSession] = useState<UserAccount | null>(null);
@@ -113,6 +118,16 @@ function AllPatientReportsContent() {
   const [filterPatientNo, setFilterPatientNo] = useState('');
   const [filterBodyPart, setFilterBodyPart] = useState('ALL');
   const [filterDoctorId, setFilterDoctorId] = useState('ALL');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Debounce search input (300 ms) so one request is sent per change
+  useEffect(() => {
+    const raw = (filterName || filterPatientNo || '').trim();
+    const timer = setTimeout(() => {
+      setDebouncedSearch(raw);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [filterName, filterPatientNo]);
 
   const { widths, minimums, resizeColumn, startResizing, tableWidth } = useResizableColumns({
     idx: 64,
@@ -159,29 +174,91 @@ function AllPatientReportsContent() {
     setCreateTemplateOpen(true);
   };
 
+  const requestIdRef = useRef(0);
+  const isFilterMount = useRef(true);
+
+  const loadReportsData = useCallback(async (targetPage = page, targetPageSize = pageSize) => {
+    const currentRequestId = ++requestIdRef.current;
+    try {
+      const searchTerm = debouncedSearch || undefined;
+      const [repRes, statsData] = await Promise.all([
+        ApiClient.getReports({
+          page: targetPage,
+          pageSize: targetPageSize,
+          search: searchTerm,
+          gender: filterGender !== 'ALL' ? filterGender : undefined,
+          centerId: filterCenterId !== 'ALL' ? filterCenterId : undefined,
+          doctorId: filterDoctorId !== 'ALL' ? filterDoctorId : undefined,
+          bodyPart: filterBodyPart !== 'ALL' ? filterBodyPart : undefined,
+        }),
+        ApiClient.getReportsStats({
+          search: searchTerm,
+          gender: filterGender !== 'ALL' ? filterGender : undefined,
+          centerId: filterCenterId !== 'ALL' ? filterCenterId : undefined,
+          doctorId: filterDoctorId !== 'ALL' ? filterDoctorId : undefined,
+          bodyPart: filterBodyPart !== 'ALL' ? filterBodyPart : undefined,
+        }),
+      ]);
+      // Discard stale responses if a newer request was dispatched
+      if (requestIdRef.current !== currentRequestId) return;
+
+      if (repRes && repRes.items) {
+        setReports(repRes.items);
+        setTotalCount(repRes.total ?? repRes.items.length);
+        setTotalPages(repRes.totalPages ?? (Math.ceil((repRes.total ?? repRes.items.length) / targetPageSize) || 1));
+      } else if (Array.isArray(repRes)) {
+        setReports(repRes);
+        setTotalCount(repRes.length);
+        setTotalPages(Math.ceil(repRes.length / targetPageSize) || 1);
+      }
+      setStats(statsData);
+    } catch (err: any) {
+      if (requestIdRef.current !== currentRequestId) return;
+      const msg = err?.message || err?.detail || 'Failed to load reports from server.';
+      toast.error(msg);
+    }
+  }, [page, pageSize, debouncedSearch, filterGender, filterCenterId, filterDoctorId, filterBodyPart]);
+
   const loadStoreData = async () => {
     try {
-      const [repData, centerData, docData] = await Promise.all([
-        ApiClient.getReports(),
+      const [centerData, docData] = await Promise.all([
         ApiClient.getCenters(),
         ApiClient.getDoctors(),
       ]);
-      setReports(repData);
       if (centerData.length > 0) RadiologyStore.setCenters(centerData);
       setCenters(centerData.length > 0 ? centerData : RadiologyStore.getCenters());
       setDoctors(docData.length > 0 ? docData : RadiologyStore.getDoctors());
     } catch {
-      setReports(RadiologyStore.getReports());
       setCenters(RadiologyStore.getCenters());
       setDoctors(RadiologyStore.getDoctors());
     }
     setSession(RadiologyStore.getSession());
   };
 
+  // Fetch when page or pageSize changes
+  useEffect(() => {
+    loadReportsData(page, pageSize);
+  }, [page, pageSize, loadReportsData]);
+
+  // When filters change, reset to page 1 and fetch once
+  useEffect(() => {
+    if (isFilterMount.current) {
+      isFilterMount.current = false;
+      return;
+    }
+    setPage((prevPage) => {
+      if (prevPage === 1) {
+        loadReportsData(1, pageSize);
+        return 1;
+      }
+      return 1;
+    });
+  }, [debouncedSearch, filterGender, filterCenterId, filterDoctorId, filterBodyPart, pageSize, loadReportsData]);
+
   useEffect(() => {
     loadStoreData();
 
-    const handleReportsChanged = () => loadStoreData();
+    const handleReportsChanged = () => loadReportsData();
     const handleSessionChanged = () => loadStoreData();
 
     window.addEventListener('radionline_reports_changed', handleReportsChanged);
@@ -197,31 +274,8 @@ function AllPatientReportsContent() {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.type === 'CASE_DELETED' || data.type === 'CASE_UPDATED') {
-            loadStoreData();
-            return;
-          }
-          if (data.type === 'NEW_REPORT' || data.type === 'REPORT_CLAIMED' || data.type === 'REPORT_REJECTED') {
-            if (data.type === 'REPORT_CLAIMED') {
-              const claimedId = data.reportId || data.report?.id;
-              const claimedBy = data.claimedByDoctorId;
-              const currentDocId = session?.doctorId || session?.email;
-              if (session?.role === 'DOCTOR' && claimedBy && claimedBy !== currentDocId && claimedBy !== session?.email) {
-                setReports((prev) => prev.filter((r) => r.id !== claimedId));
-                return;
-              }
-              if (session?.role === 'CENTER') {
-                const centerIds = new Set(session.centers?.map((c) => c.centerId) || (session.centerId ? [session.centerId] : []));
-                if (data.report && centerIds.size > 0 && !centerIds.has(data.report.radiologyCenterId)) {
-                  setReports((prev) => prev.filter((r) => r.id !== claimedId));
-                  return;
-                }
-              }
-            }
-            if (data.report) {
-              RadiologyStore.saveReport(data.report);
-            }
-            loadStoreData();
+          if (data.type === 'CASE_DELETED' || data.type === 'CASE_UPDATED' || data.type === 'NEW_REPORT' || data.type === 'REPORT_CLAIMED' || data.type === 'REPORT_REJECTED') {
+            loadReportsData();
           }
         } catch (e) {
           console.error('WS message parse error:', e);
@@ -236,7 +290,7 @@ function AllPatientReportsContent() {
       window.removeEventListener('radionline_session_changed', handleSessionChanged);
       if (ws) ws.close();
     };
-  }, []);
+  }, [loadReportsData]);
 
   useEffect(() => {
     if (searchParam) {
@@ -252,60 +306,8 @@ function AllPatientReportsContent() {
     }
   }, [searchParam, reportIdParam, reports]);
 
-
-  const filteredReports = useMemo(() => {
-    const list = reports.filter((r) => {
-      if (
-        filterName &&
-        !r.fullName.toLowerCase().includes(filterName.toLowerCase()) &&
-        !(r.patientNumber || '').toLowerCase().includes(filterName.trim().toLowerCase())
-      )
-        return false;
-      if (filterGender !== 'ALL' && r.gender !== filterGender) return false;
-      if (filterCenterId !== 'ALL' && r.radiologyCenterId !== filterCenterId) return false;
-      if (filterPatientNo && !r.patientNumber.toLowerCase().includes(filterPatientNo.toLowerCase())) return false;
-      if (filterBodyPart !== 'ALL') {
-        const matches = r.bodyParts.some((bp) => bp.toLowerCase().includes(filterBodyPart.toLowerCase()));
-        if (!matches) return false;
-      }
-      if (filterDoctorId !== 'ALL' && r.assignedDoctorId !== filterDoctorId && r.referringPhysicianId !== filterDoctorId) return false;
-      
-      // 1. Center isolation: If logged in as CENTER, other centers\' uploads must not be visible
-      if (session?.role === 'CENTER') {
-        const centerIds = new Set(
-          session.centers?.map((c) => c.centerId) || (session.centerId ? [session.centerId] : [])
-        );
-        if (centerIds.size > 0 && !centerIds.has(r.radiologyCenterId)) {
-          return false;
-        }
-      }
-
-      // 2. Doctor isolation: If any doctor accepts the upload, other doctors must not see that data
-      if (session?.role === 'DOCTOR') {
-        const docId = session.doctorId || session.email || '';
-        const isClaimed = Boolean(
-          (r.claimStatus === 'CLAIMED') ||
-          (r.claimedByDoctorId && r.claimedByDoctorId !== 'UNCLAIMED') ||
-          (r.status === 'In Review' || r.status === 'Completed') ||
-          (r.studies && r.studies.some((s) => s.claimedBy && s.claimedBy !== 'UNCLAIMED'))
-        );
-        if (isClaimed) {
-          const isMine = Boolean(
-            (r.claimedByDoctorId && (r.claimedByDoctorId === docId || r.claimedByDoctorId === session.email)) ||
-            (r.assignedDoctorId && (r.assignedDoctorId === docId || r.assignedDoctorId === session.email)) ||
-            (r.studies && r.studies.some((s) => s.claimedBy === docId || s.claimedBy === session.email))
-          );
-          if (!isMine) {
-            return false;
-          }
-        }
-      }
-
-      return true;
-    });
-
-    return list.sort(compareReportsByStudyDateDesc);
-  }, [reports, filterName, filterGender, filterCenterId, filterPatientNo, filterBodyPart, filterDoctorId, session]);
+  // Server-side filtered and sorted reports
+  const filteredReports = reports;
 
   const handleResetFilters = () => {
     setFilterName('');
@@ -314,6 +316,9 @@ function AllPatientReportsContent() {
     setFilterPatientNo('');
     setFilterBodyPart('ALL');
     setFilterDoctorId('ALL');
+    setPage(1);
+    setSelectAllAcrossPages(false);
+    setSelectedIds(new Set());
   };
 
   const handleSelectReportOption = (report: XRayReport, withHeader: boolean, bodyPart?: string, letterheadId?: string) => {
@@ -407,14 +412,52 @@ function AllPatientReportsContent() {
 
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
-  // Summary (merged from the old Overview page)
+  // Summary (merged from the old Overview page; totals and completed come from /api/reports/stats)
   const totals = useMemo(() => {
+    if (stats) {
+      return { total: stats.total, completed: stats.completed, pending: stats.pending };
+    }
     const completed = filteredReports.filter((r) => r.status === 'Completed').length;
-    return { total: filteredReports.length, completed, pending: filteredReports.length - completed };
-  }, [filteredReports]);
+    return { total: totalCount || filteredReports.length, completed, pending: (totalCount || filteredReports.length) - completed };
+  }, [stats, filteredReports, totalCount]);
+
   const selectedReports = filteredReports.filter((r) => selectedIds.has(r.id));
-  const allSelected = filteredReports.length > 0 && selectedReports.length === filteredReports.length;
-  const handlePrintLabels = () => {
+  const allCurrentPageSelected = filteredReports.length > 0 && filteredReports.every((r) => selectedIds.has(r.id));
+  const allSelected = selectAllAcrossPages || allCurrentPageSelected;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+      setSelectAllAcrossPages(false);
+    } else {
+      setSelectedIds(new Set(filteredReports.map((r) => r.id)));
+    }
+  };
+
+  const handlePrintLabels = async () => {
+    if (selectAllAcrossPages) {
+      toast.info('Fetching all filtered records for print...');
+      try {
+        const searchTerm = debouncedSearch || undefined;
+        const allItems = await ApiClient.exportReports({
+          search: searchTerm,
+          gender: filterGender !== 'ALL' ? filterGender : undefined,
+          centerId: filterCenterId !== 'ALL' ? filterCenterId : undefined,
+          doctorId: filterDoctorId !== 'ALL' ? filterDoctorId : undefined,
+          bodyPart: filterBodyPart !== 'ALL' ? filterBodyPart : undefined,
+        });
+        if (!allItems.length) {
+          toast.error('No matching reports found to print.');
+          return;
+        }
+        if (!printLabels(allItems)) toast.error('Could not open the print dialog.');
+      } catch (err: any) {
+        const msg = err?.message || err?.detail || 'Failed to export all records for printing.';
+        toast.error(msg);
+      }
+      return;
+    }
+
     if (!selectedReports.length) return;
     if (!printLabels(selectedReports)) toast.error('Could not open the print dialog.');
   };
@@ -449,13 +492,13 @@ function AllPatientReportsContent() {
           <button
             type="button"
             onClick={handlePrintLabels}
-            disabled={!selectedReports.length}
+            disabled={!selectAllAcrossPages && !selectedReports.length}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold font-mono rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={selectedReports.length ? `Print ${selectedReports.length} label(s)` : 'Tick rows to print labels'}
+            title={selectAllAcrossPages ? `Print all ${totalCount} matching label(s)` : selectedReports.length ? `Print ${selectedReports.length} label(s)` : 'Tick rows to print labels'}
             data-testid="print-label-btn"
           >
             <Tag className="w-3.5 h-3.5 text-[#009ef7]" />
-            <span className="hidden sm:inline">Print Label{selectedReports.length ? ` (${selectedReports.length})` : ''}</span>
+            <span className="hidden sm:inline">Print Label{selectAllAcrossPages ? ` (${totalCount})` : selectedReports.length ? ` (${selectedReports.length})` : ''}</span>
           </button>
           {canWriteTemplates(session) && (
             <button
@@ -603,8 +646,41 @@ function AllPatientReportsContent() {
         </div>
       </div>
 
+      {/* Select All Across Pages Banner */}
+      {allCurrentPageSelected && totalCount > filteredReports.length && (
+        <div className="bg-sky-50 border-b border-sky-200 px-4 py-2 text-xs text-sky-900 flex items-center justify-between shrink-0" data-testid="select-all-banner">
+          <span>
+            {selectAllAcrossPages
+              ? `All ${totalCount} records across all pages are selected.`
+              : `All ${filteredReports.length} records on this page are selected.`}
+          </span>
+          {!selectAllAcrossPages ? (
+            <button
+              type="button"
+              onClick={() => setSelectAllAcrossPages(true)}
+              className="font-bold underline text-sky-700 hover:text-sky-900 cursor-pointer ml-2"
+              data-testid="select-all-pages-btn"
+            >
+              Select all {totalCount} matching records
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectAllAcrossPages(false);
+                setSelectedIds(new Set());
+              }}
+              className="font-bold underline text-sky-700 hover:text-sky-900 cursor-pointer ml-2"
+              data-testid="clear-selection-btn"
+            >
+              Clear selection
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Main Container: Mobile Card Layout + Desktop Table Layout */}
-      <div className="flex-1 overflow-y-auto bg-slate-50">
+      <div className="flex-1 overflow-y-auto bg-slate-50 flex flex-col min-h-0">
         
         {/* Phones: compact case cards (shared RowCard pattern, < md) */}
         <RowCardList isEmpty={filteredReports.length === 0} empty="No matching radiology reports found." testId="all-reports-cards">
@@ -703,7 +779,7 @@ function AllPatientReportsContent() {
                   <input
                     type="checkbox"
                     checked={allSelected}
-                    onChange={() => setSelectedIds(allSelected ? new Set() : new Set(filteredReports.map((r) => r.id)))}
+                    onChange={toggleSelectAll}
                     aria-label="Select all rows"
                     className="w-3.5 h-3.5 accent-[#009ef7] align-middle"
                     data-testid="select-all"
@@ -867,6 +943,85 @@ function AllPatientReportsContent() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Footer */}
+        <div
+          className="bg-white border-t border-slate-200 px-4 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-2 shrink-0 text-xs text-slate-600 font-sans"
+          data-testid="pagination-controls"
+        >
+          <div className="flex items-center gap-2">
+            <span>
+              Showing {totalCount === 0 ? 0 : (page - 1) * pageSize + 1} to{' '}
+              {Math.min(page * pageSize, totalCount)} of {totalCount} entries
+            </span>
+            <span className="text-slate-300">|</span>
+            <label className="flex items-center gap-1.5">
+              <span>Per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  const newSize = Number(e.target.value);
+                  setPageSize(newSize);
+                  setPage(1);
+                }}
+                className="bg-slate-50 border border-slate-300 rounded px-2 py-0.5 text-xs text-slate-800 focus:outline-none focus:border-[#009ef7]"
+                data-testid="page-size-select"
+              >
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage(1)}
+              className="px-2 py-1 rounded border border-slate-300 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+              title="First Page"
+              data-testid="first-page"
+            >
+              « First
+            </button>
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="px-2.5 py-1 rounded border border-slate-300 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+              title="Previous Page"
+              data-testid="prev-page"
+            >
+              ‹ Prev
+            </button>
+            <span className="px-2 font-mono font-bold text-slate-800">
+              Page {page} of {Math.max(1, totalPages)}
+            </span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="px-2.5 py-1 rounded border border-slate-300 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+              title="Next Page"
+              data-testid="next-page"
+            >
+              Next ›
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage(totalPages)}
+              className="px-2 py-1 rounded border border-slate-300 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+              title="Last Page"
+              data-testid="last-page"
+            >
+              Last »
+            </button>
+          </div>
         </div>
 
       </div>

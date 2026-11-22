@@ -40,6 +40,7 @@ import ReportPreviewModal from '@/components/ReportPreviewModal';
 
 export default function DashboardOverviewPage() {
   const [reports, setReports] = useState<XRayReport[]>([]);
+  const [stats, setStats] = useState<{ total: number; completed: number; pending: number; urgent: number; doctorCount: number; in_review?: number; unclaimed?: number; today?: number } | null>(null);
   const [doctorCount, setDoctorCount] = useState<number>(0);
   const [isNewReportModalOpen, setIsNewReportModalOpen] = useState<boolean>(false);
   const [session, setSession] = useState<UserAccount | null>(null);
@@ -71,14 +72,16 @@ export default function DashboardOverviewPage() {
     const sess = RadiologyStore.getSession();
     setSession(sess);
     try {
-      const [reps, docs] = await Promise.all([
-        ApiClient.getReports(),
+      const [statsData, reps, docs] = await Promise.all([
+        ApiClient.getReportsStats(),
+        ApiClient.getReports({ page: 1, pageSize: 50 }),
         ApiClient.getDoctors(),
       ]);
-      setReports(reps);
-      setDoctorCount(docs.length);
+      setStats(statsData);
+      setReports(Array.isArray(reps?.items) ? reps.items : Array.isArray(reps) ? reps : []);
+      setDoctorCount(statsData?.doctorCount ?? docs.length);
     } catch {
-      setReports(RadiologyStore.getReports());
+      setReports(RadiologyStore.getReports().slice(0, 50));
       setDoctorCount(RadiologyStore.getDoctors().length);
     }
 
@@ -154,11 +157,11 @@ export default function DashboardOverviewPage() {
     });
   }, [reports, session]);
 
-  const completedCount = visibleReports.filter((r: XRayReport) => r.status === 'Completed').length;
-  const pendingCount = visibleReports.filter((r: XRayReport) => r.status !== 'Completed').length;
-  const urgentCount = visibleReports.filter((r: XRayReport) => r.isUrgent && r.status !== 'Completed').length;
+  const completedCount = stats?.completed ?? visibleReports.filter((r: XRayReport) => r.status === 'Completed').length;
+  const pendingCount = stats?.pending ?? visibleReports.filter((r: XRayReport) => r.status !== 'Completed').length;
+  const urgentCount = stats?.urgent ?? visibleReports.filter((r: XRayReport) => r.isUrgent && r.status !== 'Completed').length;
   const todayDmy = (() => { const d = new Date(); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; })();
-  const todayCount = visibleReports.filter((r: XRayReport) => formatDateDDMMYYYY(r.studyDate) === todayDmy).length;
+  const todayCount = stats?.today ?? visibleReports.filter((r: XRayReport) => formatDateDDMMYYYY(r.studyDate) === todayDmy).length;
 
   // Upload Image: errors go back to the dialog (it stays open); a Manager's upload waits for approval.
   const handleSaveNewReport = async (reportData: NewCasePayload) => {
@@ -261,11 +264,13 @@ export default function DashboardOverviewPage() {
           keys.forEach((k) => { if (k) m.set(k, (m.get(k) || 0) + 1); });
           return [...m.entries()].sort((x, y) => y[1] - x[1]);
         };
-        const total = visibleReports.length;
+        const total = stats?.total ?? visibleReports.length;
         const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+        const inReviewCount = stats?.in_review ?? visibleReports.filter((r) => r.status === 'In Review').length;
+        const pendingStatusCount = stats?.unclaimed ?? (stats ? Math.max(0, (stats.pending ?? 0) - inReviewCount) : visibleReports.filter((r) => r.status === 'Pending').length);
         const statusRows: [string, number, string, string][] = [
-          ['Pending', visibleReports.filter((r) => r.status === 'Pending').length, 'from-amber-400 to-orange-400', '#fbbf24'],
-          ['In Review', visibleReports.filter((r) => r.status === 'In Review').length, 'from-sky-400 to-blue-500', '#38bdf8'],
+          ['Pending', pendingStatusCount, 'from-amber-400 to-orange-400', '#fbbf24'],
+          ['In Review', inReviewCount, 'from-sky-400 to-blue-500', '#38bdf8'],
           ['Signed', completedCount, 'from-emerald-400 to-teal-500', '#10b981'],
         ];
         const allCentres = tally(visibleReports.map((r) => r.radiologyCenterName || ''));

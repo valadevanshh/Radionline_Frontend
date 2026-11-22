@@ -33,6 +33,7 @@ const FALLBACK_POLL_MS = 10000;
 
 export default function LiveDashboardPage() {
   const [reports, setReports] = useState<XRayReport[]>([]);
+  const [stats, setStats] = useState<{ total: number; completed: number; pending: number; urgent: number; in_review?: number; unclaimed?: number; today?: number } | null>(null);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [toastNotice, setToastNotice] = useState<string | null>(null);
   const [toastKey, setToastKey] = useState(0);
@@ -76,8 +77,12 @@ export default function LiveDashboardPage() {
 
   const loadReports = async () => {
     try {
-      const data = await ApiClient.getReports();
-      setReports(data);
+      const [statsData, repData] = await Promise.all([
+        ApiClient.getReportsStats(),
+        ApiClient.getReports({ page: 1, pageSize: 50, status: 'Pending' }),
+      ]);
+      setStats(statsData);
+      setReports(Array.isArray(repData?.items) ? repData.items : Array.isArray(repData) ? repData : []);
     } catch {
       setReports(RadiologyStore.getReports());
     }
@@ -284,7 +289,7 @@ export default function LiveDashboardPage() {
                 <span>Incoming Live Patient Cases</span>
               </h2>
               <span className="px-2 py-0.5 bg-rose-100 text-rose-700 font-bold text-[10px] rounded-full border border-rose-200">
-                {incomingPendingReports.length} Waiting
+                {stats?.unclaimed ?? incomingPendingReports.length} Waiting
               </span>
             </div>
           </div>

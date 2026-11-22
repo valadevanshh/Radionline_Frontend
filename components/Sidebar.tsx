@@ -310,6 +310,7 @@ export default function Sidebar({
     };
   }, [notificationsOpen, pinnedCollapsed, onToggleCollapse, mobileOpen, onCloseMobile]);
   const [liveReports, setLiveReports] = useState<XRayReport[]>([]);
+  const [reportsStats, setReportsStats] = useState<{ total: number; completed: number; pending: number; urgent: number; in_review?: number; unclaimed?: number; today?: number } | null>(null);
   const [rejectedIds, setRejectedIds] = useState<string[]>([]);
   const [toastNotice, setToastNotice] = useState<string | null>(null);
   const [toastKey, setToastKey] = useState(0);
@@ -347,10 +348,14 @@ export default function Sidebar({
 
   const loadBackendReports = async () => {
     try {
-      const data = await ApiClient.getReports();
-      setLiveReports(data);
+      const [statsData, repData] = await Promise.all([
+        ApiClient.getReportsStats(),
+        ApiClient.getReports({ page: 1, pageSize: 20 }),
+      ]);
+      setReportsStats(statsData);
+      setLiveReports(Array.isArray(repData?.items) ? repData.items : Array.isArray(repData) ? repData : []);
     } catch {
-      setLiveReports(RadiologyStore.getReports());
+      setLiveReports(RadiologyStore.getReports().slice(0, 20));
     }
   };
 
@@ -546,8 +551,10 @@ export default function Sidebar({
   });
 
   const unreadUserNotifs = userNotifs.filter((n) => !n.readAt).length;
-  // Bell badge: open cases (existing rule) + unread personal notifications
-  const bellCount = pendingNotifications.length + unreadUserNotifs;
+  // Bell badge: open cases (using /api/reports/stats when available) + unread personal notifications
+  const countFromStats = session?.role === 'DOCTOR' ? reportsStats?.unclaimed : (session?.role === 'SUPER_ADMIN' || session?.role === 'MANAGER') ? reportsStats?.completed : null;
+  const openCount = countFromStats ?? pendingNotifications.length;
+  const bellCount = openCount + unreadUserNotifs;
 
   const openUserNotif = (n: UserNotification) => {
     if (!n.readAt) {

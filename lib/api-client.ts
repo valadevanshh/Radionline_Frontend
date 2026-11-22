@@ -470,8 +470,137 @@ export const ApiClient = {
   },
 
   // Reports
-  async getReports() {
-    return fetchJson<XRayReport[]>('/reports');
+  async getReports(params?: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    status?: string;
+    centerId?: string;
+    centre?: string;
+    doctorId?: string;
+    doctor?: string;
+    bodyPart?: string;
+    gender?: string;
+    isUrgent?: boolean;
+    urgent?: boolean;
+    fromDate?: string;
+    toDate?: string;
+  }): Promise<any> {
+    const q = new URLSearchParams();
+    if (params) {
+      if (params.page != null) q.append('page', String(params.page));
+      if (params.pageSize != null) q.append('page_size', String(params.pageSize));
+      if (params.search) q.append('search', params.search);
+      if (params.status) q.append('status', params.status);
+      const cid = params.centerId || params.centre;
+      if (cid && cid !== 'ALL') q.append('center_id', cid);
+      const did = params.doctorId || params.doctor;
+      if (did && did !== 'ALL') q.append('doctor_id', did);
+      if (params.bodyPart && params.bodyPart !== 'ALL') q.append('body_part', params.bodyPart);
+      if (params.gender && params.gender !== 'ALL') q.append('gender', params.gender);
+      const urg = params.isUrgent !== undefined ? params.isUrgent : params.urgent;
+      if (urg !== undefined) q.append('is_urgent', String(urg));
+      if (params.fromDate) q.append('from_date', params.fromDate);
+      if (params.toDate) q.append('to_date', params.toDate);
+    }
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    const res = await fetchJson<any>(`/reports${qs}`);
+    if (res && typeof res === 'object' && Array.isArray(res.items)) {
+      return {
+        items: res.items,
+        total: res.total ?? res.items.length,
+        page: res.page ?? (params?.page || 1),
+        pageSize: res.page_size ?? (params?.pageSize || res.items.length),
+        totalPages: res.total_pages ?? 1,
+      };
+    }
+    return res;
+  },
+
+  async getReportsStats(params?: {
+    search?: string;
+    status?: string;
+    centerId?: string;
+    centre?: string;
+    doctorId?: string;
+    doctor?: string;
+    bodyPart?: string;
+    body_part?: string;
+    gender?: string;
+    isUrgent?: boolean;
+    urgent?: boolean;
+    fromDate?: string;
+    from_date?: string;
+    toDate?: string;
+    to_date?: string;
+  }) {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.status) q.set('status', params.status);
+    const cid = params?.centerId || params?.centre;
+    if (cid && cid !== 'ALL') q.set('center_id', cid);
+    const did = params?.doctorId || params?.doctor;
+    if (did && did !== 'ALL') q.set('doctor_id', did);
+    const bp = params?.bodyPart || params?.body_part;
+    if (bp && bp !== 'ALL') q.set('body_part', bp);
+    if (params?.gender && params.gender !== 'ALL') q.set('gender', params.gender);
+    const urg = params?.isUrgent ?? params?.urgent;
+    if (urg !== undefined) q.set('is_urgent', String(urg));
+    const fd = params?.fromDate || params?.from_date;
+    if (fd) q.set('from_date', fd);
+    const td = params?.toDate || params?.to_date;
+    if (td) q.set('to_date', td);
+    const qs = q.toString();
+    return fetchJson<{
+      total: number;
+      completed: number;
+      pending: number;
+      urgent: number;
+      in_review?: number;
+      unclaimed?: number;
+      today?: number;
+      doctorCount: number;
+    }>(`/reports/stats${qs ? `?${qs}` : ''}`);
+  },
+
+  async exportReports(params?: {
+    search?: string;
+    status?: string;
+    centerId?: string;
+    centre?: string;
+    doctorId?: string;
+    doctor?: string;
+    bodyPart?: string;
+    gender?: string;
+    isUrgent?: boolean;
+    urgent?: boolean;
+    fromDate?: string;
+    toDate?: string;
+  }) {
+    const q = new URLSearchParams();
+    if (params) {
+      if (params.search) q.append('search', params.search);
+      if (params.status) q.append('status', params.status);
+      const cid = params.centerId || params.centre;
+      if (cid && cid !== 'ALL') q.append('center_id', cid);
+      const did = params.doctorId || params.doctor;
+      if (did && did !== 'ALL') q.append('doctor_id', did);
+      if (params.bodyPart && params.bodyPart !== 'ALL') q.append('body_part', params.bodyPart);
+      if (params.gender && params.gender !== 'ALL') q.append('gender', params.gender);
+      const urg = params.isUrgent !== undefined ? params.isUrgent : params.urgent;
+      if (urg !== undefined) q.append('is_urgent', String(urg));
+      if (params.fromDate) q.append('from_date', params.fromDate);
+      if (params.toDate) q.append('to_date', params.toDate);
+    }
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    const res = await fetchJson<any>(`/reports/export${qs}`);
+    if (res && Array.isArray(res.items)) {
+      return res.items as XRayReport[];
+    }
+    if (Array.isArray(res)) {
+      return res as XRayReport[];
+    }
+    return [];
   },
 
   async getMyWork(params?: {
