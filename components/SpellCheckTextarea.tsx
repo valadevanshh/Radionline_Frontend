@@ -47,7 +47,9 @@ export default function SpellCheckTextarea({
     const bd = backdropRef.current;
     if (!ta) return;
     ta.style.height = 'auto';
-    const next = Math.max(ta.scrollHeight, minHeightPx ?? rows * 20);
+    // minHeightPx={0} must not disable the row floor — empty editors need a tappable line.
+    const floor = minHeightPx && minHeightPx > 0 ? minHeightPx : rows * 20;
+    const next = Math.max(ta.scrollHeight, floor);
     ta.style.height = `${next}px`;
     if (bd) bd.style.height = `${next}px`;
   }, [rows, minHeightPx]);
@@ -144,7 +146,7 @@ export default function SpellCheckTextarea({
         }}
         placeholder={placeholder}
         spellCheck={false}
-        className={`relative z-10 w-full p-0 bg-transparent caret-slate-900 outline-none border-0 resize-none overflow-hidden whitespace-pre-wrap break-words touch-pan-y select-text ${fontClass}`}
+        className={`rn-spellcheck-ta relative z-10 w-full p-0 bg-transparent caret-slate-900 outline-none border-0 resize-none overflow-hidden whitespace-pre-wrap break-words touch-pan-y select-text ${fontClass}`}
         style={{
           boxSizing: 'border-box',
           scrollbarWidth: 'none',
@@ -160,6 +162,13 @@ export default function SpellCheckTextarea({
           caretColor: '#0f172a',
         }}
       />
+      <style>{`
+        textarea.rn-spellcheck-ta::placeholder {
+          color: #94a3b8;
+          -webkit-text-fill-color: #94a3b8;
+          opacity: 1;
+        }
+      `}</style>
     </div>
   );
 }

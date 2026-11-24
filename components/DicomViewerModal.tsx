@@ -306,7 +306,10 @@ export default function DicomViewerModal({
     });
   const [gridLayout, setGridLayout] = useState<GridLayout>('1x1');
   const [activeViewportIdx, setActiveViewportIdx] = useState(0);
-  const [mobileActiveView, setMobileActiveView] = useState<'dicom' | 'report'>('dicom');
+  // Phones open on Report so the doctor can type immediately after accepting a case.
+  const [mobileActiveView, setMobileActiveView] = useState<'dicom' | 'report'>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches ? 'report' : 'dicom'
+  );
   const [showToolsDrawer, setShowToolsDrawer] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
@@ -380,6 +383,9 @@ export default function DicomViewerModal({
     // A text field being edited (focused) or holding a selection keeps its own touch behaviour
     const field = el.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]');
     if (field && (field.contains(document.activeElement) || hasTextSelection())) return false;
+    // On the Report tab, only the Viewer|Report tab bar may switch panes — keeps Doc typing stable.
+    if (!fromTabBar && mobileActiveView === 'report') return false;
+    if (el.closest('[data-testid="report-page-viewport"]')) return false;
     if (fromTabBar) return true;
     // Even edge drags on the image are image pans, never navigation swipes.
     if (el.closest('[data-pacs-image-viewport]')) return false;
@@ -497,12 +503,9 @@ export default function DicomViewerModal({
   const [reportTitle, setReportTitle] = useState(
     report?.bodyParts?.length ? `X-RAY ${report.bodyParts.join(' & ').toUpperCase()} EXAMINATION` : 'X-RAY EXAMINATION'
   );
-  const [findingText, setFindingText] = useState(
-    report?.findings || (report?.reportsByBodyPart && Object.values(report.reportsByBodyPart).join('\n\n')) || ''
-  );
-  const [impressionText, setImpressionText] = useState(
-    report?.impression || (report?.impressionsByBodyPart && Object.values(report.impressionsByBodyPart).join('\n\n')) || ''
-  );
+  // Always start empty; initFromReport is the single source of truth for drafts.
+  const [findingText, setFindingText] = useState('');
+  const [impressionText, setImpressionText] = useState('');
 
 
   const handleOpenSaveTemplate = () => {
@@ -593,6 +596,10 @@ export default function DicomViewerModal({
 
   useEffect(() => {
     if (!isOpen) return;
+    // After accept → workspace, land on Report on phones so typing is available immediately.
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
+      setMobileActiveView('report');
+    }
 
     let cancelled = false;
     templateManualRef.current = false;
@@ -826,6 +833,11 @@ export default function DicomViewerModal({
   const setPageViewportEl = useCallback((el: HTMLDivElement | null) => {
     if (!pageRO.current && typeof ResizeObserver !== 'undefined') {
       pageRO.current = new ResizeObserver(() => {
+        // Freeze sheet scale while a report field is focused (mobile keyboard resize).
+        const ae = document.activeElement as HTMLElement | null;
+        if (ae && ae.closest?.('[data-testid="report-page-viewport"]') && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT')) {
+          return;
+        }
         if (pageVpEl.current) setPageViewportW(pageVpEl.current.clientWidth);
       });
     }
@@ -1854,6 +1866,53 @@ export default function DicomViewerModal({
     };
   };
 
+  // Stable screen payload so async doctor/center loads do not remount the editor mid-keystroke
+  // more than necessary (A4ReportEditor still reflows when findings/impression change).
+  const screenPrintPayload = React.useMemo(
+    () => buildPrintPayload(true),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only rebuild when report chrome/text inputs change
+    [
+      findingText,
+      impressionText,
+      reportTitle,
+      sheetActivePart,
+      techniqueText,
+      radiologyCenterName,
+      centerAddress,
+      centerPhone,
+      centerHeaderUrl,
+      centerLogoUrl,
+      patientName,
+      reportPatientId,
+      studyDate,
+      activeReportDate,
+      referringDoctorName,
+      studyModality,
+      doctorName,
+      doctorDegree,
+      doctorRegNo,
+      doctorSignatureUrl,
+      sheetReportedAt,
+      sheetFontPt,
+      sheetFontStack,
+      findingsCss,
+      sheetQrSvg,
+      qrLink,
+      effectiveWithHeader,
+      report?.id,
+      report?.gender,
+      report?.age,
+      report?.ageUnit,
+      report?.clinicalNotes,
+      report?.isPortable,
+      centerRecord?.letterheadMode,
+      centerRecord?.reportLayout,
+      frozenSigner?.signatureScale,
+      reportingDoctorRecord?.signatureScale,
+      activeStudyInfo?.id,
+    ],
+  );
+
   const handlePrintCurrentStudy = () => {
     const payload = buildPrintPayload();
     const safe = (s: string) => (s || '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
@@ -1946,6 +2005,12 @@ export default function DicomViewerModal({
     const currentFindings = findingText;
     const currentImpression = impressionText;
     if (tId === 'blank' || !tId) {
+      const alreadyBlank = !selectedTemplateId || selectedTemplateId === 'blank';
+      // Re-picking Blank while already on blank (and empty) is a no-op — do not remount the editor.
+      if (alreadyBlank && !currentFindings.trim() && !currentImpression.trim()) {
+        setSelectedTemplateId('blank');
+        return;
+      }
       commitTemplateBody(part, currentFindings, currentImpression, 'blank', '', '', '');
       return;
     }
@@ -3078,8 +3143,8 @@ export default function DicomViewerModal({
                 data-testid="report-page-frame"
               >
                 <A4ReportEditor
-                  key={`a4-${templateApplyKey}-${selectedTemplateId || 'blank'}`}
-                  payload={buildPrintPayload(true)}
+                  key={`a4-${templateApplyKey}`}
+                  payload={screenPrintPayload}
                   readOnly={reportLocked}
                   findings={findingText}
                   impression={impressionText}
@@ -3089,6 +3154,10 @@ export default function DicomViewerModal({
                   onTitleChange={(report?.bodyParts?.length || 0) <= 1 ? setReportTitle : undefined}
                   scale={sheetScale}
                   onPageCount={setSheetPageCount}
+                  focusFindingsKey={isOpen && report?.id ? `${report.id}:${isOpen ? '1' : '0'}` : null}
+                  enableFindingsFocus={
+                    !reportLocked && isReportingOpen && (isLgLayout || mobileActiveView === 'report')
+                  }
                 />
               </div>
             </div>

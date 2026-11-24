@@ -48,6 +48,13 @@ interface A4ReportEditorProps {
   onTitleChange?: (v: string) => void;
   scale: number;
   onPageCount?: (n: number) => void;
+  /**
+   * Session key (report.id / isOpen). Focus findings once per key when the pane is armed
+   * and the textarea is mounted; same key must not re-focus on re-paginate or tab toggles.
+   */
+  focusFindingsKey?: string | null;
+  /** True when the Report pane is visible and focus is allowed. */
+  enableFindingsFocus?: boolean;
 }
 
 export default function A4ReportEditor({
@@ -61,6 +68,8 @@ export default function A4ReportEditor({
   onTitleChange,
   scale,
   onPageCount,
+  focusFindingsKey = null,
+  enableFindingsFocus = false,
 }: A4ReportEditorProps) {
   const findingsText = norm(findings);
   const impressionText = norm(impression);
@@ -110,10 +119,12 @@ export default function A4ReportEditor({
           ph.setAttribute('data-testid', kind === 'findings' ? 'findings-editor' : 'impression-editor');
           if (kind === 'findings' && el.getAttribute('style')) ph.setAttribute('style', el.getAttribute('style') as string);
           if (kind === 'impression') ph.style.fontWeight = '700';
-          // Keep the measured block height so replacing <p>text</p> with an empty
-          // portal host does not collapse Findings/Impression to a blank gap.
+          // Keep measured height so the portal host does not collapse; empty blank
+          // reports still need a tappable hit area (>=40px on screen after scale).
           const measuredH = el.getBoundingClientRect().height;
-          if (measuredH > 0) ph.style.minHeight = `${Math.ceil(measuredH)}px`;
+          const current = Math.max(36, Math.ceil(measuredH || 0));
+          const minH = Math.max(40 / scale, current);
+          ph.style.minHeight = `${minH}px`;
           el.parentNode?.replaceChild(ph, el);
         }
         ph.setAttribute('data-edit', String(edits.length));
@@ -123,7 +134,7 @@ export default function A4ReportEditor({
     });
     while (m.out.firstChild) m.out.removeChild(m.out.firstChild);
     setPlan({ src: source, pages });
-  }, [source, titleEditable, fontsTick]);
+  }, [source, titleEditable, fontsTick, scale]);
 
   useEffect(() => {
     const fonts = (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts;
@@ -178,6 +189,7 @@ export default function A4ReportEditor({
 
   const areas = useRef<Map<string, HTMLTextAreaElement>>(new Map());
   const pendingCaret = useRef<{ kind: 'findings' | 'impression'; pos: number } | null>(null);
+  const focusedFindingsKeyRef = useRef<string | null>(null);
 
   const setText = useCallback(
     (k: 'findings' | 'impression', v: string) => (k === 'findings' ? onFindingsChange(v) : onImpressionChange(v)),
@@ -200,6 +212,40 @@ export default function A4ReportEditor({
     if (ta.selectionStart !== local || ta.selectionEnd !== local) ta.setSelectionRange(local, local);
   });
 
+  // Focus findings once per focusFindingsKey when the Report pane is visible and the
+  // textarea is mounted/editable. Same key must not re-focus on re-paginate.
+  useLayoutEffect(() => {
+    if (!focusFindingsKey) {
+      focusedFindingsKeyRef.current = null;
+      return;
+    }
+    if (!enableFindingsFocus || readOnly) return;
+    if (focusedFindingsKeyRef.current === focusFindingsKey) return;
+    const ta = areas.current.get('findings#0');
+    if (!ta || !ta.isConnected || ta.readOnly || ta.disabled) return;
+    focusedFindingsKeyRef.current = focusFindingsKey;
+    ta.focus({ preventScroll: true });
+    ta.setSelectionRange(0, 0);
+    // Mobile keyboard / visual viewport: bring the field into view once focused.
+    const mobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches;
+    if (mobile) {
+      const scrollField = () => {
+        const vv = window.visualViewport;
+        const rect = ta.getBoundingClientRect();
+        if (vv) {
+          const top = vv.offsetTop;
+          const bottom = vv.offsetTop + vv.height;
+          if (rect.top < top + 8 || rect.bottom > bottom - 8) {
+            ta.scrollIntoView({ block: 'center', inline: 'nearest' });
+          }
+        } else {
+          ta.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+      };
+      requestAnimationFrame(scrollField);
+    }
+  }, [focusFindingsKey, enableFindingsFocus, readOnly, targets]);
+
   const focusSlice = (k: 'findings' | 'impression', j: number, where: 'start' | 'end') => {
     const ta = areas.current.get(`${k}#${j}`);
     if (!ta) return;
@@ -207,6 +253,8 @@ export default function A4ReportEditor({
     const at = where === 'start' ? 0 : ta.value.length;
     ta.setSelectionRange(at, at);
   };
+
+  const emptyMinHeightPx = Math.max(40 / scale, 36);
 
   const renderSlice = (k: 'findings' | 'impression', j: number) => {
     const list = slices[k];
@@ -216,8 +264,8 @@ export default function A4ReportEditor({
     const n = list.length;
     return (
       <SpellCheckTextarea
-        rows={1}
-        minHeightPx={0}
+        rows={2}
+        minHeightPx={emptyMinHeightPx}
         value={sl.value}
         fontClass="rn-body-copy"
         readOnly={readOnly}
